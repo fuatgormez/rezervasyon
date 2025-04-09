@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
 import connectToDatabase from "@/lib/mongodb/connect";
-import { Table } from "@/lib/mongodb/models/Table";
-import { CompanySettings } from "@/lib/mongodb/models/CompanySettings";
 
 export async function GET() {
   try {

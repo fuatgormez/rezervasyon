@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
     const isActive = searchParams.get("isActive");
 
     // Filtreleme sorgusu oluştur
-    const query: any = {};
+    const query: Record<string, unknown> = {};
 
     if (section) query.section = section;
     if (status) query.status = status;

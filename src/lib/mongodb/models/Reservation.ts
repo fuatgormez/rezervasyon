@@ -47,8 +47,6 @@ ReservationSchema.statics.isTableAvailable = async function (
   duration,
   excludeReservationId = null
 ) {
-  const startHour = parseInt(startTime.split(":")[0]);
-
   // Belirtilen zaman aralığında başka rezervasyon var mı kontrol et
   const query = {
     tableId,

@@ -28,18 +28,23 @@ export default function ReservationForm() {
 
   // Socket.IO bağlantısı
   useEffect(() => {
-    // Tarayıcı tarafında olduğundan emin ol
-    if (typeof window === "undefined") return;
+    // Her form açılışı için benzersiz bir oturum ID'si oluştur
+    formSessionId.current = `form_${Date.now()}_${Math.random()
+      .toString(36)
+      .substring(2, 9)}`;
 
-    // Socket.IO bağlantısı kur
+    // Socket bağlantısını kur
     const socketInstance = io();
     setSocket(socketInstance);
+
+    // Unmount zamanında kullanmak için değeri saklayalım
+    const currentSessionId = formSessionId.current;
 
     // Component unmount olduğunda bağlantıyı kapat
     return () => {
       // Rezervasyon iptal edildi bilgisi gönder (form tamamlanmadan sayfadan ayrılındı)
       socketInstance.emit("reservation:cancel", {
-        sessionId: formSessionId.current,
+        sessionId: currentSessionId,
         cancelReason: "form_abandoned",
       });
       socketInstance.disconnect();

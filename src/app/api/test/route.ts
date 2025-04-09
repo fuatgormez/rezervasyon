@@ -33,12 +33,15 @@ export async function GET() {
       message: "Test verisi başarıyla oluşturuldu",
       data: testReservation,
     });
-  } catch (error: any) {
-    console.error("Test verisi oluşturma hatası:", error.message);
+  } catch (error: unknown) {
+    console.error(
+      "Test verisi oluşturma hatası:",
+      error instanceof Error ? error.message : String(error)
+    );
     return NextResponse.json(
       {
         error: "Test verisi oluşturulurken bir hata oluştu",
-        details: error.message,
+        details: error instanceof Error ? error.message : String(error),
       },
       { status: 500 }
     );
