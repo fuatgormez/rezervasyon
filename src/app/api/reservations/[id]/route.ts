@@ -2,14 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb/connect";
 import { Reservation } from "@/lib/mongodb/models/Reservation";
 
-type RouteParams = { id: string };
+interface RouteContextProps {
+  params: {
+    id: string;
+  };
+}
 
-export async function PATCH(
-  request: NextRequest,
-  context: { params: RouteParams }
-) {
+export async function PATCH(request: NextRequest, props: RouteContextProps) {
   try {
-    const { id } = context.params;
+    const { id } = props.params;
     const body = await request.json();
     const { status } = body;
 
