@@ -1,6 +1,5 @@
 {
   "buildCommand": "next build",
-  "ignoreCommand": "exit 0",
   "git": {
     "deploymentEnabled": {
       "main": true
