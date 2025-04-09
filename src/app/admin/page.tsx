@@ -28,6 +28,8 @@ interface ReservationType {
 
 export default function AdminPage() {
   const [timeSlots] = useState([
+    "09:00",
+    "10:00",
     "11:00",
     "12:00",
     "13:00",
@@ -42,6 +44,8 @@ export default function AdminPage() {
     "22:00",
     "23:00",
     "00:00",
+    "01:00",
+    "02:00",
   ]);
 
   const [tables] = useState<TableType[]>([
@@ -137,7 +141,7 @@ export default function AdminPage() {
     },
   ]);
 
-  const [currentTime] = useState("15:00");
+  const [currentTime, setCurrentTime] = useState<string>("15:00");
   const [isDragging, setIsDragging] = useState(false);
   const [startX, setStartX] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
@@ -148,6 +152,32 @@ export default function AdminPage() {
 
   const timelineRef = useRef<HTMLDivElement>(null);
   const tablesScrollRef = useRef<HTMLDivElement>(null);
+
+  // Gerçek zamana göre currentTime'ı güncelle
+  useEffect(() => {
+    // İlk açılışta şu anki zamanı ayarla
+    const now = new Date();
+    const hours = now.getHours();
+    const formattedHours = hours.toString().padStart(2, "0");
+    const currentTimeString = `${formattedHours}:00`;
+    setCurrentTime(currentTimeString);
+
+    // Her dakika zamanı güncelle
+    const timer = setInterval(() => {
+      const now = new Date();
+      const hours = now.getHours();
+      const formattedHours = hours.toString().padStart(2, "0");
+      const currentTimeString = `${formattedHours}:00`;
+      setCurrentTime(currentTimeString);
+    }, 60000); // 1 dakikada bir güncelle
+
+    return () => clearInterval(timer);
+  }, []);
+
+  // Şu anki zaman çizgisini göstermek için timeSlots içindeki indeksi hesapla
+  const getCurrentTimeIndex = () => {
+    return timeSlots.indexOf(currentTime);
+  };
 
   // Scroll çubuğunu güncelle
   const updateScrollbar = (percentage: number) => {
@@ -241,6 +271,10 @@ export default function AdminPage() {
       phone:
         reservation.customerName === "Benedetta Pompetzki"
           ? "+491516760458"
+          : reservation.customerName === "Dogan Elmali"
+          ? "+491773458990"
+          : reservation.customerName === "Berkan Limon"
+          ? "+491624789032"
           : "",
       isNewGuest: reservation.customerName === "Benedetta Pompetzki",
       language: "DE",
@@ -253,6 +287,34 @@ export default function AdminPage() {
     };
 
     setSelectedReservation(enhancedReservation);
+    setIsSidebarOpen(true);
+  };
+
+  // Yeni müşteri ekleme işleyicisi
+  const handleAddCustomer = () => {
+    // Yeni rezervasyon oluştur
+    const newReservation: ReservationType = {
+      id: `r${reservations.length + 1}`,
+      customerId: `c${reservations.length + 1}`,
+      customerName: "Yeni Rezervasyon",
+      tableId: "t12", // Varsayılan masa
+      startTime: "19:00", // Varsayılan başlangıç saati
+      endTime: "21:00", // Varsayılan bitiş saati
+      guests: 2, // Varsayılan misafir sayısı
+      status: "confirmed",
+      type: "RESERVATION",
+      phone: "",
+      isNewGuest: true,
+      language: "DE",
+    };
+
+    // Rezervasyonları güncelle
+    // Not: Bu örnek için useState kullanıldığından direkt atama yapamıyoruz
+    // Gerçek uygulamada useState setter veya Context API kullanılabilir
+    // setReservations([...reservations, newReservation]);
+
+    // Yeni eklenen rezervasyonu seç ve sidebar'ı aç
+    setSelectedReservation(newReservation);
     setIsSidebarOpen(true);
   };
 
@@ -322,13 +384,40 @@ export default function AdminPage() {
     return `${capacity}`.padStart(2, " ");
   };
 
+  // Şu anki saate göre otomatik scroll
+  useEffect(() => {
+    if (timelineRef.current && getCurrentTimeIndex() > -1) {
+      const scrollToPosition = Math.max(0, (getCurrentTimeIndex() - 2) * 80);
+      timelineRef.current.scrollLeft = scrollToPosition;
+
+      // Scroll değişikliğini tabloya da yansıt
+      if (tablesScrollRef.current) {
+        tablesScrollRef.current.scrollLeft = scrollToPosition;
+      }
+    }
+  }, [currentTime]);
+
+  // Masanın belirli bir saatte müsait olup olmadığını kontrol et
+  const getTableAvailability = (tableId: string, time: string) => {
+    if (!time) return false;
+
+    const existingReservation = reservations.find(
+      (res) => res.tableId === tableId && res.startTime === time
+    );
+
+    return !existingReservation;
+  };
+
   return (
     <div className="h-screen bg-[#1e1e1e] text-white overflow-hidden">
       {/* Navbar */}
       <div className="flex items-center justify-between bg-[#1e1e1e] border-b border-gray-800 p-2">
         <h1 className="text-lg font-semibold">Rezervasyon Sistemi</h1>
         <div className="flex items-center gap-2">
-          <button className="px-3 py-1 bg-blue-600 rounded text-sm hover:bg-blue-700">
+          <button
+            className="px-3 py-1 bg-blue-600 rounded text-sm hover:bg-blue-700"
+            onClick={handleAddCustomer}
+          >
             + Rezervasyon
           </button>
           <button
@@ -390,12 +479,21 @@ export default function AdminPage() {
             {timeSlots.map((time, index) => (
               <div
                 key={`time-${index}`}
-                className="w-20 shrink-0 p-2 text-center text-xs border-l border-gray-800 relative"
+                className={`w-20 shrink-0 p-2 text-center text-xs border-l border-gray-800 relative ${
+                  time === currentTime
+                    ? "bg-gray-700 text-white"
+                    : parseInt(time) >= 18 && parseInt(time) <= 23
+                    ? "bg-gray-800/30"
+                    : parseInt(time) >= 0 && parseInt(time) <= 5
+                    ? "bg-gray-900/40"
+                    : "bg-transparent"
+                }`}
               >
                 {time}
                 <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-gray-800" />
                 <div className="absolute -bottom-4 left-1/2 transform -translate-x-1/2 text-[10px] text-gray-500">
-                  {Math.floor(Math.random() * 5)}
+                  {/* Dolu masa sayısını göster - Gerçek uygulamada hesaplanır */}
+                  {reservations.filter((r) => r.startTime === time).length}
                 </div>
               </div>
             ))}
@@ -405,7 +503,8 @@ export default function AdminPage() {
           <div
             className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10"
             style={{
-              left: `${16 + (timeSlots.indexOf(currentTime) + 0.5) * 80}px`,
+              left: `${16 + (getCurrentTimeIndex() + 0.5) * 80}px`,
+              display: getCurrentTimeIndex() > -1 ? "block" : "none",
             }}
           ></div>
 
@@ -444,7 +543,15 @@ export default function AdminPage() {
                       {timeSlots.map((time, i) => (
                         <div
                           key={`slot-${table.id}-${i}`}
-                          className="w-20 shrink-0 border-l border-gray-800 h-full"
+                          className={`w-20 shrink-0 border-l border-gray-800 h-full ${
+                            time === currentTime
+                              ? "bg-gray-700/20"
+                              : parseInt(time) >= 18 && parseInt(time) <= 23
+                              ? "bg-gray-800/10"
+                              : parseInt(time) >= 0 && parseInt(time) <= 5
+                              ? "bg-gray-900/20"
+                              : "bg-transparent"
+                          }`}
                         ></div>
                       ))}
                     </div>
@@ -574,7 +681,7 @@ export default function AdminPage() {
                     <div>
                       <h3 className="text-lg font-medium mb-1">Logo Yükle</h3>
                       <p className="text-gray-400 mb-3">
-                        PNG, JPG veya SVG, 4MB'dan küçük
+                        PNG, JPG veya SVG, 4MB&apos;dan küçük
                       </p>
                       <button className="px-4 py-2 bg-blue-600 rounded text-sm hover:bg-blue-700">
                         Logo Seç
@@ -1066,25 +1173,62 @@ export default function AdminPage() {
 
             <div className="mb-3">
               <div className="text-gray-400 text-sm mb-1">Tisch</div>
-              <div className="bg-[#2a2a2a] p-3 rounded flex justify-between items-center">
-                <div className="font-medium">
-                  {tables.find((t) => t.id === selectedReservation.tableId)
-                    ?.number || ""}
+              <div className="bg-[#2a2a2a] p-3 rounded">
+                <div className="grid grid-cols-5 gap-2 mb-2">
+                  {tables.slice(0, 10).map((table) => (
+                    <button
+                      key={table.id}
+                      className={`py-2 rounded-md text-xs font-medium ${
+                        selectedReservation?.tableId === table.id
+                          ? "bg-blue-600 text-white"
+                          : getTableAvailability(
+                              table.id,
+                              selectedReservation?.startTime || ""
+                            )
+                          ? "bg-gray-700 text-white hover:bg-gray-600"
+                          : "bg-gray-800 text-gray-500 cursor-not-allowed"
+                      }`}
+                      onClick={() => {
+                        if (
+                          selectedReservation &&
+                          getTableAvailability(
+                            table.id,
+                            selectedReservation.startTime
+                          )
+                        ) {
+                          setSelectedReservation({
+                            ...selectedReservation,
+                            tableId: table.id,
+                          });
+                        }
+                      }}
+                      disabled={
+                        selectedReservation
+                          ? !getTableAvailability(
+                              table.id,
+                              selectedReservation.startTime
+                            )
+                          : true
+                      }
+                    >
+                      {table.number}
+                    </button>
+                  ))}
                 </div>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-4 w-4 text-gray-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 9l-7 7-7-7"
-                  />
-                </svg>
+                <div className="flex justify-between items-center mt-2">
+                  <div className="text-xs text-gray-500">
+                    <span className="inline-block w-3 h-3 bg-gray-700 mr-1 rounded-sm"></span>{" "}
+                    Müsait
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    <span className="inline-block w-3 h-3 bg-blue-600 mr-1 rounded-sm"></span>{" "}
+                    Seçili
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    <span className="inline-block w-3 h-3 bg-gray-800 mr-1 rounded-sm"></span>{" "}
+                    Dolu
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -1106,6 +1250,8 @@ export default function AdminPage() {
               ].map((color) => (
                 <button
                   key={color}
+                  aria-label={`Renk seç: ${color}`}
+                  title={`Renk seç: ${color}`}
                   className={`w-10 h-10 rounded-sm ${
                     color === selectedReservation.color
                       ? "ring-2 ring-white"
