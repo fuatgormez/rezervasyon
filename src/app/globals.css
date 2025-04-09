@@ -1,4 +1,6 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 :root {
   --background: #ffffff;
@@ -23,4 +25,19 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Özel bileşen stilleri */
+@layer components {
+  .btn-primary {
+    @apply bg-accent text-white px-4 py-2 rounded-md hover:opacity-90 transition-opacity;
+  }
+
+  .card {
+    @apply bg-secondary p-4 rounded-lg shadow-md;
+  }
+
+  .container-main {
+    @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
 }

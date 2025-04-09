@@ -1,3 +1,4 @@
+/** @type {import('next').NextConfig} */
 const nextConfig = {
   eslint: {
     // Uyarılar için derlemeyi durdurmayacak
@@ -6,6 +7,19 @@ const nextConfig = {
   typescript: {
     // Typescript hatalarını görmezden gel
     ignoreBuildErrors: true,
+  },
+  output: "standalone", // Server kısmını ayrı paketleyecek
+  experimental: {
+    // MongoDB bağlantısını istemci tarafına itiyoruz
+    serverComponentsExternalPackages: ["mongoose"],
+  },
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "**",
+      },
+    ],
   },
 };
 

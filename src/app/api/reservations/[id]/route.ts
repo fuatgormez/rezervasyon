@@ -1,36 +1,73 @@
-import { NextResponse } from "next/server";
-import connectDB from "@/lib/mongodb/connect";
-import { Reservation } from "@/lib/mongodb/models/Reservation";
+import { NextRequest, NextResponse } from "next/server";
+import {
+  getReservationById,
+  updateReservation,
+  deleteReservation,
+} from "@/lib/kv";
 
-// Next.js 15 ile uyumlu route handler
-export async function PATCH(
-  request: Request,
+export async function GET(
+  request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const { id } = params;
-    const body = await request.json();
-    const { status } = body;
-
-    await connectDB();
-    const reservation = await Reservation.findByIdAndUpdate(
-      id,
-      { status },
-      { new: true }
-    );
+    const id = params.id;
+    const reservation = await getReservationById(id);
 
     if (!reservation) {
       return NextResponse.json(
-        { error: "Rezervasyon bulunamadı" },
+        { error: "Reservation not found" },
         { status: 404 }
       );
     }
 
-    return NextResponse.json(reservation);
+    return NextResponse.json({ reservation });
   } catch (error) {
-    console.error("Rezervasyon güncellenirken hata:", error);
+    console.error(`Error fetching reservation ${params.id}:`, error);
     return NextResponse.json(
-      { error: "Rezervasyon güncellenemedi" },
+      { error: "Failed to fetch reservation" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const id = params.id;
+    const updates = await request.json();
+
+    const updatedReservation = await updateReservation(id, updates);
+
+    return NextResponse.json({
+      message: "Reservation updated successfully",
+      reservation: updatedReservation,
+    });
+  } catch (error) {
+    console.error(`Error updating reservation ${params.id}:`, error);
+    return NextResponse.json(
+      { error: "Failed to update reservation" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const id = params.id;
+    await deleteReservation(id);
+
+    return NextResponse.json({
+      message: "Reservation deleted successfully",
+    });
+  } catch (error) {
+    console.error(`Error deleting reservation ${params.id}:`, error);
+    return NextResponse.json(
+      { error: "Failed to delete reservation" },
       { status: 500 }
     );
   }

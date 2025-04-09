@@ -1,0 +1,7 @@
+{
+  "rest": {
+    "enabled": true,
+    "token": "your_token",
+    "readOnlyToken": "your_readonly_token"
+  }
+}

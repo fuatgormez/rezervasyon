@@ -1,36 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import connectToDatabase from "@/lib/mongodb/connect";
-import { Table } from "@/lib/mongodb/models/Table";
+import { getTableById, updateTable, deleteTable } from "@/lib/kv/tables";
 
-interface Params {
-  params: {
-    id: string;
-  };
-}
-
-// GET - Belirli bir masayı getir
-export async function GET(req: NextRequest, { params }: Params) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
   try {
-    await connectToDatabase();
-
-    // ID bir tamsayı olabilir (tableNumber)
-    let table;
-
-    if (!isNaN(Number(params.id))) {
-      // Eğer ID bir sayı ise, tableNumber olarak ara
-      table = await Table.findOne({ tableNumber: Number(params.id) });
-    } else {
-      // ObjectId olarak ara
-      table = await Table.findById(params.id);
-    }
+    const id = params.id;
+    const table = await getTableById(id);
 
     if (!table) {
       return NextResponse.json({ error: "Table not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ table }, { status: 200 });
+    return NextResponse.json({ table });
   } catch (error) {
-    console.error("Error fetching table:", error);
+    console.error(`Error fetching table ${params.id}:`, error);
     return NextResponse.json(
       { error: "Failed to fetch table" },
       { status: 500 }
@@ -38,41 +23,23 @@ export async function GET(req: NextRequest, { params }: Params) {
   }
 }
 
-// PUT - Masayı güncelle
-export async function PUT(req: NextRequest, { params }: Params) {
+// PATCH - Masayı güncelle
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
   try {
-    await connectToDatabase();
+    const id = params.id;
+    const updates = await request.json();
 
-    const body = await req.json();
+    const updatedTable = await updateTable(id, updates);
 
-    // ID bir tamsayı olabilir (tableNumber)
-    let table;
-
-    if (!isNaN(Number(params.id))) {
-      // Eğer ID bir sayı ise, tableNumber olarak ara
-      table = await Table.findOne({ tableNumber: Number(params.id) });
-    } else {
-      // ObjectId olarak ara
-      table = await Table.findById(params.id);
-    }
-
-    if (!table) {
-      return NextResponse.json({ error: "Table not found" }, { status: 404 });
-    }
-
-    // Güncelleme tarihini ayarla
-    body.updatedAt = new Date();
-
-    // Masayı güncelle
-    const updatedTable = await Table.findByIdAndUpdate(
-      table._id,
-      { $set: body },
-      { new: true, runValidators: true }
-    );
-
-    return NextResponse.json({ table: updatedTable }, { status: 200 });
+    return NextResponse.json({
+      message: "Table updated successfully",
+      table: updatedTable,
+    });
   } catch (error) {
-    console.error("Error updating table:", error);
+    console.error(`Error updating table ${params.id}:`, error);
     return NextResponse.json(
       { error: "Failed to update table" },
       { status: 500 }
@@ -81,34 +48,19 @@ export async function PUT(req: NextRequest, { params }: Params) {
 }
 
 // DELETE - Masayı sil
-export async function DELETE(req: NextRequest, { params }: Params) {
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
   try {
-    await connectToDatabase();
+    const id = params.id;
+    await deleteTable(id);
 
-    // ID bir tamsayı olabilir (tableNumber)
-    let table;
-
-    if (!isNaN(Number(params.id))) {
-      // Eğer ID bir sayı ise, tableNumber olarak ara
-      table = await Table.findOne({ tableNumber: Number(params.id) });
-    } else {
-      // ObjectId olarak ara
-      table = await Table.findById(params.id);
-    }
-
-    if (!table) {
-      return NextResponse.json({ error: "Table not found" }, { status: 404 });
-    }
-
-    // Masayı sil
-    await Table.findByIdAndDelete(table._id);
-
-    return NextResponse.json(
-      { message: "Table deleted successfully" },
-      { status: 200 }
-    );
+    return NextResponse.json({
+      message: "Table deleted successfully",
+    });
   } catch (error) {
-    console.error("Error deleting table:", error);
+    console.error(`Error deleting table ${params.id}:`, error);
     return NextResponse.json(
       { error: "Failed to delete table" },
       { status: 500 }
