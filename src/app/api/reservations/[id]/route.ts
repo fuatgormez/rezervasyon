@@ -1,10 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb/connect";
 import { Reservation } from "@/lib/mongodb/models/Reservation";
 
-// Next.js 15'in beklediği route handler tipi
+// Next.js 15 ile uyumlu route handler
 export async function PATCH(
-  request: NextRequest,
+  request: Request,
   { params }: { params: { id: string } }
 ) {
   try {
