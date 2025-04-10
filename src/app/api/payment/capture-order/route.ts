@@ -1,11 +1,8 @@
 import { NextResponse } from "next/server";
-import connectDB from "@/lib/mongodb/connect";
-import { Reservation } from "@/lib/mongodb/models/Reservation";
+import { ReservationModel } from "@/lib/kv";
 
 export async function POST(request: Request) {
   try {
-    await connectDB();
-
     const { orderId, reservationId } = await request.json();
 
     // PayPal'dan ödemeyi yakala
@@ -23,10 +20,8 @@ export async function POST(request: Request) {
     const paypalData = await response.json();
 
     if (paypalData.status === "COMPLETED") {
-      // Rezervasyonu güncelle
-      await Reservation.findByIdAndUpdate(reservationId, {
-        "payment.status": "completed",
-        "payment.paypalTransactionId": paypalData.id,
+      // Rezervasyonu güncelle - sadece statüsünü değiştir, ödeme bilgisini ayrıca saklamıyoruz
+      await ReservationModel.update(reservationId, {
         status: "confirmed",
       });
 

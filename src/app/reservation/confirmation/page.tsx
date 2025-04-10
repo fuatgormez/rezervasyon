@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Reservation as ReservationType } from "@/lib/mongodb/models/Reservation";
-import connectDB from "@/lib/mongodb/connect";
+import { ReservationType } from "@/lib/kv/models/reservation";
+import { ReservationModel } from "@/lib/kv";
 
 export default function ConfirmationPage() {
   const searchParams = useSearchParams();
@@ -22,36 +22,28 @@ export default function ConfirmationPage() {
       // Test ID kontrolü
       if (id.startsWith("test_")) {
         setReservation({
-          _id: id,
-          customer: {
-            name: "Test Müşteri",
-            email: "test@example.com",
-            phone: "5551234567",
-          },
-          date: new Date(),
-          time: "12:00",
+          id: id,
+          customerId: "test_customer",
+          customerName: "Test Müşteri",
+          tableId: "t1",
+          startTime: "12:00",
+          endTime: "14:00",
           guests: 2,
-          tableNumber: 1,
           status: "confirmed",
-          payment: {
-            amount: 100,
-            currency: "TRY",
-            status: "completed",
-          },
-          createdAt: new Date(),
-          updatedAt: new Date(),
+          type: "RESERVATION",
+          phone: "5551234567",
+          isNewGuest: true,
+          language: "TR",
         } as ReservationType);
         return;
       }
 
       try {
-        await connectDB();
-        const response = await fetch(`/api/reservations/${id}`);
-        if (!response.ok) {
+        const reservationData = await ReservationModel.getById(id);
+        if (!reservationData) {
           throw new Error("Rezervasyon bulunamadı");
         }
-        const data = await response.json();
-        setReservation(data);
+        setReservation(reservationData);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Bir hata oluştu");
       }
@@ -98,31 +90,18 @@ export default function ConfirmationPage() {
         <div className="space-y-4">
           <div>
             <h2 className="font-semibold text-gray-700">Müşteri Bilgileri</h2>
-            <p className="text-gray-600">İsim: {reservation.customer.name}</p>
-            <p className="text-gray-600">
-              E-posta: {reservation.customer.email}
-            </p>
-            <p className="text-gray-600">
-              Telefon: {reservation.customer.phone}
-            </p>
+            <p className="text-gray-600">İsim: {reservation.customerName}</p>
+            <p className="text-gray-600">Telefon: {reservation.phone || "-"}</p>
           </div>
           <div>
             <h2 className="font-semibold text-gray-700">
               Rezervasyon Detayları
             </h2>
             <p className="text-gray-600">
-              Tarih: {new Date(reservation.date).toLocaleDateString("tr-TR")}
+              Saat: {reservation.startTime} - {reservation.endTime}
             </p>
-            <p className="text-gray-600">Saat: {reservation.time}</p>
             <p className="text-gray-600">Kişi Sayısı: {reservation.guests}</p>
-            <p className="text-gray-600">Masa No: {reservation.tableNumber}</p>
-          </div>
-          <div>
-            <h2 className="font-semibold text-gray-700">Ödeme Bilgileri</h2>
-            <p className="text-gray-600">
-              Tutar: {reservation.payment.amount} {reservation.payment.currency}
-            </p>
-            <p className="text-gray-600">Durum: {reservation.payment.status}</p>
+            <p className="text-gray-600">Masa No: {reservation.tableId}</p>
           </div>
         </div>
         <Link

@@ -1,14 +1,11 @@
 import { NextResponse } from "next/server";
-import connectDB from "@/lib/mongodb/connect";
-import { Reservation } from "@/lib/mongodb/models/Reservation";
+import { ReservationModel } from "@/lib/kv";
 
 export async function POST(request: Request) {
   try {
-    await connectDB();
+    const { reservationId, paymentAmount = 100 } = await request.json();
 
-    const { reservationId } = await request.json();
-
-    const reservation = await Reservation.findById(reservationId);
+    const reservation = await ReservationModel.getById(reservationId);
     if (!reservation) {
       return NextResponse.json(
         { error: "Rezervasyon bulunamadı" },
@@ -31,7 +28,7 @@ export async function POST(request: Request) {
             {
               amount: {
                 currency_code: "TRY",
-                value: (reservation.payment.amount / 100).toFixed(2),
+                value: (paymentAmount / 100).toFixed(2),
               },
               description: `Rezervasyon #${reservationId}`,
             },

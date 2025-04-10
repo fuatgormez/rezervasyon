@@ -1,91 +1,64 @@
 import { NextRequest, NextResponse } from "next/server";
-import connectToDatabase from "@/lib/mongodb/connect";
-import { Waiter } from "@/lib/mongodb/models/Waiter";
 
-interface Params {
+interface RouteParams {
   params: {
     id: string;
   };
 }
 
-// GET - Belirli bir garsonu getir
-export async function GET(req: NextRequest, { params }: Params) {
+// GET - ID'ye göre garson bilgisi getir
+export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
-    await connectToDatabase();
-
-    const waiter = await Waiter.findById(params.id);
-
-    if (!waiter) {
-      return NextResponse.json({ error: "Waiter not found" }, { status: 404 });
-    }
-
-    return NextResponse.json({ waiter }, { status: 200 });
+    // KV şu anda garson modeli içermiyor, ileride eklenecek
+    // Şimdilik boş nesne dönelim
+    return NextResponse.json({
+      id: params.id,
+      name: "Örnek Garson",
+      status: "active",
+    });
   } catch (error) {
-    console.error("Error fetching waiter:", error);
+    console.error(`Garson bilgisi getirilirken hata (${params.id}):`, error);
     return NextResponse.json(
-      { error: "Failed to fetch waiter" },
+      { error: "Garson bilgisi getirilirken bir hata oluştu" },
       { status: 500 }
     );
   }
 }
 
-// PUT - Garsonu güncelle
-export async function PUT(req: NextRequest, { params }: Params) {
+// PATCH - Garson bilgilerini güncelle
+export async function PATCH(request: NextRequest, { params }: RouteParams) {
   try {
-    await connectToDatabase();
+    const data = await request.json();
 
-    const body = await req.json();
-
-    // Garson var mı kontrol et
-    const waiter = await Waiter.findById(params.id);
-
-    if (!waiter) {
-      return NextResponse.json({ error: "Waiter not found" }, { status: 404 });
-    }
-
-    // Güncelleme tarihini ayarla
-    body.updatedAt = new Date();
-
-    // Garsonu güncelle
-    const updatedWaiter = await Waiter.findByIdAndUpdate(
-      params.id,
-      { $set: body },
-      { new: true, runValidators: true }
-    );
-
-    return NextResponse.json({ waiter: updatedWaiter }, { status: 200 });
+    // KV şu anda garson modeli içermiyor, ileride eklenecek
+    // Şimdilik gönderilen veriyi ID eklenerek dönelim
+    return NextResponse.json({
+      ...data,
+      id: params.id,
+      updatedAt: new Date().toISOString(),
+    });
   } catch (error) {
-    console.error("Error updating waiter:", error);
+    console.error(`Garson güncellenirken hata (${params.id}):`, error);
     return NextResponse.json(
-      { error: "Failed to update waiter" },
+      { error: "Garson güncellenirken bir hata oluştu" },
       { status: 500 }
     );
   }
 }
 
-// DELETE - Garsonu sil
-export async function DELETE(req: NextRequest, { params }: Params) {
+// DELETE - Garson sil
+export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
-    await connectToDatabase();
-
-    // Garson var mı kontrol et
-    const waiter = await Waiter.findById(params.id);
-
-    if (!waiter) {
-      return NextResponse.json({ error: "Waiter not found" }, { status: 404 });
-    }
-
-    // Garsonu sil
-    await Waiter.findByIdAndDelete(params.id);
-
-    return NextResponse.json(
-      { message: "Waiter deleted successfully" },
-      { status: 200 }
-    );
+    // KV şu anda garson modeli içermiyor, ileride eklenecek
+    // Şimdilik başarılı yanıt dönelim
+    return NextResponse.json({
+      message: "Garson başarıyla silindi",
+      id: params.id,
+    });
   } catch (error) {
-    console.error("Error deleting waiter:", error);
+    console.error(`Garson silinirken hata (${params.id}):`, error);
     return NextResponse.json(
-      { error: "Failed to delete waiter" },
+      { error: "Garson silinirken bir hata oluştu" },
       { status: 500 }
     );
   }

@@ -1,37 +1,32 @@
 import { NextResponse } from "next/server";
-import connectToDatabase from "@/lib/mongodb/connect";
+import { TableModel, CompanySettingsModel } from "@/lib/kv";
 
 export async function GET() {
   try {
-    await connectToDatabase();
-
-    // Table koleksiyonunu başlat
-    const { Table } = await import("@/lib/mongodb/models/Table");
-
-    // CompanySettings koleksiyonunu başlat
-    const { CompanySettings } = await import(
-      "@/lib/mongodb/models/CompanySettings"
-    );
-
     let tablesCreated = false;
     let settingsCreated = false;
 
     // Varsayılan masaları oluştur
-    if (typeof Table.initializeDefaultTables === "function") {
-      tablesCreated = await Table.initializeDefaultTables();
+    try {
+      await TableModel.initializeDefaultTables();
+      tablesCreated = true;
+    } catch (err) {
+      console.error("Masa oluşturma hatası:", err);
     }
 
     // Şirket ayarlarını oluştur/getir
-    if (typeof CompanySettings.getSettings === "function") {
-      const settings = await CompanySettings.getSettings();
+    try {
+      const settings = await CompanySettingsModel.getSettings();
       settingsCreated = !!settings;
+    } catch (err) {
+      console.error("Ayar oluşturma hatası:", err);
     }
 
     return NextResponse.json({
       success: true,
       tablesCreated,
       settingsCreated,
-      message: "Veritabanı başarıyla başlatıldı",
+      message: "Vercel KV başarıyla başlatıldı",
     });
   } catch (error) {
     console.error("Veritabanı başlatma hatası:", error);

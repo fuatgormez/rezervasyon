@@ -1,29 +1,23 @@
 import { NextResponse } from "next/server";
-import connectDB from "@/lib/mongodb/connect";
-import { Reservation } from "@/lib/mongodb/models/Reservation";
+import { ReservationModel } from "@/lib/kv";
 
 export async function GET() {
   try {
-    console.log("MongoDB bağlantısı başlatılıyor...");
-    const db = await connectDB();
-    console.log("MongoDB bağlantısı başarılı:", db ? "Evet" : "Hayır");
+    console.log("Vercel KV bağlantısı testi başlatılıyor...");
 
     console.log("Test verisi oluşturuluyor...");
-    const testReservation = await Reservation.create({
-      customer: {
-        name: "Test Müşteri",
-        email: "test@example.com",
-        phone: "5551234567",
-      },
-      date: new Date(),
-      time: "12:00",
+    const testReservation = await ReservationModel.create({
+      customerId: `cust_test_${Date.now()}`,
+      customerName: "Test Müşteri",
+      tableId: "t1",
+      startTime: "12:00",
+      endTime: "14:00",
       guests: 2,
-      tableNumber: 1,
-      payment: {
-        amount: 200,
-        status: "pending",
-      },
-      status: "pending",
+      status: "confirmed",
+      type: "RESERVATION",
+      phone: "5551234567",
+      isNewGuest: true,
+      language: "TR",
     });
 
     console.log("Test verisi oluşturuldu:", testReservation);
