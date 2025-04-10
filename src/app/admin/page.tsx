@@ -174,11 +174,6 @@ export default function AdminPage() {
     return () => clearInterval(timer);
   }, []);
 
-  // Şu anki zaman çizgisini göstermek için timeSlots içindeki indeksi hesapla
-  const getCurrentTimeIndex = () => {
-    return timeSlots.indexOf(currentTime);
-  };
-
   // Scroll çubuğunu güncelle
   const updateScrollbar = (percentage: number) => {
     if (!timelineRef.current) return;
@@ -386,8 +381,9 @@ export default function AdminPage() {
 
   // Şu anki saate göre otomatik scroll
   useEffect(() => {
-    if (timelineRef.current && getCurrentTimeIndex() > -1) {
-      const scrollToPosition = Math.max(0, (getCurrentTimeIndex() - 2) * 80);
+    // Başlangıçta görünür bir konuma scroll yap
+    if (timelineRef.current) {
+      const scrollToPosition = Math.max(0, 480); // Örnek olarak 6. saat pozisyonuna
       timelineRef.current.scrollLeft = scrollToPosition;
 
       // Scroll değişikliğini tabloya da yansıt
@@ -498,15 +494,6 @@ export default function AdminPage() {
               </div>
             ))}
           </div>
-
-          {/* Şimdiki zaman çizgisi */}
-          <div
-            className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10"
-            style={{
-              left: `${16 + (getCurrentTimeIndex() + 0.5) * 80}px`,
-              display: getCurrentTimeIndex() > -1 ? "block" : "none",
-            }}
-          ></div>
 
           {/* Ana tablo içeriği */}
           <div className="flex">

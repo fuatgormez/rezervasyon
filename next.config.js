@@ -9,10 +9,6 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   output: "standalone", // Server kısmını ayrı paketleyecek
-  experimental: {
-    // MongoDB bağlantısını istemci tarafına itiyoruz
-    serverComponentsExternalPackages: ["mongoose"],
-  },
   images: {
     remotePatterns: [
       {
@@ -20,6 +16,16 @@ const nextConfig = {
         hostname: "**",
       },
     ],
+  },
+  swcMinify: true,
+  async redirects() {
+    return [
+      {
+        source: "/",
+        destination: "/admin",
+        permanent: true,
+      },
+    ];
   },
 };
 

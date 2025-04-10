@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  getAllReservations,
-  createReservation,
-  isTableAvailable,
-} from "@/lib/kv";
-import { Reservation } from "@/lib/kv";
+import { ReservationModel } from "@/lib/kv";
+import { ReservationType } from "@/lib/kv/models/reservation";
 
 // GET - Tüm rezervasyonları getir
 export async function GET(request: NextRequest) {
@@ -13,33 +9,23 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get("status");
     const type = searchParams.get("type");
     const tableId = searchParams.get("tableId");
-    const startTimeStr = searchParams.get("startTime");
+    const date = searchParams.get("date");
 
-    let reservations = await getAllReservations();
+    // Filtreleri hazırla
+    const filters: {
+      status?: string;
+      type?: string;
+      tableId?: string;
+      date?: string;
+    } = {};
 
-    // Filtreleme
-    if (status) {
-      reservations = reservations.filter((res) => res.status === status);
-    }
+    if (status) filters.status = status;
+    if (type) filters.type = type;
+    if (tableId) filters.tableId = tableId;
+    if (date) filters.date = date;
 
-    if (type) {
-      reservations = reservations.filter((res) => res.type === type);
-    }
-
-    if (tableId) {
-      reservations = reservations.filter((res) => res.tableId === tableId);
-    }
-
-    if (startTimeStr) {
-      const startTime = new Date(startTimeStr);
-      const endTime = new Date(startTime);
-      endTime.setHours(23, 59, 59, 999);
-
-      reservations = reservations.filter((res) => {
-        const resTime = new Date(res.startTime);
-        return resTime >= startTime && resTime <= endTime;
-      });
-    }
+    // Vercel KV ile veri çek
+    const reservations = await ReservationModel.getAll(filters);
 
     return NextResponse.json({ reservations });
   } catch (error) {
@@ -57,7 +43,13 @@ export async function POST(request: NextRequest) {
     const data = await request.json();
 
     // Zorunlu alanları kontrol et
-    const requiredFields = ["tableId", "startTime", "duration"];
+    const requiredFields = [
+      "tableId",
+      "startTime",
+      "endTime",
+      "guests",
+      "customerName",
+    ];
     const missingFields = requiredFields.filter((field) => !data[field]);
 
     if (missingFields.length > 0) {
@@ -70,51 +62,61 @@ export async function POST(request: NextRequest) {
     }
 
     // Rezervasyon zamanını kontrol et - işletme saatlerinin 9:00 - 23:00 olduğunu varsayalım
-    const startTime = new Date(data.startTime);
-    const hours = startTime.getHours();
+    const startTimeParts = data.startTime.split(":");
+    const hours = parseInt(startTimeParts[0], 10);
 
-    if (hours < 9 || hours >= 23) {
+    if (hours < 9 && hours >= 23) {
       return NextResponse.json(
         {
-          error: "Reservations can only be made between 9:00 AM and 11:00 PM",
+          error: "Rezervasyonlar sadece 9:00 ve 23:00 arasında yapılabilir",
         },
         { status: 400 }
       );
     }
 
     // Masa müsaitliğini kontrol et
-    const isAvailable = await isTableAvailable(
+    const isAvailable = await ReservationModel.isTableAvailable(
       data.tableId,
-      startTime,
-      data.duration
+      data.startTime,
+      data.endTime
     );
 
     if (!isAvailable) {
       return NextResponse.json(
         {
-          error: "The selected table is not available for the specified time",
+          error: "Seçilen masa belirtilen saatlerde müsait değil",
         },
         { status: 400 }
       );
     }
 
-    // Rezervasyon oluştur
-    const reservationData: Partial<Reservation> = {
-      ...data,
-      status: data.status || "pending",
+    // Rezervasyon nesnesi oluştur
+    const reservationData: Omit<ReservationType, "id"> = {
+      customerId: data.customerId || `cust_${Date.now()}`,
+      customerName: data.customerName,
+      tableId: data.tableId,
+      startTime: data.startTime,
+      endTime: data.endTime,
+      guests: data.guests,
+      status: data.status || "confirmed",
       type: data.type || "RESERVATION",
+      phone: data.phone,
+      isNewGuest: data.isNewGuest,
+      language: data.language,
+      color: data.color,
     };
 
-    const newReservation = await createReservation(reservationData);
+    // Yeni rezervasyon oluştur
+    const newReservation = await ReservationModel.create(reservationData);
 
     return NextResponse.json({
-      message: "Reservation created successfully",
+      message: "Rezervasyon başarıyla oluşturuldu",
       reservation: newReservation,
     });
   } catch (error) {
     console.error("POST reservation error:", error);
     return NextResponse.json(
-      { error: "Failed to create reservation" },
+      { error: "Rezervasyon oluşturulamadı" },
       { status: 500 }
     );
   }
