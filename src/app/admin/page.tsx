@@ -3,10 +3,10 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { format } from "date-fns";
 import { tr } from "date-fns/locale";
-import { FiUsers, FiChevronDown } from "react-icons/fi";
-import { BiSearch, BiArrowToLeft, BiArrowToRight } from "react-icons/bi";
+import { BiSearch, BiArrowToRight, BiArrowToLeft } from "react-icons/bi";
 import { IoMdRefresh } from "react-icons/io";
 import { HiOutlineDotsVertical } from "react-icons/hi";
+import { FiChevronDown, FiUsers } from "react-icons/fi";
 
 // Masa kategorisi arayüzü
 interface TableCategoryType {
@@ -44,6 +44,39 @@ export default function AdminPage() {
   );
   const mainContentRef = useRef<HTMLDivElement>(null);
   const gridContainerRef = useRef<HTMLDivElement>(null);
+
+  // CELL_WIDTH ve CATEGORY_WIDTH sabitlerini tanımla
+  const CELL_WIDTH = 80; // Saat hücresi genişliği
+  const CATEGORY_WIDTH = 140; // Kategori kolonu genişliği
+  const TOTAL_HOURS = 20; // 07:00'den 02:00'a kadar toplam saat sayısı
+
+  // Sabit saat dizisi
+  const hours = useMemo(() => {
+    const result = [];
+    // Önce 07:00 ve 08:00'i ekleyelim
+    for (let i = 7; i <= 8; i++) {
+      result.push(`${i.toString().padStart(2, "0")}:00`);
+    }
+    // Sonra 09:00'dan 24:00'a kadar
+    for (let i = 9; i <= 24; i++) {
+      result.push(`${i.toString().padStart(2, "0")}:00`);
+    }
+    // Son olarak 01:00 ve 02:00'yi ekleyelim
+    for (let i = 1; i <= 2; i++) {
+      result.push(`${i.toString().padStart(2, "0")}:00`);
+    }
+    return result;
+  }, []);
+
+  // Görüntülenecek maksimum saat sayısını belirle
+  const visibleHours = useMemo(() => {
+    // Ekran genişliğinden kategori genişliğini çıkar, hücre genişliğine böl
+    const availableWidth = window.innerWidth - CATEGORY_WIDTH;
+    return Math.max(
+      4,
+      Math.min(TOTAL_HOURS, Math.floor(availableWidth / CELL_WIDTH))
+    );
+  }, []);
 
   // Mevcut rezervasyonlar
   const [reservations] = useState<ReservationType[]>([
@@ -137,13 +170,37 @@ export default function AdminPage() {
       endTime: "21:30",
       status: "confirmed",
     },
+    // Sabah erken saatler için rezervasyon
+    {
+      id: "res-11",
+      tableId: "t4",
+      customerName: "Kemal Yıldırım",
+      guestCount: 3,
+      startTime: "07:00",
+      endTime: "08:30",
+      status: "confirmed",
+    },
+    // Gece yarısından sonrası için rezervasyon
+    {
+      id: "res-12",
+      tableId: "b1",
+      customerName: "Canan Aksoy",
+      guestCount: 2,
+      startTime: "00:30",
+      endTime: "01:45",
+      status: "confirmed",
+    },
+    // Gece geç saatlerden ertesi güne uzanan rezervasyon
+    {
+      id: "res-13",
+      tableId: "i2",
+      customerName: "Oğuz Keskin",
+      guestCount: 6,
+      startTime: "22:00",
+      endTime: "01:00",
+      status: "confirmed",
+    },
   ]);
-
-  // Sabit hücre genişliği (piksel cinsinden)
-  const CELL_WIDTH = 80;
-
-  // Toplam hücre sayısı (9:00'dan 01:00'a kadar = 17 saat)
-  const TOTAL_HOURS = 17;
 
   // Masa kategorileri
   const tableCategories: TableCategoryType[] = [
@@ -270,72 +327,49 @@ export default function AdminPage() {
     []
   );
 
-  // Güncel saat pozisyonu hesaplama
-  const calculateCurrentTimePosition = () => {
-    const now = new Date();
-    const hours = now.getHours();
-    const minutes = now.getMinutes();
-
-    // Debug yazdır
-    console.log("Mevcut saat:", hours, "Dakika:", minutes);
-
-    // Görünüm aralığını ayarla: 9:00 - 1:00 arası görünecek
-    // Eğer saat 9'dan küçük VE saat 1'den büyük ise görünmeyecek şekilde ayarla
-    // (Yani 1:00-9:00 arası görünmeyecek, diğer saatlerde görünecek)
-    if (hours < 9 && hours > 1) {
-      console.log("Çizgi görünürlük dışında (1:00-9:00 arası)");
-      return null;
-    }
-
-    // 9 saatinden itibaren pozisyon hesapla (gece yarısından sonraki saatler için düzeltme)
-    let offsetHour = hours;
-    if (hours >= 0 && hours <= 1) {
-      offsetHour = hours + 24; // 00:00 ve 01:00 için 24 ve 25 olarak hesapla
-    }
-
-    const hourOffset = (offsetHour - 9) * CELL_WIDTH;
-    const minuteOffset = (minutes / 60) * CELL_WIDTH;
-
-    // Maksimum pozisyonu sınırla (01:00'dan sonra gösterme)
-    const maxPosition = TOTAL_HOURS * CELL_WIDTH;
-    const calculatedPosition = hourOffset + minuteOffset;
-
-    // Debug için
-    console.log(
-      "Hesaplanan saat pozisyonu:",
-      calculatedPosition,
-      "Max:",
-      maxPosition
-    );
-
-    // Eğer hesaplanan pozisyon maksimum değeri geçerse null döndür
-    if (calculatedPosition > maxPosition) {
-      console.log("Çizgi maksimum değeri aştı");
-      return null;
-    }
-
-    return calculatedPosition;
-  };
-
-  // Mevcut saati ve konumunu güncelleme - her saniye çalışacak
+  // Saat pozisyonlarını hesapla
   useEffect(() => {
-    // İlk başta pozisyonu ayarla
-    const pos = calculateCurrentTimePosition();
-    setCurrentTimePosition(pos);
-    console.log("İlk pozisyon ayarlandı:", pos);
-
-    // Her saniye çalışacak zamanlayıcı
-    const timer = setInterval(() => {
+    // Saat çizgisinin güncel pozisyonunu hesapla
+    const updateTimePosition = () => {
       const now = new Date();
-      setCurrentTime(format(now, "HH:mm:ss"));
-      const newPosition = calculateCurrentTimePosition();
-      setCurrentTimePosition(newPosition);
-    }, 1000); // Her saniye güncelle
+      const hour = now.getHours();
+      const minute = now.getMinutes();
 
-    return () => clearInterval(timer);
+      // Saat 02:00'dan sonra veya 07:00'dan önce ise çizgiyi gösterme
+      if (hour > 2 && hour < 7) {
+        setCurrentTimePosition(null);
+        return;
+      }
+
+      let hourOffset;
+      if (hour >= 7 && hour <= 23) {
+        hourOffset = hour - 7; // 07:00 başlangıç noktası
+      } else {
+        // 00:00, 01:00 ve 02:00 için
+        hourOffset = hour + 17; // 24 - 7 = 17 saat sonra
+      }
+
+      const position = hourOffset * CELL_WIDTH + (minute / 60) * CELL_WIDTH;
+      setCurrentTimePosition(position);
+      setCurrentTime(
+        `${hour.toString().padStart(2, "0")}:${minute
+          .toString()
+          .padStart(2, "0")}`
+      );
+    };
+
+    updateTimePosition();
+    const interval = setInterval(updateTimePosition, 60000); // Her dakika güncelle
+
+    return () => clearInterval(interval);
   }, [CELL_WIDTH]);
 
-  // Saat bazında toplam misafir sayısını getir
+  // Toplam misafir sayısını hesapla
+  const totalGuestCount = useMemo(() => {
+    return reservations.reduce((total, res) => total + res.guestCount, 0);
+  }, [reservations]);
+
+  // Belirli bir saat için toplam misafir sayısını getir
   const getGuestCountForTimeSlot = (
     hour: string,
     reservationList: ReservationType[]
@@ -346,10 +380,30 @@ export default function AdminPage() {
       const endHour = parseInt(reservation.endTime.split(":")[0]);
       const currentHour = parseInt(hour.split(":")[0]);
 
-      // 00:00 sonrası için ayarlama (gece yarısından sonra)
-      const adjustedEndHour = endHour === 0 ? 24 : endHour;
+      // Gece yarısından sonraki saatler için düzeltme
+      const adjustedStartHour = startHour;
+      let adjustedEndHour = endHour;
+      let adjustedCurrentHour = currentHour;
 
-      return startHour <= currentHour && adjustedEndHour > currentHour;
+      // Gece yarısından sonraki saatler için düzeltme (00, 01, 02)
+      if (endHour >= 0 && endHour <= 2) {
+        adjustedEndHour = endHour + 24;
+      }
+
+      // Eğer rezervasyon akşam saatlerinden gece yarısından sonraya kadar sürüyorsa
+      if (startHour > endHour && endHour <= 2) {
+        adjustedEndHour = endHour + 24;
+      }
+
+      // Mevcut saat için kontrol (07-24 arası normal, 00-02 arası +24)
+      if (currentHour >= 0 && currentHour <= 2) {
+        adjustedCurrentHour = currentHour + 24;
+      }
+
+      return (
+        adjustedStartHour <= adjustedCurrentHour &&
+        adjustedEndHour > adjustedCurrentHour
+      );
     });
 
     // Toplam misafir sayısını hesapla
@@ -365,22 +419,39 @@ export default function AdminPage() {
   };
 
   // Rezervasyon pozisyonunu hesapla - Grid hizalama sorunu için düzeltildi
-  const getReservationPosition = (startTime: string, endTime: string) => {
+  const getReservationPosition = (
+    startTime: string,
+    endTime: string
+  ): { left: string; width: string } => {
     const [startHour, startMinute] = startTime.split(":").map(Number);
     const [endHour, endMinute] = endTime.split(":").map(Number);
 
-    // Gece yarısından sonraki rezervasyonlar için ayarlama
+    // Son saati ayarla (01:00 -> 25, 02:00 -> 26 olarak işle)
     let adjustedEndHour = endHour;
-    if (endHour < startHour || (endHour === 0 && startHour > 0)) {
+    if (endHour >= 0 && endHour <= 2) {
       adjustedEndHour = endHour + 24;
     }
 
     const startTotalMinutes = startHour * 60 + startMinute;
     const endTotalMinutes = adjustedEndHour * 60 + endMinute;
 
-    // Pozisyon hesaplamaları (09:00'dan itibaren) - Grid tam denk gelecek şekilde ayarlama
-    const startHourIndex = startHour - 9; // 09:00 = 0, 10:00 = 1, vb.
-    const startPositionHour = startHourIndex * CELL_WIDTH;
+    // Görünen saatler içindeki pozisyonu hesapla (kaydırma ile)
+    const startHourOffset = startHour >= 7 ? startHour - 7 : startHour + 17;
+
+    // Eğer başlangıç saati görünmüyorsa, sol kenardan başlat
+    if (startHourOffset < 0) {
+      const durationMinutes = endTotalMinutes - startTotalMinutes;
+      const width = (durationMinutes / 60) * CELL_WIDTH;
+      const visibleWidth = width + startHourOffset * CELL_WIDTH;
+
+      return {
+        left: "0px",
+        width: `${Math.max(0, visibleWidth)}px`,
+      };
+    }
+
+    // Eğer başlangıç saati görünüyorsa, normal hesapla
+    const startPositionHour = startHourOffset * CELL_WIDTH;
     const startPositionMinute = (startMinute / 60) * CELL_WIDTH;
     const startPosition = startPositionHour + startPositionMinute;
 
@@ -388,9 +459,12 @@ export default function AdminPage() {
     const durationMinutes = endTotalMinutes - startTotalMinutes;
     const width = (durationMinutes / 60) * CELL_WIDTH;
 
+    // Genişliği görünür alana sınırla
+    const maxWidth = visibleHours * CELL_WIDTH - startPosition;
+
     return {
       left: `${startPosition}px`,
-      width: `${width}px`,
+      width: `${Math.min(width, maxWidth)}px`,
     };
   };
 
@@ -398,25 +472,6 @@ export default function AdminPage() {
   const handleReservationClick = (reservation: ReservationType) => {
     console.log("Rezervasyon seçildi:", reservation);
   };
-
-  // Saat aralıkları
-  const hours = useMemo(() => {
-    const result = [];
-    for (let i = 9; i <= 24; i++) {
-      result.push(`${i.toString().padStart(2, "0")}:00`);
-    }
-    // Sadece 01:00'ı ekleyelim, daha sonrasını eklemiyoruz
-    result.push(`01:00`);
-    return result;
-  }, []);
-
-  // Toplam misafir sayısını hesapla
-  const totalGuestCount = useMemo(() => {
-    return reservations.reduce((total, res) => total + res.guestCount, 0);
-  }, [reservations]);
-
-  // Ana içerik genişliği hesaplama - kategori genişliği + tüm hücreler
-  const mainContentWidth = 240 + TOTAL_HOURS * CELL_WIDTH;
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-gray-50 text-gray-800">
@@ -493,13 +548,19 @@ export default function AdminPage() {
             ref={gridContainerRef}
           >
             <div
-              style={{ width: `${mainContentWidth}px` }}
               className="relative"
+              style={{
+                width: `${CATEGORY_WIDTH + hours.length * CELL_WIDTH}px`,
+                minWidth: "100%",
+              }}
             >
               {/* Saatler başlık satırı - Sticky */}
               <div className="sticky top-0 z-10 flex bg-white border-b border-gray-200">
                 {/* Kategoriler için boş alan */}
-                <div className="w-[240px] flex-shrink-0 h-14 bg-white border-r border-gray-200"></div>
+                <div
+                  className="flex-shrink-0 h-14 bg-white border-r border-gray-200"
+                  style={{ width: `${CATEGORY_WIDTH}px` }}
+                ></div>
 
                 {/* Saat başlıkları */}
                 <div className="flex flex-1">
@@ -534,8 +595,9 @@ export default function AdminPage() {
                   <div className="flex">
                     {/* Kategori adı sol tarafta */}
                     <div
-                      className="w-[240px] flex-shrink-0 h-10 flex items-center px-4 border-b border-r font-semibold text-gray-600 text-sm"
+                      className="flex-shrink-0 h-10 flex items-center px-4 border-b border-r font-semibold text-gray-600 text-sm"
                       style={{
+                        width: `${CATEGORY_WIDTH}px`,
                         borderColor: category.borderColor,
                         borderBottomWidth: "2px",
                       }}
@@ -562,7 +624,10 @@ export default function AdminPage() {
                         className="flex relative h-14 border-t border-gray-200"
                       >
                         {/* Masa bilgisi sol tarafta */}
-                        <div className="w-[240px] flex-shrink-0 flex items-center px-4 bg-gray-50 border-r border-gray-200">
+                        <div
+                          className="flex-shrink-0 flex items-center px-4 bg-gray-50 border-r border-gray-200"
+                          style={{ width: `${CATEGORY_WIDTH}px` }}
+                        >
                           <div
                             className="w-2 h-2 rounded-full mr-2"
                             style={{ backgroundColor: category.borderColor }}
@@ -586,7 +651,7 @@ export default function AdminPage() {
                                 width: `${CELL_WIDTH}px`,
                                 backgroundColor:
                                   hour === currentTime.substring(0, 5)
-                                    ? "rgba(59, 130, 246, 0.05)"
+                                    ? "rgba(255, 255, 255, 0.5)"
                                     : "transparent",
                               }}
                             ></div>
@@ -594,7 +659,12 @@ export default function AdminPage() {
                         </div>
 
                         {/* Rezervasyonlar */}
-                        <div className="absolute top-0 left-[240px] h-full w-full pointer-events-none">
+                        <div
+                          className="absolute top-0 h-full pointer-events-none"
+                          style={{
+                            left: `${CATEGORY_WIDTH}px`,
+                          }}
+                        >
                           {reservations
                             .filter((res) => res.tableId === table.id)
                             .map((reservation) => {
@@ -606,24 +676,21 @@ export default function AdminPage() {
                               return (
                                 <div
                                   key={reservation.id}
-                                  className={`absolute rounded-sm cursor-pointer pointer-events-auto h-10 mt-2 flex items-center overflow-hidden group ${
-                                    reservation.status === "confirmed"
-                                      ? ``
-                                      : "opacity-70"
-                                  }`}
+                                  className="absolute rounded-sm cursor-pointer pointer-events-auto h-10 mt-2 flex items-center overflow-visible simple-tooltip"
                                   style={{
                                     left: position.left,
                                     width: position.width,
                                     backgroundColor: category.color,
                                     borderLeft: `4px solid ${category.borderColor}`,
                                     boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                                    position: "relative",
                                   }}
                                   onClick={() =>
                                     handleReservationClick(reservation)
                                   }
                                 >
                                   {/* Sol tutamaç */}
-                                  <div className="absolute left-0 top-0 h-full w-2 cursor-ew-resize opacity-0 group-hover:opacity-100 bg-white bg-opacity-20"></div>
+                                  <div className="absolute left-0 top-0 h-full w-2 cursor-ew-resize opacity-0 hover:opacity-100 bg-white bg-opacity-20"></div>
 
                                   <div className="px-3 py-1 text-xs truncate max-w-full text-white">
                                     <div className="font-medium">
@@ -634,8 +701,36 @@ export default function AdminPage() {
                                     </div>
                                   </div>
 
+                                  {/* Basit tooltip */}
+                                  <div className="tooltip-content">
+                                    <div className="tooltip-row">
+                                      <span>Saat:</span>
+                                      <span>
+                                        {reservation.startTime} -{" "}
+                                        {reservation.endTime}
+                                      </span>
+                                    </div>
+                                    <div className="tooltip-row">
+                                      <span>Durum:</span>
+                                      <span
+                                        className={
+                                          reservation.status === "confirmed"
+                                            ? "text-green-600"
+                                            : "text-amber-600"
+                                        }
+                                      >
+                                        {reservation.status === "confirmed"
+                                          ? "Onaylandı"
+                                          : "Beklemede"}
+                                      </span>
+                                    </div>
+                                    <div className="tooltip-id">
+                                      ID: {reservation.id}
+                                    </div>
+                                  </div>
+
                                   {/* Sağ tutamaç */}
-                                  <div className="absolute right-0 top-0 h-full w-2 cursor-ew-resize opacity-0 group-hover:opacity-100 bg-white bg-opacity-20"></div>
+                                  <div className="absolute right-0 top-0 h-full w-2 cursor-ew-resize opacity-0 hover:opacity-100 bg-white bg-opacity-20"></div>
                                 </div>
                               );
                             })}
@@ -650,7 +745,7 @@ export default function AdminPage() {
                 <div
                   className="absolute border-l-2 border-red-500 z-30 group hover:cursor-pointer transition-all duration-300"
                   style={{
-                    left: `${240 + currentTimePosition}px`,
+                    left: `${CATEGORY_WIDTH + currentTimePosition}px`,
                     top: "0",
                     height: "100%",
                     pointerEvents: "auto",
@@ -691,6 +786,168 @@ export default function AdminPage() {
         .hide-scrollbar {
           -ms-overflow-style: none;
           scrollbar-width: none;
+        }
+
+        /* Basit tooltip stili */
+        .simple-tooltip {
+          position: relative;
+        }
+
+        .simple-tooltip .tooltip-content {
+          display: none;
+          position: absolute;
+          min-width: 220px;
+          padding: 12px;
+          background-color: white;
+          border-radius: 8px;
+          box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+          border: 1px solid #e5e7eb;
+          z-index: 9999;
+          color: #374151;
+        }
+
+        /* Ekranın sol tarafındaki rezervasyonlar için sağa doğru açılan tooltip */
+        .simple-tooltip:has([style*="left: 0px"]) .tooltip-content,
+        .simple-tooltip:has([style*="left: ${CELL_WIDTH}px"]) .tooltip-content,
+        .simple-tooltip:has([style*="left: ${CELL_WIDTH * 2}px"])
+          .tooltip-content {
+          left: 100%;
+          top: 0;
+          margin-left: 10px;
+        }
+
+        /* Ekranın sol tarafındaki rezervasyonlar için ok */
+        .simple-tooltip:has([style*="left: 0px"]) .tooltip-content::before,
+        .simple-tooltip:has([style*="left: ${CELL_WIDTH}px"])
+          .tooltip-content::before,
+        .simple-tooltip:has([style*="left: ${CELL_WIDTH * 2}px"])
+          .tooltip-content::before {
+          content: "";
+          position: absolute;
+          top: 10px;
+          left: -6px;
+          width: 12px;
+          height: 12px;
+          background-color: white;
+          transform: rotate(45deg);
+          border-left: 1px solid #e5e7eb;
+          border-bottom: 1px solid #e5e7eb;
+        }
+
+        /* Ekranın sağ tarafındaki rezervasyonlar için sola doğru açılan tooltip */
+        .simple-tooltip:has([style*="left: ${CELL_WIDTH * 10}px"])
+          .tooltip-content,
+        .simple-tooltip:has([style*="left: ${CELL_WIDTH * 11}px"])
+          .tooltip-content,
+        .simple-tooltip:has([style*="left: ${CELL_WIDTH * 12}px"])
+          .tooltip-content {
+          right: 100%;
+          top: 0;
+          margin-right: 10px;
+        }
+
+        /* Ekranın sağ tarafındaki rezervasyonlar için ok */
+        .simple-tooltip:has([style*="left: ${CELL_WIDTH * 10}px"])
+          .tooltip-content::before,
+        .simple-tooltip:has([style*="left: ${CELL_WIDTH * 11}px"])
+          .tooltip-content::before,
+        .simple-tooltip:has([style*="left: ${CELL_WIDTH * 12}px"])
+          .tooltip-content::before {
+          content: "";
+          position: absolute;
+          top: 10px;
+          right: -6px;
+          width: 12px;
+          height: 12px;
+          background-color: white;
+          transform: rotate(45deg);
+          border-right: 1px solid #e5e7eb;
+          border-top: 1px solid #e5e7eb;
+        }
+
+        /* Varsayılan (orta) rezervasyonlar için aşağıya doğru açılan tooltip */
+        .simple-tooltip:not(:has([style*="left: 0px"])):not(
+            :has([style*="left: ${CELL_WIDTH}px"])
+          ):not(:has([style*="left: ${CELL_WIDTH * 2}px"])):not(
+            :has([style*="left: ${CELL_WIDTH * 10}px"])
+          ):not(:has([style*="left: ${CELL_WIDTH * 11}px"])):not(
+            :has([style*="left: ${CELL_WIDTH * 12}px"])
+          )
+          .tooltip-content {
+          top: 100%;
+          left: 0;
+          margin-top: 10px;
+        }
+
+        /* Varsayılan (orta) rezervasyonlar için ok */
+        .simple-tooltip:not(:has([style*="left: 0px"])):not(
+            :has([style*="left: ${CELL_WIDTH}px"])
+          ):not(:has([style*="left: ${CELL_WIDTH * 2}px"])):not(
+            :has([style*="left: ${CELL_WIDTH * 10}px"])
+          ):not(:has([style*="left: ${CELL_WIDTH * 11}px"])):not(
+            :has([style*="left: ${CELL_WIDTH * 12}px"])
+          )
+          .tooltip-content::before {
+          content: "";
+          position: absolute;
+          top: -6px;
+          left: 20px;
+          width: 12px;
+          height: 12px;
+          background-color: white;
+          transform: rotate(45deg);
+          border-left: 1px solid #e5e7eb;
+          border-top: 1px solid #e5e7eb;
+        }
+
+        /* Son satırdaki rezervasyonlar için yukarıya doğru açılan tooltip */
+        .simple-tooltip.bottom-row .tooltip-content {
+          bottom: 100%;
+          top: auto;
+          margin-bottom: 10px;
+        }
+
+        /* Son satırdaki rezervasyonlar için ok */
+        .simple-tooltip.bottom-row .tooltip-content::before {
+          top: auto !important;
+          bottom: -6px !important;
+          border: none;
+          border-right: 1px solid #e5e7eb;
+          border-bottom: 1px solid #e5e7eb;
+        }
+
+        /* Tooltip görünürlüğü - hover */
+        .simple-tooltip:hover .tooltip-content {
+          display: block;
+        }
+
+        /* Tooltip içerik stilleri */
+        .tooltip-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 20px;
+          margin-bottom: 12px;
+          font-size: 14px;
+        }
+
+        .tooltip-id {
+          margin-top: 10px;
+          padding-top: 10px;
+          border-top: 1px solid #e5e7eb;
+          font-size: 12px;
+          color: #6b7280;
+        }
+
+        /* Durum renkleri */
+        .text-green-600 {
+          color: #059669;
+          font-weight: 500;
+        }
+
+        .text-amber-600 {
+          color: #d97706;
+          font-weight: 500;
         }
       `}</style>
     </div>
