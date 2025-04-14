@@ -40,6 +40,7 @@ export default function AdminPage() {
   const currentDate = new Date();
   const [currentTime, setCurrentTime] = useState(format(new Date(), "HH:mm"));
   const mainContentRef = useRef<HTMLDivElement>(null);
+  const gridContainerRef = useRef<HTMLDivElement>(null);
 
   // Mevcut rezervasyonlar
   const [reservations] = useState<ReservationType[]>([
@@ -330,6 +331,25 @@ export default function AdminPage() {
     };
   };
 
+  // Güncel saat pozisyonu hesaplama
+  const getCurrentTimePosition = () => {
+    const now = new Date();
+    const hours = now.getHours();
+    const minutes = now.getMinutes();
+
+    // Eğer saat 9'dan önce veya 1'den sonra ise görünmeyecek şekilde ayarla
+    if (hours < 9 || (hours > 1 && hours < 9)) {
+      return null;
+    }
+
+    // 9 saatinden itibaren pozisyon hesapla
+    const startHour = hours >= 0 && hours <= 1 ? hours + 24 : hours;
+    const hourOffset = (startHour - 9) * CELL_WIDTH;
+    const minuteOffset = (minutes / 60) * CELL_WIDTH;
+
+    return hourOffset + minuteOffset;
+  };
+
   // Rezervasyona tıklanınca işlem yap
   const handleReservationClick = (reservation: ReservationType) => {
     console.log("Rezervasyon seçildi:", reservation);
@@ -345,6 +365,14 @@ export default function AdminPage() {
     result.push(`01:00`);
     return result;
   }, []);
+
+  // Toplam misafir sayısını hesapla
+  const totalGuestCount = useMemo(() => {
+    return reservations.reduce((total, res) => total + res.guestCount, 0);
+  }, [reservations]);
+
+  // Şu anki saat pozisyonu
+  const currentTimePosition = getCurrentTimePosition();
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-gray-50 text-gray-800">
@@ -412,9 +440,15 @@ export default function AdminPage() {
       {/* Ana içerik */}
       <div className="flex flex-1 overflow-hidden">
         {/* Ana tablo alanı - saat/masa gridleri ve rezervasyonlar */}
-        <div className="flex-1 overflow-hidden" ref={mainContentRef}>
-          <div className="h-full overflow-auto hide-scrollbar">
-            <div className="min-w-[1600px]">
+        <div
+          className="flex-1 overflow-hidden flex flex-col"
+          ref={mainContentRef}
+        >
+          <div
+            className="flex-1 overflow-auto hide-scrollbar relative"
+            ref={gridContainerRef}
+          >
+            <div className="min-w-[1600px] relative">
               {/* Saatler başlık satırı - Sticky */}
               <div className="sticky top-0 z-10 flex bg-white border-b border-gray-200">
                 {/* Kategoriler için boş alan */}
@@ -563,6 +597,40 @@ export default function AdminPage() {
                     ))}
                 </div>
               ))}
+
+              {/* Güncel saat çizgisi - Ana tablo alanında */}
+              {currentTimePosition !== null && (
+                <div
+                  className="absolute border-l-2 border-red-500 z-20 group hover:cursor-pointer"
+                  style={{
+                    left: `${240 + currentTimePosition}px`,
+                    top: "0", // Saatlerin olduğu yerden başla
+                    bottom: "0", // Ana tablo alanının sonuna kadar
+                    pointerEvents: "auto",
+                  }}
+                >
+                  <div className="absolute left-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-800 text-white text-xs px-2 py-1 rounded-md">
+                    {currentTime}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Footer Bölümü */}
+          <div className="h-[60px] bg-white border-t border-gray-200 flex items-center px-4 text-sm text-gray-600">
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center">
+                <div className="w-3 h-3 rounded bg-blue-600 mr-2"></div>
+                <span>Onaylanmış Rezervasyon</span>
+              </div>
+              <div className="flex items-center">
+                <div className="w-3 h-3 rounded bg-blue-600 mr-2 opacity-70"></div>
+                <span>Bekleyen Rezervasyon</span>
+              </div>
+              <div className="ml-auto">
+                Toplam Misafir: {totalGuestCount} kişi
+              </div>
             </div>
           </div>
         </div>
