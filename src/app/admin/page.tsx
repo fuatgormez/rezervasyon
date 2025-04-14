@@ -142,6 +142,9 @@ export default function AdminPage() {
   // Sabit hücre genişliği (piksel cinsinden)
   const CELL_WIDTH = 80;
 
+  // Toplam hücre sayısı (9:00'dan 01:00'a kadar = 17 saat)
+  const TOTAL_HOURS = 17;
+
   // Masa kategorileri
   const tableCategories: TableCategoryType[] = [
     {
@@ -287,7 +290,16 @@ export default function AdminPage() {
     const hourOffset = (offsetHour - 9) * CELL_WIDTH;
     const minuteOffset = (minutes / 60) * CELL_WIDTH;
 
-    return hourOffset + minuteOffset;
+    // Maksimum pozisyonu sınırla (01:00'dan sonra gösterme)
+    const maxPosition = TOTAL_HOURS * CELL_WIDTH;
+    const calculatedPosition = hourOffset + minuteOffset;
+
+    // Eğer hesaplanan pozisyon maksimum değeri geçerse null döndür
+    if (calculatedPosition > maxPosition) {
+      return null;
+    }
+
+    return calculatedPosition;
   };
 
   // Mevcut saati ve konumunu güncelleme - her saniye çalışacak
@@ -377,7 +389,7 @@ export default function AdminPage() {
     for (let i = 9; i <= 24; i++) {
       result.push(`${i.toString().padStart(2, "0")}:00`);
     }
-    // 01:00'ı ekleyelim ama başka saat eklemeyelim
+    // Sadece 01:00'ı ekleyelim, daha sonrasını eklemiyoruz
     result.push(`01:00`);
     return result;
   }, []);
@@ -386,6 +398,9 @@ export default function AdminPage() {
   const totalGuestCount = useMemo(() => {
     return reservations.reduce((total, res) => total + res.guestCount, 0);
   }, [reservations]);
+
+  // Ana içerik genişliği hesaplama - kategori genişliği + tüm hücreler
+  const mainContentWidth = 240 + TOTAL_HOURS * CELL_WIDTH;
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-gray-50 text-gray-800">
@@ -461,7 +476,10 @@ export default function AdminPage() {
             className="flex-1 overflow-auto hide-scrollbar relative"
             ref={gridContainerRef}
           >
-            <div className="min-w-[1600px] relative">
+            <div
+              style={{ width: `${mainContentWidth}px` }}
+              className="relative"
+            >
               {/* Saatler başlık satırı - Sticky */}
               <div className="sticky top-0 z-10 flex bg-white border-b border-gray-200">
                 {/* Kategoriler için boş alan */}
