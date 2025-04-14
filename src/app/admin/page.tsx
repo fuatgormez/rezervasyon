@@ -39,6 +39,9 @@ interface ReservationType {
 export default function AdminPage() {
   const currentDate = new Date();
   const [currentTime, setCurrentTime] = useState(format(new Date(), "HH:mm"));
+  const [currentTimePosition, setCurrentTimePosition] = useState<number | null>(
+    null
+  );
   const mainContentRef = useRef<HTMLDivElement>(null);
   const gridContainerRef = useRef<HTMLDivElement>(null);
 
@@ -264,11 +267,43 @@ export default function AdminPage() {
     []
   );
 
-  // Mevcut saati güncelleme
+  // Güncel saat pozisyonu hesaplama
+  const calculateCurrentTimePosition = () => {
+    const now = new Date();
+    const hours = now.getHours();
+    const minutes = now.getMinutes();
+
+    // Eğer saat 9'dan önce veya 1'den sonra ise görünmeyecek şekilde ayarla
+    if (hours < 9 || (hours > 1 && hours < 9)) {
+      return null;
+    }
+
+    // 9 saatinden itibaren pozisyon hesapla (gece yarısından sonraki saatler için düzeltme)
+    let offsetHour = hours;
+    if (hours >= 0 && hours <= 1) {
+      offsetHour = hours + 24; // 00:00 ve 01:00 için 24 ve 25 olarak hesapla
+    }
+
+    const hourOffset = (offsetHour - 9) * CELL_WIDTH;
+    const minuteOffset = (minutes / 60) * CELL_WIDTH;
+
+    return hourOffset + minuteOffset;
+  };
+
+  // Mevcut saati ve konumunu güncelleme - her saniye çalışacak
   useEffect(() => {
+    // İlk başta pozisyonu ayarla
+    setCurrentTimePosition(calculateCurrentTimePosition());
+
+    // Her saniye çalışacak zamanlayıcı
     const timer = setInterval(() => {
-      setCurrentTime(format(new Date(), "HH:mm"));
-    }, 60000); // Her dakika güncelle
+      const now = new Date();
+      setCurrentTime(format(now, "HH:mm:ss"));
+      const newPosition = calculateCurrentTimePosition();
+      setCurrentTimePosition(newPosition);
+      console.log("Güncel saat pozisyonu:", newPosition); // Debug için
+    }, 1000); // Her saniye güncelle
+
     return () => clearInterval(timer);
   }, []);
 
@@ -331,25 +366,6 @@ export default function AdminPage() {
     };
   };
 
-  // Güncel saat pozisyonu hesaplama
-  const getCurrentTimePosition = () => {
-    const now = new Date();
-    const hours = now.getHours();
-    const minutes = now.getMinutes();
-
-    // Eğer saat 9'dan önce veya 1'den sonra ise görünmeyecek şekilde ayarla
-    if (hours < 9 || (hours > 1 && hours < 9)) {
-      return null;
-    }
-
-    // 9 saatinden itibaren pozisyon hesapla
-    const startHour = hours >= 0 && hours <= 1 ? hours + 24 : hours;
-    const hourOffset = (startHour - 9) * CELL_WIDTH;
-    const minuteOffset = (minutes / 60) * CELL_WIDTH;
-
-    return hourOffset + minuteOffset;
-  };
-
   // Rezervasyona tıklanınca işlem yap
   const handleReservationClick = (reservation: ReservationType) => {
     console.log("Rezervasyon seçildi:", reservation);
@@ -370,9 +386,6 @@ export default function AdminPage() {
   const totalGuestCount = useMemo(() => {
     return reservations.reduce((total, res) => total + res.guestCount, 0);
   }, [reservations]);
-
-  // Şu anki saat pozisyonu
-  const currentTimePosition = getCurrentTimePosition();
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-gray-50 text-gray-800">
@@ -601,15 +614,15 @@ export default function AdminPage() {
               {/* Güncel saat çizgisi - Ana tablo alanında */}
               {currentTimePosition !== null && (
                 <div
-                  className="absolute border-l-2 border-red-500 z-20 group hover:cursor-pointer"
+                  className="absolute border-l-2 border-red-500 z-20 group hover:cursor-pointer transition-all duration-300"
                   style={{
                     left: `${240 + currentTimePosition}px`,
-                    top: "0", // Saatlerin olduğu yerden başla
-                    bottom: "0", // Ana tablo alanının sonuna kadar
+                    top: "0",
+                    height: "100%",
                     pointerEvents: "auto",
                   }}
                 >
-                  <div className="absolute left-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-800 text-white text-xs px-2 py-1 rounded-md">
+                  <div className="absolute left-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-800 text-white text-xs px-2 py-1 rounded-md whitespace-nowrap">
                     {currentTime}
                   </div>
                 </div>
