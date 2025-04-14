@@ -276,8 +276,14 @@ export default function AdminPage() {
     const hours = now.getHours();
     const minutes = now.getMinutes();
 
-    // Eğer saat 9'dan önce veya 1'den sonra ise görünmeyecek şekilde ayarla
-    if (hours < 9 || (hours > 1 && hours < 9)) {
+    // Debug yazdır
+    console.log("Mevcut saat:", hours, "Dakika:", minutes);
+
+    // Görünüm aralığını ayarla: 9:00 - 1:00 arası görünecek
+    // Eğer saat 9'dan küçük VE saat 1'den büyük ise görünmeyecek şekilde ayarla
+    // (Yani 1:00-9:00 arası görünmeyecek, diğer saatlerde görünecek)
+    if (hours < 9 && hours > 1) {
+      console.log("Çizgi görünürlük dışında (1:00-9:00 arası)");
       return null;
     }
 
@@ -294,8 +300,17 @@ export default function AdminPage() {
     const maxPosition = TOTAL_HOURS * CELL_WIDTH;
     const calculatedPosition = hourOffset + minuteOffset;
 
+    // Debug için
+    console.log(
+      "Hesaplanan saat pozisyonu:",
+      calculatedPosition,
+      "Max:",
+      maxPosition
+    );
+
     // Eğer hesaplanan pozisyon maksimum değeri geçerse null döndür
     if (calculatedPosition > maxPosition) {
+      console.log("Çizgi maksimum değeri aştı");
       return null;
     }
 
@@ -305,7 +320,9 @@ export default function AdminPage() {
   // Mevcut saati ve konumunu güncelleme - her saniye çalışacak
   useEffect(() => {
     // İlk başta pozisyonu ayarla
-    setCurrentTimePosition(calculateCurrentTimePosition());
+    const pos = calculateCurrentTimePosition();
+    setCurrentTimePosition(pos);
+    console.log("İlk pozisyon ayarlandı:", pos);
 
     // Her saniye çalışacak zamanlayıcı
     const timer = setInterval(() => {
@@ -313,11 +330,10 @@ export default function AdminPage() {
       setCurrentTime(format(now, "HH:mm:ss"));
       const newPosition = calculateCurrentTimePosition();
       setCurrentTimePosition(newPosition);
-      console.log("Güncel saat pozisyonu:", newPosition); // Debug için
     }, 1000); // Her saniye güncelle
 
     return () => clearInterval(timer);
-  }, []);
+  }, [CELL_WIDTH]);
 
   // Saat bazında toplam misafir sayısını getir
   const getGuestCountForTimeSlot = (
@@ -632,7 +648,7 @@ export default function AdminPage() {
               {/* Güncel saat çizgisi - Ana tablo alanında */}
               {currentTimePosition !== null && (
                 <div
-                  className="absolute border-l-2 border-red-500 z-20 group hover:cursor-pointer transition-all duration-300"
+                  className="absolute border-l-2 border-red-500 z-30 group hover:cursor-pointer transition-all duration-300"
                   style={{
                     left: `${240 + currentTimePosition}px`,
                     top: "0",
