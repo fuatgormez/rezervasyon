@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { format } from "date-fns";
 import { tr } from "date-fns/locale";
@@ -7,6 +8,12 @@ import { BiSearch, BiArrowToRight, BiArrowToLeft } from "react-icons/bi";
 import { IoMdRefresh } from "react-icons/io";
 import { HiOutlineDotsVertical } from "react-icons/hi";
 import { FiChevronDown, FiUsers } from "react-icons/fi";
+
+// Bu componenti sadece tarayıcıda çalıştırılacak şekilde dinamik olarak import ediyoruz
+// SSG sırasında çalıştırılmaz
+const AdminPageContent = dynamic(() => Promise.resolve(AdminPageComponent), {
+  ssr: false,
+});
 
 // Masa kategorisi arayüzü
 interface TableCategoryType {
@@ -36,7 +43,13 @@ interface ReservationType {
   status: "confirmed" | "pending" | "cancelled";
 }
 
+// Ana sayfa
 export default function AdminPage() {
+  return <AdminPageContent />;
+}
+
+// Asıl içerik - Window ve tarayıcı API'larını kullanabilir
+function AdminPageComponent() {
   const currentDate = new Date();
   const [currentTime, setCurrentTime] = useState(format(new Date(), "HH:mm"));
   const [currentTimePosition, setCurrentTimePosition] = useState<number | null>(
@@ -70,12 +83,38 @@ export default function AdminPage() {
 
   // Görüntülenecek maksimum saat sayısını belirle
   const visibleHours = useMemo(() => {
-    // Ekran genişliğinden kategori genişliğini çıkar, hücre genişliğine böl
+    // Sunucu tarafında çalıştığında veya window olmadığında
+    if (typeof window === "undefined") {
+      return 12; // Varsayılan değer olarak 12 saat göster
+    }
+
+    // Tarayıcıda çalıştığında dinamik olarak hesapla
     const availableWidth = window.innerWidth - CATEGORY_WIDTH;
     return Math.max(
       4,
       Math.min(TOTAL_HOURS, Math.floor(availableWidth / CELL_WIDTH))
     );
+  }, []);
+
+  // useEffect ile sayfa yüklendikten sonra yeniden hesapla
+  useEffect(() => {
+    // Netlify dağıtımı ve SSG aşamasında atlanacak
+    if (
+      process.env.NEXT_PUBLIC_NETLIFY_DEPLOYMENT === "true" &&
+      process.env.NEXT_PUBLIC_SKIP_SSG_ADMIN === "true" &&
+      typeof window === "undefined"
+    ) {
+      return;
+    }
+
+    // Mevcut zamanı her dakika güncelle
+    const timer = setInterval(() => {
+      const now = new Date();
+      setCurrentTime(format(now, "HH:mm"));
+    }, 60000);
+
+    // Component unmount olduğunda timer'ı temizle
+    return () => clearInterval(timer);
   }, []);
 
   // Mevcut rezervasyonlar
@@ -327,42 +366,57 @@ export default function AdminPage() {
     []
   );
 
-  // Saat pozisyonlarını hesapla
+  // Mevcut zamanın pozisyonunu güncelle
   useEffect(() => {
-    // Saat çizgisinin güncel pozisyonunu hesapla
-    const updateTimePosition = () => {
-      const now = new Date();
-      const hour = now.getHours();
-      const minute = now.getMinutes();
+    // Netlify dağıtımı ve SSG aşamasında atlanacak
+    if (
+      process.env.NEXT_PUBLIC_NETLIFY_DEPLOYMENT === "true" &&
+      process.env.NEXT_PUBLIC_SKIP_SSG_ADMIN === "true" &&
+      typeof window === "undefined"
+    ) {
+      return;
+    }
 
-      // Saat 02:00'dan sonra veya 07:00'dan önce ise çizgiyi gösterme
-      if (hour > 2 && hour < 7) {
-        setCurrentTimePosition(null);
-        return;
-      }
+    // Zamanın hangi hücrede olduğunu bul
+    const hourPart = parseInt(currentTime.split(":")[0]);
+    const minutePart = parseInt(currentTime.split(":")[1]);
 
-      let hourOffset;
-      if (hour >= 7 && hour <= 23) {
-        hourOffset = hour - 7; // 07:00 başlangıç noktası
-      } else {
-        // 00:00, 01:00 ve 02:00 için
-        hourOffset = hour + 17; // 24 - 7 = 17 saat sonra
-      }
+    // Geçerli saati bul (7'den başlayarak)
+    let hourIndex = -1;
 
-      const position = hourOffset * CELL_WIDTH + (minute / 60) * CELL_WIDTH;
+    if (hourPart >= 7 && hourPart <= 24) {
+      hourIndex = hourPart - 7;
+    } else if (hourPart >= 1 && hourPart <= 2) {
+      hourIndex = 24 - 7 + hourPart; // 01:00 ve 02:00 için
+    }
+
+    if (hourIndex >= 0) {
+      // Saat ve dakikaya göre pozisyonu hesapla
+      const position = hourIndex * CELL_WIDTH + (minutePart / 60) * CELL_WIDTH;
       setCurrentTimePosition(position);
-      setCurrentTime(
-        `${hour.toString().padStart(2, "0")}:${minute
-          .toString()
-          .padStart(2, "0")}`
-      );
+    } else {
+      setCurrentTimePosition(null);
+    }
+  }, [currentTime, CELL_WIDTH]);
+
+  // Pencere boyutu değiştiğinde içeriği güncelle
+  useEffect(() => {
+    // Netlify dağıtımı ve SSG aşamasında atlanacak
+    if (
+      process.env.NEXT_PUBLIC_NETLIFY_DEPLOYMENT === "true" &&
+      process.env.NEXT_PUBLIC_SKIP_SSG_ADMIN === "true" &&
+      typeof window === "undefined"
+    ) {
+      return;
+    }
+
+    const handleResize = () => {
+      // Burada pencere boyutu değiştiğinde yapılacak işlemler
     };
 
-    updateTimePosition();
-    const interval = setInterval(updateTimePosition, 60000); // Her dakika güncelle
-
-    return () => clearInterval(interval);
-  }, [CELL_WIDTH]);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   // Toplam misafir sayısını hesapla
   const totalGuestCount = useMemo(() => {
