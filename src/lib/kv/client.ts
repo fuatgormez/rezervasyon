@@ -3,7 +3,10 @@ import { kv } from "@vercel/kv";
 // Ortam değişkenleri kontrolü için fallback mekanizması
 class KVClient {
   private readonly client: typeof kv | null;
-  private readonly memoryStore: Map<string, Map<string, unknown> | unknown>;
+  private readonly memoryStore: Map<
+    string,
+    Map<string, unknown> | Set<unknown> | unknown
+  >;
 
   constructor() {
     this.memoryStore = new Map();
@@ -172,6 +175,148 @@ class KVClient {
       for (const key of keys) {
         if (hashMap.has(key)) {
           hashMap.delete(key);
+          deletedCount++;
+        }
+      }
+
+      return deletedCount;
+    }
+  }
+
+  // Redis Set komutları
+  async sadd(key: string, ...members: string[]): Promise<number> {
+    try {
+      if (this.client && typeof this.client.sadd === "function") {
+        return await this.client.sadd(key, ...members);
+      }
+
+      let set = this.memoryStore.get(key) as Set<string>;
+      if (!set) {
+        set = new Set<string>();
+        this.memoryStore.set(key, set);
+      }
+
+      let addedCount = 0;
+      for (const member of members) {
+        if (!set.has(member)) {
+          set.add(member);
+          addedCount++;
+        }
+      }
+
+      return addedCount;
+    } catch (error) {
+      console.error(`KV sadd hatası (${key}):`, error);
+
+      let set = this.memoryStore.get(key) as Set<string>;
+      if (!set) {
+        set = new Set<string>();
+        this.memoryStore.set(key, set);
+      }
+
+      let addedCount = 0;
+      for (const member of members) {
+        if (!set.has(member)) {
+          set.add(member);
+          addedCount++;
+        }
+      }
+
+      return addedCount;
+    }
+  }
+
+  async smembers(key: string): Promise<string[]> {
+    try {
+      if (this.client && typeof this.client.smembers === "function") {
+        return await this.client.smembers(key);
+      }
+
+      const set = this.memoryStore.get(key) as Set<string>;
+      if (!set) return [];
+
+      return Array.from(set);
+    } catch (error) {
+      console.error(`KV smembers hatası (${key}):`, error);
+      const set = this.memoryStore.get(key) as Set<string>;
+      if (!set) return [];
+
+      return Array.from(set);
+    }
+  }
+
+  async srem(key: string, ...members: string[]): Promise<number> {
+    try {
+      if (this.client && typeof this.client.srem === "function") {
+        return await this.client.srem(key, ...members);
+      }
+
+      const set = this.memoryStore.get(key) as Set<string>;
+      if (!set) return 0;
+
+      let removedCount = 0;
+      for (const member of members) {
+        if (set.has(member)) {
+          set.delete(member);
+          removedCount++;
+        }
+      }
+
+      return removedCount;
+    } catch (error) {
+      console.error(`KV srem hatası (${key}):`, error);
+      const set = this.memoryStore.get(key) as Set<string>;
+      if (!set) return 0;
+
+      let removedCount = 0;
+      for (const member of members) {
+        if (set.has(member)) {
+          set.delete(member);
+          removedCount++;
+        }
+      }
+
+      return removedCount;
+    }
+  }
+
+  async keys(pattern: string): Promise<string[]> {
+    try {
+      if (this.client && typeof this.client.keys === "function") {
+        return await this.client.keys(pattern);
+      }
+
+      // Basit bir glob pattern matching
+      const allKeys = Array.from(this.memoryStore.keys());
+      const regexPattern = new RegExp("^" + pattern.replace(/\*/g, ".*") + "$");
+      return allKeys.filter((key) => regexPattern.test(key));
+    } catch (error) {
+      console.error(`KV keys hatası (${pattern}):`, error);
+      return [];
+    }
+  }
+
+  async del(...keys: string[]): Promise<number> {
+    try {
+      if (this.client && typeof this.client.del === "function") {
+        return await this.client.del(...keys);
+      }
+
+      let deletedCount = 0;
+      for (const key of keys) {
+        if (this.memoryStore.has(key)) {
+          this.memoryStore.delete(key);
+          deletedCount++;
+        }
+      }
+
+      return deletedCount;
+    } catch (error) {
+      console.error(`KV del hatası:`, error);
+      let deletedCount = 0;
+      for (const key of keys) {
+        if (this.memoryStore.has(key)) {
+          this.memoryStore.delete(key);
           deletedCount++;
         }
       }
