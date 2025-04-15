@@ -1,9 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  getReservationById,
-  updateReservation,
-  deleteReservation,
-} from "@/lib/kv";
+import { ReservationModel } from "@/lib/kv";
 
 export async function GET(
   request: NextRequest,
@@ -11,7 +7,7 @@ export async function GET(
 ) {
   try {
     const id = params.id;
-    const reservation = await getReservationById(id);
+    const reservation = await ReservationModel.getById(id);
 
     if (!reservation) {
       return NextResponse.json(
@@ -38,7 +34,14 @@ export async function PATCH(
     const id = params.id;
     const updates = await request.json();
 
-    const updatedReservation = await updateReservation(id, updates);
+    const updatedReservation = await ReservationModel.update(id, updates);
+
+    if (!updatedReservation) {
+      return NextResponse.json(
+        { error: "Reservation not found" },
+        { status: 404 }
+      );
+    }
 
     return NextResponse.json({
       message: "Reservation updated successfully",
@@ -59,7 +62,14 @@ export async function DELETE(
 ) {
   try {
     const id = params.id;
-    await deleteReservation(id);
+    const result = await ReservationModel.delete(id);
+
+    if (!result) {
+      return NextResponse.json(
+        { error: "Reservation not found" },
+        { status: 404 }
+      );
+    }
 
     return NextResponse.json({
       message: "Reservation deleted successfully",

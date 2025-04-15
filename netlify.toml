@@ -1,5 +1,5 @@
 [build]
-  command = "npm ci && NODE_ENV=production npm run build"
+  command = "npm ci --build-from-source && NODE_ENV=production npm run build"
   publish = ".next"
 
 [build.environment]
