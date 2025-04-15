@@ -4,6 +4,9 @@
 
 [build.environment]
   NETLIFY_NEXT_PLUGIN_SKIP = "true"
+  KV_REST_API_URL = "https://accepted-lemur-14810.upstash.io"
+  KV_REST_API_TOKEN = "ATnaAAIjcDFhZDY4NDJkNzk0Nzc0ZjljYWE2ZGMyYzA4OWRiNGQ2NHAxMA"
+  KV_REST_API_READ_ONLY_TOKEN = "AjnaAAIgcDHuI5mHbACTCoyRSozumZsLv5ucGs40PZi1LKETQwpo-A"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs" 
