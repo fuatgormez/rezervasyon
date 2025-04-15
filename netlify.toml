@@ -7,6 +7,11 @@
   KV_REST_API_URL = "https://accepted-lemur-14810.upstash.io"
   KV_REST_API_TOKEN = "ATnaAAIjcDFhZDY4NDJkNzk0Nzc0ZjljYWE2ZGMyYzA4OWRiNGQ2NHAxMA"
   KV_REST_API_READ_ONLY_TOKEN = "AjnaAAIgcDHuI5mHbACTCoyRSozumZsLv5ucGs40PZi1LKETQwpo-A"
+  NODE_VERSION = "18"
+  NODE_ENV = "production"
 
 [[plugins]]
-  package = "@netlify/plugin-nextjs" 
+  package = "@netlify/plugin-nextjs"
+
+[functions]
+  node_bundler = "esbuild" 

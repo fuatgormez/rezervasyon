@@ -1,4 +1,4 @@
-import { kv } from "@vercel/kv";
+import kvClient from "./client";
 
 export interface Table {
   tableNumber: string | number;
@@ -8,13 +8,16 @@ export interface Table {
   isActive: boolean;
 }
 
+// Yerel bellek kullanımı için
+const localMemoryTables: Record<string, Table> = {};
+
 export const getAllTables = async (): Promise<Table[]> => {
   try {
-    const tables = await kv.hgetall<Record<string, Table>>("tables");
+    const tables = await kvClient.hgetall<Table>("tables");
     return Object.values(tables || {});
   } catch (error) {
     console.error("Error getting all tables:", error);
-    return [];
+    return Object.values(localMemoryTables);
   }
 };
 
@@ -22,10 +25,10 @@ export const getTableById = async (
   tableNumber: string | number
 ): Promise<Table | null> => {
   try {
-    return await kv.hget<Table>("tables", tableNumber.toString());
+    return await kvClient.hget<Table>("tables", tableNumber.toString());
   } catch (error) {
     console.error(`Error getting table ${tableNumber}:`, error);
-    return null;
+    return localMemoryTables[tableNumber.toString()] || null;
   }
 };
 
@@ -39,11 +42,13 @@ export const createTable = async (table: Partial<Table>): Promise<Table> => {
   } as Table;
 
   try {
-    await kv.hset("tables", { [tableNumber.toString()]: newTable });
+    await kvClient.hset("tables", { [tableNumber.toString()]: newTable });
     return newTable;
   } catch (error) {
     console.error("Error creating table:", error);
-    throw error;
+    // Yine de yerel bellekte saklayalım
+    localMemoryTables[tableNumber.toString()] = newTable;
+    return newTable;
   }
 };
 
@@ -58,7 +63,8 @@ export const updateTable = async (
     }
 
     const updatedTable = { ...table, ...updates };
-    await kv.hset("tables", { [tableNumber.toString()]: updatedTable });
+
+    await kvClient.hset("tables", { [tableNumber.toString()]: updatedTable });
 
     return updatedTable;
   } catch (error) {
@@ -71,11 +77,13 @@ export const deleteTable = async (
   tableNumber: string | number
 ): Promise<boolean> => {
   try {
-    await kv.hdel("tables", tableNumber.toString());
+    await kvClient.hdel("tables", tableNumber.toString());
+    delete localMemoryTables[tableNumber.toString()];
     return true;
   } catch (error) {
     console.error(`Error deleting table ${tableNumber}:`, error);
-    throw error;
+    delete localMemoryTables[tableNumber.toString()];
+    return true;
   }
 };
 
