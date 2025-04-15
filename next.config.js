@@ -1,15 +1,6 @@
 /** @type {import('next').NextConfig} */
 const path = require("path");
 
-// tailwindcss için geçici çözüm, build sırasında tailwindcss bulunamadığında
-let tailwindcss;
-try {
-  tailwindcss = require("tailwindcss");
-} catch (e) {
-  console.warn("tailwindcss not found, using empty object instead");
-  tailwindcss = {};
-}
-
 const nextConfig = {
   eslint: {
     // Uyarılar için derlemeyi durdurmayacak
@@ -35,12 +26,7 @@ const nextConfig = {
   },
   webpack: (config) => {
     // Resolve alias'ların düzgün çalışmasını sağla
-    config.resolve.alias = {
-      ...config.resolve.alias,
-      "@": path.resolve(__dirname, "src"),
-      // tailwindcss modülünü bulamazsa boş nesne kullan
-      tailwindcss: tailwindcss,
-    };
+    config.resolve.alias["@"] = path.resolve(__dirname, "src");
     return config;
   },
   async redirects() {
