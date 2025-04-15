@@ -1,4 +1,6 @@
 /** @type {import('next').NextConfig} */
+const path = require("path");
+
 const nextConfig = {
   eslint: {
     // Uyarılar için derlemeyi durdurmayacak
@@ -18,6 +20,18 @@ const nextConfig = {
     ],
   },
   swcMinify: true,
+  experimental: {
+    // Modül yolu çözümlemesini geliştir
+    esmExternals: "loose",
+  },
+  webpack: (config) => {
+    // Resolve alias'ların düzgün çalışmasını sağla
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      "@": path.resolve(__dirname, "src"),
+    };
+    return config;
+  },
   async redirects() {
     return [
       {

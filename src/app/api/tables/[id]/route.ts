@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getTableById, updateTable, deleteTable } from "@/lib/kv/tables";
+import {
+  getTableById,
+  updateTable,
+  deleteTable,
+} from "../../../../lib/kv/tables";
 
 export async function GET(
   request: NextRequest,

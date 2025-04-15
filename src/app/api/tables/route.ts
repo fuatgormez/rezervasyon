@@ -3,7 +3,7 @@ import {
   getAllTables,
   createTable,
   initializeDefaultTables,
-} from "@/lib/kv/tables";
+} from "../../../lib/kv/tables";
 
 // GET - Tüm masaları getir
 export async function GET() {
