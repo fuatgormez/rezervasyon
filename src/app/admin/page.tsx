@@ -60,7 +60,7 @@ function AdminPageComponent() {
   const gridContainerRef = useRef<HTMLDivElement>(null);
 
   // CELL_WIDTH ve CATEGORY_WIDTH sabitlerini tanımla
-  const CELL_WIDTH = 80; // Saat hücresi genişliği
+  const CELL_WIDTH = 160; // Saat hücresi genişliği
   const CATEGORY_WIDTH = 140; // Kategori kolonu genişliği
   const TOTAL_HOURS = 20; // 07:00'den 02:00'a kadar toplam saat sayısı
 
@@ -113,6 +113,38 @@ function AdminPageComponent() {
     const formattedTime = format(now, "HH:mm");
     setCurrentTime(formattedTime);
 
+    // İlk yüklemede, şimdiki zamanın nerede olduğunu hesapla ve oraya scroll et
+    const hourPart = parseInt(formattedTime.split(":")[0]);
+    const minutePart = parseInt(formattedTime.split(":")[1]);
+
+    // Geçerli saati bul (7'den başlayarak)
+    let hourIndex = -1;
+    if (hourPart >= 7 && hourPart <= 24) {
+      hourIndex = hourPart - 7;
+    } else if (hourPart >= 1 && hourPart <= 2) {
+      hourIndex = 24 - 7 + hourPart; // 01:00 ve 02:00 için
+    }
+
+    if (hourIndex >= 0) {
+      // Saat ve dakikaya göre pozisyonu hesapla
+      const position = hourIndex * CELL_WIDTH + (minutePart / 60) * CELL_WIDTH;
+
+      // Sayfanın ortasına scroll etmek için
+      if (gridContainerRef.current) {
+        // İlk yükleme için bir kerelik yapıyoruz
+        setTimeout(() => {
+          const screenWidth = window.innerWidth;
+          const scrollPosition =
+            CATEGORY_WIDTH + position - screenWidth / 2 + CELL_WIDTH / 2;
+
+          gridContainerRef.current?.scrollTo({
+            left: Math.max(0, scrollPosition),
+            behavior: "smooth",
+          });
+        }, 500);
+      }
+    }
+
     // Mevcut zamanı her dakika güncelle
     const timer = setInterval(() => {
       const now = new Date();
@@ -121,7 +153,7 @@ function AdminPageComponent() {
 
     // Component unmount olduğunda timer'ı temizle
     return () => clearInterval(timer);
-  }, []);
+  }, [CELL_WIDTH]);
 
   // Mevcut rezervasyonlar
   const [reservations] = useState<ReservationType[]>([
@@ -131,7 +163,7 @@ function AdminPageComponent() {
       customerName: "Ahmet Yılmaz",
       guestCount: 4,
       startTime: "12:00",
-      endTime: "14:00",
+      endTime: "13:00",
       status: "confirmed",
     },
     {
@@ -401,6 +433,23 @@ function AdminPageComponent() {
       const position = hourIndex * CELL_WIDTH + (minutePart / 60) * CELL_WIDTH;
       setCurrentTimePosition(position);
       console.log("Zaman pozisyonu hesaplandı:", position, "px");
+
+      // Sayfanın ortasına scroll etmek için
+      if (gridContainerRef.current) {
+        // Ekranın ortasına konumlandırmak için ekran genişliğini hesapla
+        const screenWidth = window.innerWidth;
+        // Zaman çizgisinin pozisyonu + kategori genişliği - ekranın yarısı
+        const scrollPosition =
+          CATEGORY_WIDTH + position - screenWidth / 2 + CELL_WIDTH / 2;
+
+        // Scroll pozisyonunu ayarla (animasyonlu olarak)
+        setTimeout(() => {
+          gridContainerRef.current?.scrollTo({
+            left: Math.max(0, scrollPosition),
+            behavior: "smooth",
+          });
+        }, 500); // Sayfa yüklendikten sonra scroll işlemini yapmak için kısa bir gecikme
+      }
     } else {
       setCurrentTimePosition(null);
       console.log("Geçerli saat aralığı dışında, çizgi gösterilmeyecek");
