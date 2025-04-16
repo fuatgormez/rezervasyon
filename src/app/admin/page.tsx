@@ -108,6 +108,11 @@ function AdminPageComponent() {
       return;
     }
 
+    // Sayfa yüklendiğinde mevcut zamanı ayarla
+    const now = new Date();
+    const formattedTime = format(now, "HH:mm");
+    setCurrentTime(formattedTime);
+
     // Mevcut zamanı her dakika güncelle
     const timer = setInterval(() => {
       const now = new Date();
@@ -395,9 +400,20 @@ function AdminPageComponent() {
       // Saat ve dakikaya göre pozisyonu hesapla
       const position = hourIndex * CELL_WIDTH + (minutePart / 60) * CELL_WIDTH;
       setCurrentTimePosition(position);
+      console.log("Zaman pozisyonu hesaplandı:", position, "px");
     } else {
       setCurrentTimePosition(null);
+      console.log("Geçerli saat aralığı dışında, çizgi gösterilmeyecek");
     }
+
+    // Her saniye güncelleme için bir zamanlayıcı ekleyelim
+    const timer = setInterval(() => {
+      const now = new Date();
+      const formattedTime = format(now, "HH:mm");
+      setCurrentTime(formattedTime);
+    }, 60000); // Her dakika güncelle
+
+    return () => clearInterval(timer);
   }, [currentTime, CELL_WIDTH]);
 
   // Pencere boyutu değiştiğinde içeriği güncelle
