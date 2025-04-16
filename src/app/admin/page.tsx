@@ -62,7 +62,6 @@ function AdminPageComponent() {
   // CELL_WIDTH ve CATEGORY_WIDTH sabitlerini tanımla
   const CELL_WIDTH = 160; // Saat hücresi genişliği
   const CATEGORY_WIDTH = 140; // Kategori kolonu genişliği
-  const TOTAL_HOURS = 20; // 07:00'den 02:00'a kadar toplam saat sayısı
 
   // Sabit saat dizisi
   const hours = useMemo(() => {
@@ -80,21 +79,6 @@ function AdminPageComponent() {
       result.push(`${i.toString().padStart(2, "0")}:00`);
     }
     return result;
-  }, []);
-
-  // Görüntülenecek maksimum saat sayısını belirle
-  const visibleHours = useMemo(() => {
-    // Sunucu tarafında çalıştığında veya window olmadığında
-    if (typeof window === "undefined") {
-      return 12; // Varsayılan değer olarak 12 saat göster
-    }
-
-    // Tarayıcıda çalıştığında dinamik olarak hesapla
-    const availableWidth = window.innerWidth - CATEGORY_WIDTH;
-    return Math.max(
-      4,
-      Math.min(TOTAL_HOURS, Math.floor(availableWidth / CELL_WIDTH))
-    );
   }, []);
 
   // useEffect ile sayfa yüklendikten sonra yeniden hesapla
@@ -552,35 +536,40 @@ function AdminPageComponent() {
       adjustedEndHour = endHour + 24;
     }
 
-    const startTotalMinutes = startHour * 60 + startMinute;
-    const endTotalMinutes = adjustedEndHour * 60 + endMinute;
-
-    // Görünen saatler içindeki pozisyonu hesapla (kaydırma ile)
-    const startHourOffset = startHour >= 7 ? startHour - 7 : startHour + 17;
-
-    // Eğer başlangıç saati görünmüyorsa, sol kenardan başlat
-    if (startHourOffset < 0) {
-      const durationMinutes = endTotalMinutes - startTotalMinutes;
-      const width = (durationMinutes / 60) * CELL_WIDTH;
-      const visibleWidth = width + startHourOffset * CELL_WIDTH;
-
-      return {
-        left: "0px",
-        width: `${Math.max(0, visibleWidth)}px`,
-      };
+    // Eğer rezervasyon akşam saatlerinden gece yarısından sonraya kadar sürüyorsa
+    if (startHour > endHour && endHour <= 2) {
+      adjustedEndHour = endHour + 24;
     }
 
-    // Eğer başlangıç saati görünüyorsa, normal hesapla
-    const startPositionHour = startHourOffset * CELL_WIDTH;
-    const startPositionMinute = (startMinute / 60) * CELL_WIDTH;
-    const startPosition = startPositionHour + startPositionMinute;
+    // Grid'deki başlangıç saati indeksi (saat 7'den başlıyor)
+    const startHourIndex = startHour >= 7 ? startHour - 7 : startHour + 17;
 
-    // Genişlik hesabı - tam saat dilimine hizalanacak şekilde
-    const durationMinutes = endTotalMinutes - startTotalMinutes;
-    const width = (durationMinutes / 60) * CELL_WIDTH;
+    // Grid'deki bitiş saati indeksi
+    const endHourIndex =
+      adjustedEndHour >= 7 ? adjustedEndHour - 7 : adjustedEndHour + 17;
+
+    // Sol pozisyonu hesapla (başlangıç saati ve dakikasına göre)
+    const startPosition =
+      startHourIndex * CELL_WIDTH + (startMinute / 60) * CELL_WIDTH;
+
+    // Genişliği hesapla (bitiş saati ve dakikası ile başlangıç arasındaki fark)
+    let width = 0;
+
+    // Toplam saat farkı
+    const hourDiff = endHourIndex - startHourIndex;
+
+    // Dakika farkını hesapla
+    const minuteDiff = endMinute - startMinute;
+
+    // Toplam genişlik (saat * hücre genişliği + dakika oranı * hücre genişliği)
+    width = hourDiff * CELL_WIDTH + (minuteDiff / 60) * CELL_WIDTH;
+
+    console.log(
+      `Rezervasyon ${startTime}-${endTime}: left=${startPosition}px, width=${width}px`
+    );
 
     // Genişliği görünür alana sınırla
-    const maxWidth = visibleHours * CELL_WIDTH - startPosition;
+    const maxWidth = hours.length * CELL_WIDTH - startPosition;
 
     return {
       left: `${startPosition}px`,
@@ -815,6 +804,8 @@ function AdminPageComponent() {
                                     borderLeft: `4px solid ${category.borderColor}`,
                                     boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
                                     position: "relative",
+                                    minWidth: "80px", // Minimum genişlik
+                                    zIndex: 5, // Z-indeksi ayarı
                                   }}
                                   onClick={() =>
                                     handleReservationClick(reservation)
