@@ -8,6 +8,7 @@ import { BiSearch, BiArrowToRight, BiArrowToLeft } from "react-icons/bi";
 import { IoMdRefresh } from "react-icons/io";
 import { HiOutlineDotsVertical } from "react-icons/hi";
 import { FiChevronDown, FiUsers } from "react-icons/fi";
+import Link from "next/link";
 
 // Bu componenti sadece tarayıcıda çalıştırılacak şekilde dinamik olarak import ediyoruz
 // SSG sırasında çalıştırılmaz
@@ -532,20 +533,31 @@ function AdminPageComponent() {
       {/* Navbar */}
       <div className="flex justify-between items-center bg-white p-4 border-b border-gray-200 shadow-sm">
         <div className="flex items-center space-x-6">
-          <div className="text-2xl font-bold text-blue-600">Formitable</div>
+          <div className="text-2xl font-bold text-blue-600">
+            Rezervasyon Yönetimi
+          </div>
           <div className="flex space-x-4">
             <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
               Dashboard
             </button>
-            <button className="px-4 py-2 rounded-lg hover:bg-gray-100">
-              Reservations
-            </button>
-            <button className="px-4 py-2 rounded-lg hover:bg-gray-100">
-              Guests
-            </button>
-            <button className="px-4 py-2 rounded-lg hover:bg-gray-100">
-              Settings
-            </button>
+            <Link
+              href="/admin/settings"
+              className="px-4 py-2 rounded-lg hover:bg-gray-100"
+            >
+              Sistem Ayarları
+            </Link>
+            <Link
+              href="/admin/staff"
+              className="px-4 py-2 rounded-lg hover:bg-gray-100"
+            >
+              Garson Yönetimi
+            </Link>
+            <Link
+              href="/admin/customers"
+              className="px-4 py-2 rounded-lg hover:bg-gray-100"
+            >
+              Müşteri Yönetimi
+            </Link>
           </div>
         </div>
         <div className="flex items-center space-x-3">
