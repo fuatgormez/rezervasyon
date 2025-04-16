@@ -686,10 +686,10 @@ function AdminPageComponent() {
               }}
             >
               {/* Saatler başlık satırı - Sticky */}
-              <div className="sticky top-0 z-10 flex bg-white border-b border-gray-200">
+              <div className="sticky top-0 z-20 flex bg-white border-b border-gray-200">
                 {/* Kategoriler için boş alan */}
                 <div
-                  className="flex-shrink-0 h-14 bg-white border-r border-gray-200"
+                  className="flex-shrink-0 h-14 bg-white border-r border-gray-200 sticky left-0 z-30"
                   style={{ width: `${CATEGORY_WIDTH}px` }}
                 ></div>
 
@@ -726,7 +726,7 @@ function AdminPageComponent() {
                   <div className="flex">
                     {/* Kategori adı sol tarafta */}
                     <div
-                      className="flex-shrink-0 h-10 flex items-center px-4 border-b border-r font-semibold text-gray-600 text-sm"
+                      className="flex-shrink-0 h-10 flex items-center px-4 border-b border-r font-semibold text-gray-600 text-sm sticky left-0 z-10 bg-white"
                       style={{
                         width: `${CATEGORY_WIDTH}px`,
                         borderColor: category.borderColor,
@@ -754,9 +754,9 @@ function AdminPageComponent() {
                         key={table.id}
                         className="flex relative h-14 border-t border-gray-200"
                       >
-                        {/* Masa bilgisi sol tarafta */}
+                        {/* Masa bilgisi sol tarafta - sticky yapıyoruz */}
                         <div
-                          className="flex-shrink-0 flex items-center px-4 bg-gray-50 border-r border-gray-200"
+                          className="flex-shrink-0 flex items-center px-4 bg-gray-50 border-r border-gray-200 sticky left-0 z-10"
                           style={{ width: `${CATEGORY_WIDTH}px` }}
                         >
                           <div
