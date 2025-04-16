@@ -3,6 +3,15 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 
+// Masa kategorisi arayüzü güncelleniyor
+interface TableCategory {
+  id: string;
+  name: string;
+  color: string; // Rezervasyon rengi (RGBA)
+  borderColor: string; // Kenarlık rengi (HEX)
+  backgroundColor: string; // Arkaplan rengi (HEX)
+}
+
 export default function SettingsPage() {
   // Firma ayarları için state
   const [companySettings, setCompanySettings] = useState({
@@ -14,11 +23,31 @@ export default function SettingsPage() {
   });
 
   // Masa ayarları için state
-  const [tableSettings, setTableSettings] = useState({
+  const [tableSettings, setTableSettings] = useState<{
+    categories: TableCategory[];
+  }>({
     categories: [
-      { id: "1", name: "Teras", color: "#3498db", borderColor: "#2980b9" },
-      { id: "2", name: "Bahçe", color: "#2ecc71", borderColor: "#27ae60" },
-      { id: "3", name: "İç Mekan", color: "#e74c3c", borderColor: "#c0392b" },
+      {
+        id: "1",
+        name: "Teras",
+        color: "rgba(52, 152, 219, 0.8)",
+        borderColor: "#2980b9",
+        backgroundColor: "#f0f9ff", // Açık mavi arkaplan
+      },
+      {
+        id: "2",
+        name: "Bahçe",
+        color: "rgba(46, 204, 113, 0.8)",
+        borderColor: "#27ae60",
+        backgroundColor: "#f0fdf4", // Açık yeşil arkaplan
+      },
+      {
+        id: "3",
+        name: "İç Mekan",
+        color: "rgba(231, 76, 60, 0.8)",
+        borderColor: "#c0392b",
+        backgroundColor: "#fef2f2", // Açık kırmızı arkaplan
+      },
     ],
   });
 
@@ -71,11 +100,17 @@ export default function SettingsPage() {
 
   // Kategori ekleme fonksiyonu
   const addCategory = () => {
+    const randomColor =
+      "#" +
+      Math.floor(Math.random() * 16777215)
+        .toString(16)
+        .padStart(6, "0");
     const newCategory = {
       id: Date.now().toString(),
       name: "Yeni Kategori",
-      color: "#9b59b6",
-      borderColor: "#8e44ad",
+      color: hexToRgba(randomColor, 0.8), // RGBA formatında şeffaf renk
+      borderColor: randomColor, // Kenarlık rengi tam opak
+      backgroundColor: randomColor, // Arkaplan rengi tam opak
     };
 
     setTableSettings({
@@ -102,6 +137,53 @@ export default function SettingsPage() {
         category.id === id ? { ...category, [field]: value } : category
       ),
     });
+  };
+
+  // RGBA renk değerini HEX değerine çevirme
+  const hexToRgba = (hex: string, opacity: number = 1) => {
+    // HEX değerini RGB'ye çevir
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+
+    // RGBA formatında döndür
+    return `rgba(${r}, ${g}, ${b}, ${opacity.toFixed(1)})`;
+  };
+
+  // Kategori renk güncellemesi için özel fonksiyon
+  const updateCategoryColor = (
+    id: string,
+    hexColor: string,
+    opacity: number
+  ) => {
+    const rgbaColor = hexToRgba(hexColor, opacity);
+    updateCategory(id, "color", rgbaColor);
+  };
+
+  // HEX rengini RGBA'dan çıkarma
+  const getRgbaValues = (rgba: string) => {
+    // rgba değerini parçalara ayır
+    const matches = rgba.match(/rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)/);
+
+    if (!matches) {
+      // Eğer rgba formatında değilse, varsayılan değerler döndür
+      return { hex: "#000000", opacity: 1 };
+    }
+
+    // RGB değerlerini al ve HEX formatına çevir
+    const r = parseInt(matches[1]);
+    const g = parseInt(matches[2]);
+    const b = parseInt(matches[3]);
+    const opacity = parseFloat(matches[4]);
+
+    // RGB'yi HEX'e çevir
+    const hex =
+      "#" +
+      r.toString(16).padStart(2, "0") +
+      g.toString(16).padStart(2, "0") +
+      b.toString(16).padStart(2, "0");
+
+    return { hex, opacity };
   };
 
   return (
@@ -309,6 +391,9 @@ export default function SettingsPage() {
                     Kenarlık Rengi
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Arkaplan Rengi
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     İşlemler
                   </th>
                 </tr>
@@ -327,14 +412,49 @@ export default function SettingsPage() {
                       />
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <input
-                        type="color"
-                        value={category.color}
-                        onChange={(e) =>
-                          updateCategory(category.id, "color", e.target.value)
-                        }
-                        className="w-full"
-                      />
+                      <div className="flex flex-col space-y-2">
+                        <input
+                          type="color"
+                          value={getRgbaValues(category.color).hex}
+                          onChange={(e) => {
+                            // Mevcut opacity değerini koru
+                            const currentOpacity = getRgbaValues(
+                              category.color
+                            ).opacity;
+                            updateCategoryColor(
+                              category.id,
+                              e.target.value,
+                              currentOpacity
+                            );
+                          }}
+                          className="w-full h-8"
+                        />
+                        <div className="flex items-center">
+                          <span className="text-xs mr-2">Şeffaflık:</span>
+                          <input
+                            type="range"
+                            min="0"
+                            max="1"
+                            step="0.1"
+                            value={getRgbaValues(category.color).opacity}
+                            onChange={(e) => {
+                              // Mevcut hex değerini koru
+                              const currentHex = getRgbaValues(
+                                category.color
+                              ).hex;
+                              updateCategoryColor(
+                                category.id,
+                                currentHex,
+                                parseFloat(e.target.value)
+                              );
+                            }}
+                            className="w-full"
+                          />
+                          <span className="text-xs ml-2">
+                            {getRgbaValues(category.color).opacity.toFixed(1)}
+                          </span>
+                        </div>
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <input
@@ -347,7 +467,21 @@ export default function SettingsPage() {
                             e.target.value
                           )
                         }
-                        className="w-full"
+                        className="w-full h-8"
+                      />
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <input
+                        type="color"
+                        value={category.backgroundColor}
+                        onChange={(e) =>
+                          updateCategory(
+                            category.id,
+                            "backgroundColor",
+                            e.target.value
+                          )
+                        }
+                        className="w-full h-8"
                       />
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">

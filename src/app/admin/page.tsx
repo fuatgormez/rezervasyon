@@ -22,6 +22,7 @@ interface TableCategoryType {
   name: string;
   color: string;
   borderColor: string;
+  backgroundColor: string;
 }
 
 // Masa türü arayüzü
@@ -79,6 +80,78 @@ function AdminPageComponent() {
       result.push(`${i.toString().padStart(2, "0")}:00`);
     }
     return result;
+  }, []);
+
+  // Masa kategorileri
+  const [tableCategories, setTableCategories] = useState<TableCategoryType[]>([
+    {
+      id: "1",
+      name: "TERAS",
+      color: "rgba(74, 108, 155, 0.8)",
+      borderColor: "#5880B3",
+      backgroundColor: "#f0f9ff",
+    },
+    {
+      id: "2",
+      name: "BAHÇE",
+      color: "rgba(85, 138, 112, 0.8)",
+      borderColor: "#509F6D",
+      backgroundColor: "#f0fdf4",
+    },
+    {
+      id: "3",
+      name: "İÇ SALON",
+      color: "rgba(166, 97, 97, 0.8)",
+      borderColor: "#A06363",
+      backgroundColor: "#fef2f2",
+    },
+  ]);
+
+  // HEX rengini açık bir versiyona çevirme (açıklık ekleyerek)
+  const getLighterColor = (hexColor: string, factor: number = 0.15): string => {
+    // HEX değerini RGB'ye çevir
+    const r = parseInt(hexColor.slice(1, 3), 16);
+    const g = parseInt(hexColor.slice(3, 5), 16);
+    const b = parseInt(hexColor.slice(5, 7), 16);
+
+    // Her bir renge açıklık ekle (beyaza doğru kaydir)
+    const newR = Math.min(255, r + Math.round((255 - r) * factor));
+    const newG = Math.min(255, g + Math.round((255 - g) * factor));
+    const newB = Math.min(255, b + Math.round((255 - b) * factor));
+
+    // RGB'yi HEX'e çevir
+    return `#${newR.toString(16).padStart(2, "0")}${newG
+      .toString(16)
+      .padStart(2, "0")}${newB.toString(16).padStart(2, "0")}`;
+  };
+
+  // useEffect ile localStorage'dan kategorileri yükle
+  useEffect(() => {
+    // Netlify dağıtımı ve SSG aşamasında atlanacak
+    if (
+      process.env.NEXT_PUBLIC_NETLIFY_DEPLOYMENT === "true" &&
+      process.env.NEXT_PUBLIC_SKIP_SSG_ADMIN === "true" &&
+      typeof window === "undefined"
+    ) {
+      return;
+    }
+
+    // localStorage'dan tableSettings'i yükle
+    const savedTableSettings = localStorage.getItem("tableSettings");
+    if (savedTableSettings) {
+      try {
+        const parsedSettings = JSON.parse(savedTableSettings);
+        if (parsedSettings.categories && parsedSettings.categories.length > 0) {
+          setTableCategories(parsedSettings.categories);
+          console.log(
+            "Kategoriler localStorage'dan yüklendi:",
+            parsedSettings.categories
+          );
+        }
+      } catch (error) {
+        console.error("Kategori yükleme hatası:", error);
+      }
+    }
   }, []);
 
   // useEffect ile sayfa yüklendikten sonra yeniden hesapla
@@ -262,28 +335,6 @@ function AdminPageComponent() {
       status: "confirmed",
     },
   ]);
-
-  // Masa kategorileri
-  const tableCategories: TableCategoryType[] = [
-    {
-      id: "1",
-      name: "TERAS",
-      color: "rgba(74, 108, 155, 0.8)",
-      borderColor: "#5880B3",
-    },
-    {
-      id: "2",
-      name: "BAHÇE",
-      color: "rgba(85, 138, 112, 0.8)",
-      borderColor: "#509F6D",
-    },
-    {
-      id: "3",
-      name: "İÇ SALON",
-      color: "rgba(166, 97, 97, 0.8)",
-      borderColor: "#A06363",
-    },
-  ];
 
   // Masaları kategorilerine göre tanımla
   const tables = useMemo<TableType[]>(
@@ -715,11 +766,12 @@ function AdminPageComponent() {
                   <div className="flex">
                     {/* Kategori adı sol tarafta */}
                     <div
-                      className="flex-shrink-0 h-10 flex items-center px-4 border-b border-r font-semibold text-gray-600 text-sm sticky left-0 z-10 bg-white"
+                      className="flex-shrink-0 h-10 flex items-center px-4 border-b border-r font-semibold text-gray-600 text-sm sticky left-0 z-10"
                       style={{
                         width: `${CATEGORY_WIDTH}px`,
                         borderColor: category.borderColor,
                         borderBottomWidth: "2px",
+                        backgroundColor: getLighterColor(category.color),
                       }}
                     >
                       {category.name}
@@ -731,6 +783,7 @@ function AdminPageComponent() {
                       style={{
                         borderBottomColor: category.borderColor,
                         borderBottomWidth: "2px",
+                        backgroundColor: category.backgroundColor || "white",
                       }}
                     ></div>
                   </div>
@@ -745,8 +798,12 @@ function AdminPageComponent() {
                       >
                         {/* Masa bilgisi sol tarafta - sticky yapıyoruz */}
                         <div
-                          className="flex-shrink-0 flex items-center px-4 bg-gray-50 border-r border-gray-200 sticky left-0 z-10"
-                          style={{ width: `${CATEGORY_WIDTH}px` }}
+                          className="flex-shrink-0 flex items-center px-4 border-r border-gray-200 sticky left-0 z-10"
+                          style={{
+                            width: `${CATEGORY_WIDTH}px`,
+                            backgroundColor:
+                              category.backgroundColor || "#f9fafb",
+                          }}
                         >
                           <div
                             className="w-2 h-2 rounded-full mr-2"
@@ -772,7 +829,7 @@ function AdminPageComponent() {
                                 backgroundColor:
                                   hour === currentTime.substring(0, 5)
                                     ? "rgba(255, 255, 255, 0.5)"
-                                    : "transparent",
+                                    : "white",
                               }}
                             ></div>
                           ))}
