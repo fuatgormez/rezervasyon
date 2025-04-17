@@ -1,183 +1,218 @@
 import { NextRequest, NextResponse } from "next/server";
-import { randomUUID } from "crypto";
+import { v4 as uuidv4 } from "uuid";
 
-// Rezervasyon tipi
+// Rezervasyon veri tipi
 interface Reservation {
   id: string;
-  customerId?: string;
-  customer: {
-    name: string;
-    email: string;
-    phone: string;
-  };
   tableId: string;
+  customerName: string;
+  customerPhone: string;
   date: string;
   startTime: string;
   endTime: string;
   guestCount: number;
   status: "confirmed" | "pending" | "cancelled";
-  specialRequests?: string;
+  notes?: string;
   createdAt: string;
-  sessionId?: string;
+  updatedAt: string;
 }
 
-// Test için rezervasyon veri deposu
-const reservations: Reservation[] = [];
+// Demo amaçlı bazı rezervasyonlar (gerçek uygulamada veritabanından gelecek)
+const reservations: Reservation[] = [
+  {
+    id: "1",
+    tableId: "t1",
+    customerName: "Mehmet Yılmaz",
+    customerPhone: "5551234567",
+    date: "2023-12-15",
+    startTime: "19:00",
+    endTime: "21:00",
+    guestCount: 2,
+    status: "confirmed",
+    notes: "Pencere kenarı tercih edildi",
+    createdAt: "2023-12-10T12:00:00Z",
+    updatedAt: "2023-12-10T12:00:00Z",
+  },
+  {
+    id: "2",
+    tableId: "t2",
+    customerName: "Ayşe Kaya",
+    customerPhone: "5559876543",
+    date: "2023-12-15",
+    startTime: "20:00",
+    endTime: "22:00",
+    guestCount: 4,
+    status: "confirmed",
+    createdAt: "2023-12-11T10:30:00Z",
+    updatedAt: "2023-12-11T10:30:00Z",
+  },
+];
+
+// GET - Tüm rezervasyonları getir (opsiyonel filtrelerle)
+export async function GET(request: NextRequest) {
+  try {
+    const searchParams = request.nextUrl.searchParams;
+    const date = searchParams.get("date");
+    const tableId = searchParams.get("tableId");
+    const status = searchParams.get("status") as
+      | "confirmed"
+      | "pending"
+      | "cancelled"
+      | null;
+
+    // Filtreleri uygula
+    let filteredReservations = [...reservations];
+
+    if (date) {
+      filteredReservations = filteredReservations.filter(
+        (res) => res.date === date
+      );
+    }
+
+    if (tableId) {
+      filteredReservations = filteredReservations.filter(
+        (res) => res.tableId === tableId
+      );
+    }
+
+    if (status) {
+      filteredReservations = filteredReservations.filter(
+        (res) => res.status === status
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      count: filteredReservations.length,
+      reservations: filteredReservations,
+    });
+  } catch (error) {
+    console.error("Rezervasyonlar alınırken hata:", error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Rezervasyonlar alınırken bir hata oluştu",
+      },
+      { status: 500 }
+    );
+  }
+}
 
 // POST - Yeni rezervasyon oluştur
 export async function POST(request: NextRequest) {
   try {
-    const data = await request.json();
+    const body = await request.json();
 
-    // Gerekli alanları kontrol et
+    // Gerekli alanlar kontrol ediliyor
+    const {
+      tableId,
+      customerName,
+      customerPhone,
+      date,
+      startTime,
+      endTime,
+      guestCount,
+    } = body;
+
     if (
-      !data.customer?.name ||
-      !data.startTime ||
-      !data.date ||
-      !data.guestCount
+      !tableId ||
+      !customerName ||
+      !customerPhone ||
+      !date ||
+      !startTime ||
+      !endTime ||
+      !guestCount
     ) {
       return NextResponse.json(
         {
           success: false,
-          error: "Eksik bilgi. İsim, tarih, saat ve kişi sayısı gereklidir.",
+          error: "Eksik rezervasyon bilgileri",
         },
         { status: 400 }
       );
     }
 
-    // Bitiş saati hesapla (varsayılan 2 saat)
-    const calculateEndTime = (startTime: string, durationHours = 2): string => {
-      const [hours, minutes] = startTime.split(":").map(Number);
-      const endHour = (hours + durationHours) % 24;
-      return `${String(endHour).padStart(2, "0")}:${String(minutes).padStart(
-        2,
-        "0"
-      )}`;
-    };
+    // Burada masa kontrolü yapıp, rezervasyon çakışması kontrolü yapılabilir
+    // Gerçek uygulamada bu kontroller veritabanı sorguları ile yapılacak
 
-    // Masa seçimi algoritması - gerçek uygulamada daha karmaşık olacaktır
-    // Burada basit bir algoritma kullanıyoruz:
-    // 1. Müsait ve yeterli kapasiteye sahip bir masa bul
-    // 2. Eğer belirli bir masa tercihi varsa ve uygunsa onu kullan
-    const assignTable = (
-      guestCount: number,
-      tablePreference?: string
-    ): string => {
-      // Bu değişkenler gerçek uygulamada bir veritabanından gelecektir
-      const tables = [
-        {
-          id: "t1",
-          number: 1,
-          capacity: 2,
-          location: "TERAS",
-          available: true,
-        },
-        {
-          id: "t2",
-          number: 2,
-          capacity: 4,
-          location: "TERAS",
-          available: true,
-        },
-        {
-          id: "t3",
-          number: 3,
-          capacity: 6,
-          location: "TERAS",
-          available: true,
-        },
-        {
-          id: "b1",
-          number: 6,
-          capacity: 2,
-          location: "BAHÇE",
-          available: true,
-        },
-        {
-          id: "b2",
-          number: 7,
-          capacity: 4,
-          location: "BAHÇE",
-          available: true,
-        },
-        {
-          id: "i1",
-          number: 10,
-          capacity: 2,
-          location: "İÇ SALON",
-          available: true,
-        },
-        {
-          id: "i4",
-          number: 13,
-          capacity: 8,
-          location: "İÇ SALON",
-          available: true,
-        },
-      ];
+    // Aynı masa için aynı tarihte çakışan rezervasyon var mı kontrolü
+    const hasConflict = reservations.some((res) => {
+      if (
+        res.tableId !== tableId ||
+        res.date !== date ||
+        res.status === "cancelled"
+      ) {
+        return false;
+      }
 
-      // Eğer masa tercihi varsa ve uygunsa onu kullan
-      if (tablePreference) {
-        const preferredTable = tables.find((t) => t.id === tablePreference);
-        if (
-          preferredTable &&
-          preferredTable.available &&
-          preferredTable.capacity >= guestCount
-        ) {
-          return preferredTable.id;
+      const newStartMinutes = timeToMinutes(startTime);
+      const newEndMinutes = timeToMinutes(endTime);
+      const existingStartMinutes = timeToMinutes(res.startTime);
+      const existingEndMinutes = timeToMinutes(res.endTime);
+
+      // Gece yarısını geçen rezervasyonlar için özel kontrol
+      if (newEndMinutes < newStartMinutes) {
+        // Yeni rezervasyon gece yarısını geçiyor (örn. 22:00-01:00)
+        if (existingEndMinutes < existingStartMinutes) {
+          // Mevcut rezervasyon da gece yarısını geçiyor
+          return true; // Bu durumda her zaman çakışma vardır
+        } else {
+          // Mevcut rezervasyon normal (örn. 18:00-20:00)
+          return (
+            existingStartMinutes < newEndMinutes ||
+            existingEndMinutes > newStartMinutes
+          );
         }
+      } else if (existingEndMinutes < existingStartMinutes) {
+        // Mevcut rezervasyon gece yarısını geçiyor, yeni rezervasyon normal
+        return (
+          newStartMinutes < existingEndMinutes ||
+          newEndMinutes > existingStartMinutes
+        );
       }
 
-      // Uygun bir masa bul
-      const suitableTable = tables.find(
-        (t) => t.available && t.capacity >= guestCount
+      // Normal durum - her iki rezervasyon da gece yarısını geçmiyor
+      return (
+        newStartMinutes < existingEndMinutes &&
+        newEndMinutes > existingStartMinutes
       );
-      if (suitableTable) {
-        return suitableTable.id;
-      }
+    });
 
-      // Uygun masa bulunamadıysa en büyük masayı ata
-      const largestTable = [...tables].sort(
-        (a, b) => b.capacity - a.capacity
-      )[0];
-      return largestTable.id;
-    };
+    if (hasConflict) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Bu masa için belirtilen tarih ve saatte rezervasyon bulunmaktadır",
+        },
+        { status: 409 }
+      );
+    }
 
     // Yeni rezervasyon oluştur
     const newReservation: Reservation = {
-      id: randomUUID(),
-      customer: {
-        name: data.customer.name,
-        email: data.customer.email || "",
-        phone: data.customer.phone || "",
-      },
-      tableId:
-        data.tableId || assignTable(data.guestCount, data.tablePreference),
-      date: data.date,
-      startTime: data.startTime,
-      endTime: data.endTime || calculateEndTime(data.startTime, data.duration),
-      guestCount: data.guestCount,
-      status: "pending",
-      specialRequests: data.specialRequests,
+      id: uuidv4(),
+      tableId,
+      customerName,
+      customerPhone,
+      date,
+      startTime,
+      endTime,
+      guestCount: Number(guestCount),
+      status: body.status || "confirmed",
+      notes: body.notes || "",
       createdAt: new Date().toISOString(),
-      sessionId: data.sessionId,
+      updatedAt: new Date().toISOString(),
     };
 
-    // Rezervasyonu kaydet (gerçek uygulamada veritabanına kaydedilir)
+    // Rezervasyonu kaydet (gerçekte veritabanına kaydedilecek)
     reservations.push(newReservation);
 
-    // WebSocket üzerinden admin paneline bildirim gönder
-    // Bu kısım gerçek uygulamada Socket.IO veya başka bir gerçek zamanlı
-    // iletişim teknolojisi kullanılarak yapılacaktır
-    console.log("Yeni rezervasyon bildirimi gönderildi:", newReservation.id);
-
-    // Başarılı yanıt döndür
     return NextResponse.json(
       {
         success: true,
         message: "Rezervasyon başarıyla oluşturuldu",
         reservation: newReservation,
-        tableId: newReservation.tableId,
       },
       { status: 201 }
     );
@@ -193,58 +228,167 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET - Rezervasyonları listele
-export async function GET(request: NextRequest) {
+// PUT - Rezervasyon güncelle
+export async function PUT(request: NextRequest) {
   try {
-    // URL parametrelerini al
-    const searchParams = request.nextUrl.searchParams;
-    const date = searchParams.get("date");
-    const tableId = searchParams.get("tableId");
+    const body = await request.json();
+    const { id, ...updateData } = body;
 
-    // Filtreleme uygula
-    let filteredReservations = [...reservations];
-
-    if (date) {
-      filteredReservations = filteredReservations.filter(
-        (r) => r.date === date
+    if (!id) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Rezervasyon ID gereklidir",
+        },
+        { status: 400 }
       );
     }
 
-    if (tableId) {
-      filteredReservations = filteredReservations.filter(
-        (r) => r.tableId === tableId
+    // Rezervasyonu bul
+    const reservationIndex = reservations.findIndex((res) => res.id === id);
+
+    if (reservationIndex === -1) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Rezervasyon bulunamadı",
+        },
+        { status: 404 }
       );
     }
 
-    // Tarihe göre sırala
-    filteredReservations.sort((a, b) => {
-      // Önce tarihe göre
-      const dateComparison =
-        new Date(a.date).getTime() - new Date(b.date).getTime();
-      if (dateComparison !== 0) return dateComparison;
+    // Çakışma kontrolü - sadece tarih, saat veya masa değişiyorsa
+    if (
+      (updateData.date ||
+        updateData.startTime ||
+        updateData.endTime ||
+        updateData.tableId) &&
+      updateData.status !== "cancelled"
+    ) {
+      const updatedReservation = {
+        ...reservations[reservationIndex],
+        ...updateData,
+      };
 
-      // Sonra saate göre
-      const timeA = a.startTime.split(":").map(Number);
-      const timeB = b.startTime.split(":").map(Number);
+      const hasConflict = reservations.some((res) => {
+        // Kendisi hariç kontrol et
+        if (res.id === id || res.status === "cancelled") return false;
 
-      const minutesA = timeA[0] * 60 + timeA[1];
-      const minutesB = timeB[0] * 60 + timeB[1];
+        // Masa değişmediyse veya aynı masaya rezerve ediliyorsa
+        if (
+          res.tableId !== updatedReservation.tableId ||
+          res.date !== updatedReservation.date
+        ) {
+          return false;
+        }
 
-      return minutesA - minutesB;
-    });
+        const newStartMinutes = timeToMinutes(updatedReservation.startTime);
+        const newEndMinutes = timeToMinutes(updatedReservation.endTime);
+        const existingStartMinutes = timeToMinutes(res.startTime);
+        const existingEndMinutes = timeToMinutes(res.endTime);
+
+        // Zaman çakışması kontrolü (gece yarısı kontrolü dahil)
+        if (
+          newEndMinutes < newStartMinutes ||
+          existingEndMinutes < existingStartMinutes
+        ) {
+          // Gece yarısını geçen durumlar için özel kontrol gerekir
+          // Basitleştirmek için, bu durumda çakışma var kabul ediyoruz
+          return true;
+        }
+
+        return (
+          newStartMinutes < existingEndMinutes &&
+          newEndMinutes > existingStartMinutes
+        );
+      });
+
+      if (hasConflict) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Güncellenen rezervasyon başka bir rezervasyonla çakışıyor",
+          },
+          { status: 409 }
+        );
+      }
+    }
+
+    // Rezervasyonu güncelle
+    reservations[reservationIndex] = {
+      ...reservations[reservationIndex],
+      ...updateData,
+      updatedAt: new Date().toISOString(),
+    };
 
     return NextResponse.json({
       success: true,
-      reservations: filteredReservations,
+      message: "Rezervasyon başarıyla güncellendi",
+      reservation: reservations[reservationIndex],
     });
   } catch (error) {
-    console.error("Rezervasyonlar alınırken hata:", error);
+    console.error("Rezervasyon güncellenirken hata:", error);
     return NextResponse.json(
       {
         success: false,
-        error: "Rezervasyonlar alınırken bir hata oluştu",
+        error: "Rezervasyon güncellenirken bir hata oluştu",
       },
       { status: 500 }
     );
   }
+}
+
+// DELETE - Rezervasyon sil (gerçekte genellikle iptal edilir, silinmez)
+export async function DELETE(request: NextRequest) {
+  try {
+    const url = new URL(request.url);
+    const id = url.searchParams.get("id");
+
+    if (!id) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Rezervasyon ID gereklidir",
+        },
+        { status: 400 }
+      );
+    }
+
+    // Rezervasyonu bul
+    const reservationIndex = reservations.findIndex((res) => res.id === id);
+
+    if (reservationIndex === -1) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Rezervasyon bulunamadı",
+        },
+        { status: 404 }
+      );
+    }
+
+    // Rezervasyonu iptal et (gerçekte statü değiştirilir, silinmez)
+    reservations[reservationIndex].status = "cancelled";
+    reservations[reservationIndex].updatedAt = new Date().toISOString();
+
+    return NextResponse.json({
+      success: true,
+      message: "Rezervasyon başarıyla iptal edildi",
+    });
+  } catch (error) {
+    console.error("Rezervasyon iptal edilirken hata:", error);
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Rezervasyon iptal edilirken bir hata oluştu",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+// Yardımcı fonksiyon: Saat formatını dakika cinsine çevirir
+function timeToMinutes(time: string): number {
+  const [hours, minutes] = time.split(":").map(Number);
+  return hours * 60 + minutes;
 }

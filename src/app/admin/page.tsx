@@ -711,14 +711,273 @@ function AdminPageComponent() {
     }
   }, []);
 
-  // Rezervasyona tıklanınca işlem yap
+  // Rezervasyona tıklandığında
   const handleReservationClick = (reservation: ReservationType) => {
-    console.log("Rezervasyon seçildi:", reservation);
     setSelectedReservation(reservation);
     setIsRightSidebarOpen(true);
-    toast.success(
-      `${reservation.customerName} - ${reservation.startTime}-${reservation.endTime} seçildi`
+  };
+
+  // Rezervasyon hover durumunda
+  const handleReservationHover = (reservation: ReservationType) => {
+    // Eğer zaten seçili olan rezervasyon ise ve sidebar açıksa
+    // tekrar açmaya çalışma (yani hover üzerinde gezinirken tekrar çağrılmasını engelle)
+    if (selectedReservation?.id === reservation.id && isRightSidebarOpen) {
+      return;
+    }
+
+    // Hover durumunda sadece sidebar açık değilse aç
+    if (!isRightSidebarOpen) {
+      setSelectedReservation(reservation);
+      setIsRightSidebarOpen(true);
+      // Geçici bir hover durumu olduğunu işaretle
+      setSidebarOpenedByHover(true);
+    }
+  };
+
+  // Hover durumu bittiğinde
+  const handleReservationLeave = () => {
+    // Eğer sidebar hover ile açıldıysa kapat
+    if (sidebarOpenedByHover) {
+      // Hover ile açılan sidebar'ı hemen kapatma
+      // Kullanıcıya zaman tanı ve mouseOver/mouseOut hızlı geçişlerini engelle
+      const timer = setTimeout(() => {
+        // Bu sürede kullanıcı sidebar'a tıklamadıysa kapat
+        if (sidebarOpenedByHover && !sidebarClicked) {
+          setIsRightSidebarOpen(false);
+          setSidebarOpenedByHover(false);
+        }
+      }, 500); // Daha uzun bir gecikme
+
+      // Timer'ı değişkene atayalım ki temizleyebilelim
+      return () => clearTimeout(timer);
+    }
+  };
+
+  // Sidebar tıklama durumu
+  const handleSidebarClick = () => {
+    setSidebarClicked(true);
+    setSidebarOpenedByHover(false); // Artık hover değil, tıklama kontrol ediyor
+  };
+
+  // ESC tuşu ile kapatma
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isRightSidebarOpen) {
+        setIsRightSidebarOpen(false);
+        setSidebarOpenedByHover(false);
+        setSidebarClicked(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isRightSidebarOpen]);
+
+  // Sağ paneli kapat
+  const closeRightSidebar = () => {
+    setIsRightSidebarOpen(false);
+    setSelectedReservation(null);
+    setSidebarOpenedByHover(false);
+    setSidebarClicked(false);
+  };
+
+  // sidebar durumlarını izlemek için state ekle
+  const [sidebarOpenedByHover, setSidebarOpenedByHover] = useState(false);
+  const [sidebarClicked, setSidebarClicked] = useState(false);
+
+  // Aktif rezervasyon formlarını izle ve görüntüle
+  const [activeForms, setActiveForms] = useState<
+    {
+      id: string;
+      customerName: string;
+      startTime: string;
+      tableId?: string;
+      guestCount: number;
+      lastActivity: Date;
+      status: "filling_form" | "selecting_table" | "completing";
+    }[]
+  >([]);
+
+  // Socket.IO bağlantısı için
+  useEffect(() => {
+    // SSR/SSG sırasında çalıştırma
+    if (typeof window === "undefined") return;
+
+    // Gerçek uygulamada WebSocket bağlantısı burada kurulur
+    const setupWebSocket = () => {
+      // WebSocket veya Socket.IO bağlantısı örneği:
+      // const socket = io();
+      // socket.on('reservation:activity', (data) => {
+      //   setActiveForms(prev => {
+      //     // Eğer zaten aynı ID'ye sahip bir form varsa, onu güncelle
+      //     const exists = prev.some(f => f.id === data.sessionId);
+      //     if (exists) {
+      //       return prev.map(f => f.id === data.sessionId ? { ...f, ...data, lastActivity: new Date() } : f);
+      //     }
+      //     // Yoksa yeni ekle (en fazla 5 form göster)
+      //     return [...prev.slice(-4), { ...data, lastActivity: new Date() }];
+      //   });
+      // });
+      // Temizleme fonksiyonu
+      // return () => socket.disconnect();
+    };
+
+    setupWebSocket();
+  }, []);
+
+  // Ana içeriğe başlamadan önce aktif rezervasyonları göster
+  const ActiveReservations = () => {
+    if (activeForms.length === 0) return null;
+
+    return (
+      <div className="fixed right-4 top-24 z-50 space-y-3 pointer-events-none">
+        {activeForms.map((form, index) => (
+          <div
+            key={form.id}
+            className="bg-white rounded-lg shadow-lg p-4 w-72 pointer-events-auto animate-slideInRight"
+            style={{
+              animationDelay: `${index * 0.2}s`,
+              borderLeft: `4px solid ${
+                form.status === "filling_form"
+                  ? "#3B82F6"
+                  : form.status === "selecting_table"
+                  ? "#10B981"
+                  : "#F59E0B"
+              }`,
+            }}
+          >
+            <div className="flex justify-between items-start mb-1">
+              <h4 className="font-medium text-gray-800">
+                {form.customerName || "Yeni Müşteri"}
+              </h4>
+              <span
+                className={`text-xs px-2 py-1 rounded-full ${
+                  form.status === "filling_form"
+                    ? "bg-blue-100 text-blue-800"
+                    : form.status === "selecting_table"
+                    ? "bg-green-100 text-green-800"
+                    : "bg-yellow-100 text-yellow-800"
+                }`}
+              >
+                {form.status === "filling_form"
+                  ? "Form Dolduruyor"
+                  : form.status === "selecting_table"
+                  ? "Masa Seçiyor"
+                  : "Tamamlanıyor"}
+              </span>
+            </div>
+            <div className="text-gray-600 text-sm">
+              <div className="flex justify-between mb-1">
+                <span>Saat:</span>
+                <span>{form.startTime || "Henüz seçilmedi"}</span>
+              </div>
+              <div className="flex justify-between mb-1">
+                <span>Kişi:</span>
+                <span>{form.guestCount || "?"}</span>
+              </div>
+              <div className="flex justify-between text-xs text-gray-500">
+                <span>Son aktivite:</span>
+                <span>
+                  {form.lastActivity
+                    ? new Date(form.lastActivity).toLocaleTimeString()
+                    : "-"}
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-3 flex justify-end space-x-2">
+              <button
+                onClick={() => {
+                  // Yeni sekmede ilgili formu aç (gerçek uygulamada)
+                  toast.success(
+                    `${form.customerName} müşterisinin rezervasyonu görüntüleniyor`
+                  );
+                }}
+                className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-gray-700"
+              >
+                Görüntüle
+              </button>
+              <button
+                onClick={() => {
+                  // Bu müşteriyi listeden kaldır
+                  setActiveForms((prev) =>
+                    prev.filter((f) => f.id !== form.id)
+                  );
+                  toast.success("Bildirim kapatıldı");
+                }}
+                className="text-xs px-2 py-1 bg-red-50 hover:bg-red-100 rounded text-red-700"
+              >
+                Kapat
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
     );
+  };
+
+  // Masa kapasitesi kontrolü - belirli bir masanın misafir sayısı için yeterli olup olmadığını kontrol eder
+  const isTableCapacitySufficient = (
+    tableId: string,
+    guestCount: number
+  ): boolean => {
+    const table = tables.find((t) => t.id === tableId);
+    if (!table) return false;
+    return table.capacity >= guestCount;
+  };
+
+  // Birleştirilebilecek masaları bul - yakındaki boş ve yeterli kapasiteye sahip masaları döndürür
+  const findMergableTables = (
+    tableId: string,
+    guestCount: number
+  ): TableType[] => {
+    const currentTable = tables.find((t) => t.id === tableId);
+    if (!currentTable) return [];
+
+    // Aynı kategorideki masaları bul
+    const tablesInSameCategory = tables.filter(
+      (t) =>
+        t.id !== tableId &&
+        t.categoryId === currentTable.categoryId &&
+        t.capacity + currentTable.capacity >= guestCount
+    );
+
+    // Masaları uzaklığa göre filtrele (örnek: aynı bölgedeki masalar)
+    // Bu basit bir implementasyon - daha karmaşık bir yakınlık algoritması gerekebilir
+    return tablesInSameCategory.slice(0, 3); // Sadece ilk 3 uygun masayı öner
+  };
+
+  // Masa ve zaman çakışma kontrolü
+  const hasTableConflict = (
+    tableId: string,
+    startTime: string,
+    endTime: string,
+    excludeReservationId?: string
+  ): boolean => {
+    const reservationsForTable = reservations.filter(
+      (r) =>
+        r.tableId === tableId &&
+        (excludeReservationId ? r.id !== excludeReservationId : true)
+    );
+
+    // Başlangıç ve bitiş zamanlarını karşılaştır
+    const newStartTime = new Date(startTime).getTime();
+    const newEndTime = new Date(endTime).getTime();
+
+    // Herhangi bir çakışma var mı kontrol et
+    return reservationsForTable.some((r) => {
+      const existingStartTime = new Date(r.startTime).getTime();
+      const existingEndTime = new Date(r.endTime).getTime();
+
+      // Çakışma kontrolü
+      // Eğer yeni rezervasyon başlangıcı, mevcut rezervasyonun bitiş zamanından önce
+      // VE yeni rezervasyon bitişi, mevcut rezervasyonun başlangıç zamanından sonra ise
+      // bu bir çakışma demektir.
+      return (
+        (newStartTime < existingEndTime && newEndTime > existingStartTime) ||
+        (existingStartTime < newEndTime && existingEndTime > newStartTime)
+      );
+    });
   };
 
   // Rezervasyonu güncelleme fonksiyonu - Geliştirilmiş güvenlik ve doğruluk
@@ -887,242 +1146,6 @@ function AdminPageComponent() {
       console.error("Rezervasyon güncellenirken bir hata oluştu:", error);
       toast.error("Rezervasyon güncellenirken beklenmeyen bir hata oluştu.");
     }
-  };
-
-  // Sağ paneli kapat
-  const closeRightSidebar = () => {
-    setIsRightSidebarOpen(false);
-    setSelectedReservation(null);
-  };
-
-  // Masa kapasitesi kontrolü - belirli bir masanın misafir sayısı için yeterli olup olmadığını kontrol eder
-  const isTableCapacitySufficient = (
-    tableId: string,
-    guestCount: number
-  ): boolean => {
-    const table = tables.find((t) => t.id === tableId);
-    if (!table) return false;
-    return table.capacity >= guestCount;
-  };
-
-  // Birleştirilebilecek masaları bul - yakındaki boş ve yeterli kapasiteye sahip masaları döndürür
-  const findMergableTables = (
-    tableId: string,
-    guestCount: number
-  ): TableType[] => {
-    const currentTable = tables.find((t) => t.id === tableId);
-    if (!currentTable) return [];
-
-    // Aynı kategorideki masaları bul
-    const tablesInSameCategory = tables.filter(
-      (t) =>
-        t.id !== tableId &&
-        t.categoryId === currentTable.categoryId &&
-        t.capacity + currentTable.capacity >= guestCount
-    );
-
-    // Masaları uzaklığa göre filtrele (örnek: aynı bölgedeki masalar)
-    // Bu basit bir implementasyon - daha karmaşık bir yakınlık algoritması gerekebilir
-    return tablesInSameCategory.slice(0, 3); // Sadece ilk 3 uygun masayı öner
-  };
-
-  // Masa ve zaman çakışma kontrolü
-  const hasTableConflict = (
-    tableId: string,
-    startTime: string,
-    endTime: string,
-    excludeReservationId?: string
-  ): boolean => {
-    const reservationsForTable = reservations.filter(
-      (r) =>
-        r.tableId === tableId &&
-        (excludeReservationId ? r.id !== excludeReservationId : true)
-    );
-
-    // Başlangıç ve bitiş zamanlarını karşılaştır
-    const newStartTime = new Date(startTime).getTime();
-    const newEndTime = new Date(endTime).getTime();
-
-    // Herhangi bir çakışma var mı kontrol et
-    return reservationsForTable.some((r) => {
-      const existingStartTime = new Date(r.startTime).getTime();
-      const existingEndTime = new Date(r.endTime).getTime();
-
-      // Çakışma kontrolü
-      // Eğer yeni rezervasyon başlangıcı, mevcut rezervasyonun bitiş zamanından önce
-      // VE yeni rezervasyon bitişi, mevcut rezervasyonun başlangıç zamanından sonra ise
-      // bu bir çakışma demektir.
-      return (
-        (newStartTime < existingEndTime && newEndTime > existingStartTime) ||
-        (existingStartTime < newEndTime && existingEndTime > newStartTime)
-      );
-    });
-  };
-
-  // Aktif rezervasyon formlarını izle ve görüntüle
-  const [activeForms, setActiveForms] = useState<
-    {
-      id: string;
-      customerName: string;
-      startTime: string;
-      tableId?: string;
-      guestCount: number;
-      lastActivity: Date;
-      status: "filling_form" | "selecting_table" | "completing";
-    }[]
-  >([]);
-
-  // Socket.IO bağlantısı
-  useEffect(() => {
-    // SSR/SSG sırasında çalıştırma
-    if (typeof window === "undefined") return;
-
-    // Test verileri
-    // Gerçek uygulamada buraya Socket.IO bağlantısı yapılır
-    const demoCustomers = [
-      {
-        id: `session_${Date.now()}_1`,
-        customerName: "Ali Yılmaz",
-        startTime: "19:00",
-        guestCount: 3,
-        lastActivity: new Date(),
-        status: "filling_form" as const,
-      },
-      {
-        id: `session_${Date.now()}_2`,
-        customerName: "Ayşe Demir",
-        startTime: "20:30",
-        guestCount: 2,
-        lastActivity: new Date(),
-        status: "selecting_table" as const,
-      },
-    ];
-
-    // Önce test verilerini göster
-    setActiveForms(demoCustomers);
-
-    // Periyodik olarak yeni müşteri ekleme simülasyonu (Socket.IO yerine)
-    const interval = setInterval(() => {
-      const randomCustomer = {
-        id: `session_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
-        customerName: [
-          "Mehmet Kaya",
-          "Zeynep Şahin",
-          "Emre Yıldız",
-          "Seda Öztürk",
-        ][Math.floor(Math.random() * 4)],
-        startTime: ["18:00", "19:00", "20:00", "21:00"][
-          Math.floor(Math.random() * 4)
-        ],
-        guestCount: Math.floor(Math.random() * 6) + 1,
-        lastActivity: new Date(),
-        status: ["filling_form", "selecting_table", "completing"][
-          Math.floor(Math.random() * 3)
-        ] as "filling_form" | "selecting_table" | "completing",
-      };
-
-      // Rastgele yeni müşteri ekle veya mevcut müşterilerden birini kaldır
-      if (Math.random() > 0.3) {
-        setActiveForms((prev) => [...prev.slice(-4), randomCustomer]); // Max 5 müşteri göster
-      } else if (activeForms.length > 0) {
-        // Rastgele bir müşteriyi kaldır
-        const randomIndex = Math.floor(Math.random() * activeForms.length);
-        setActiveForms((prev) => prev.filter((_, i) => i !== randomIndex));
-      }
-    }, 15000); // 15 saniyede bir güncelle
-
-    return () => clearInterval(interval);
-  }, []);
-
-  // Ana içeriğe başlamadan önce aktif rezervasyonları göster
-  const ActiveReservations = () => {
-    if (activeForms.length === 0) return null;
-
-    return (
-      <div className="fixed right-4 top-24 z-50 space-y-3 pointer-events-none">
-        {activeForms.map((form, index) => (
-          <div
-            key={form.id}
-            className="bg-white rounded-lg shadow-lg p-4 w-72 pointer-events-auto animate-slideInRight"
-            style={{
-              animationDelay: `${index * 0.2}s`,
-              borderLeft: `4px solid ${
-                form.status === "filling_form"
-                  ? "#3B82F6"
-                  : form.status === "selecting_table"
-                  ? "#10B981"
-                  : "#F59E0B"
-              }`,
-            }}
-          >
-            <div className="flex justify-between items-start mb-1">
-              <h4 className="font-medium text-gray-800">
-                {form.customerName || "Yeni Müşteri"}
-              </h4>
-              <span
-                className={`text-xs px-2 py-1 rounded-full ${
-                  form.status === "filling_form"
-                    ? "bg-blue-100 text-blue-800"
-                    : form.status === "selecting_table"
-                    ? "bg-green-100 text-green-800"
-                    : "bg-yellow-100 text-yellow-800"
-                }`}
-              >
-                {form.status === "filling_form"
-                  ? "Form Dolduruyor"
-                  : form.status === "selecting_table"
-                  ? "Masa Seçiyor"
-                  : "Tamamlanıyor"}
-              </span>
-            </div>
-            <div className="text-gray-600 text-sm">
-              <div className="flex justify-between mb-1">
-                <span>Saat:</span>
-                <span>{form.startTime || "Henüz seçilmedi"}</span>
-              </div>
-              <div className="flex justify-between mb-1">
-                <span>Kişi:</span>
-                <span>{form.guestCount || "?"}</span>
-              </div>
-              <div className="flex justify-between text-xs text-gray-500">
-                <span>Son aktivite:</span>
-                <span>
-                  {form.lastActivity
-                    ? new Date(form.lastActivity).toLocaleTimeString()
-                    : "-"}
-                </span>
-              </div>
-            </div>
-
-            <div className="mt-3 flex justify-end space-x-2">
-              <button
-                onClick={() => {
-                  // Yeni sekmede ilgili formu aç (gerçek uygulamada)
-                  toast.success(
-                    `${form.customerName} müşterisinin rezervasyonu görüntüleniyor`
-                  );
-                }}
-                className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-gray-700"
-              >
-                Görüntüle
-              </button>
-              <button
-                onClick={() => {
-                  // Bu müşteriyi listeden kaldır
-                  setActiveForms((prev) =>
-                    prev.filter((f) => f.id !== form.id)
-                  );
-                  toast.success("Bildirim kapatıldı");
-                }}
-                className="text-xs px-2 py-1 bg-red-50 hover:bg-red-100 rounded text-red-700"
-              >
-                Kapat
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-    );
   };
 
   return (
@@ -1357,7 +1380,8 @@ function AdminPageComponent() {
                               return (
                                 <div
                                   key={reservation.id}
-                                  className="absolute rounded-sm cursor-pointer pointer-events-auto h-10 mt-2 flex items-center overflow-visible simple-tooltip"
+                                  id={`reservation-${reservation.id}`}
+                                  className="absolute rounded-sm cursor-pointer pointer-events-auto h-10 mt-2 flex items-center overflow-visible"
                                   style={{
                                     left: position.left,
                                     width: position.width,
@@ -1375,6 +1399,14 @@ function AdminPageComponent() {
                                   data-reservation-id={reservation.id}
                                   data-table-id={reservation.tableId}
                                   data-time={`${reservation.startTime}-${reservation.endTime}`}
+                                  onMouseEnter={() => {
+                                    // Hover işlevi ekle
+                                    handleReservationHover(reservation);
+                                  }}
+                                  onMouseLeave={() => {
+                                    // Mouse çıkınca kontrol et
+                                    handleReservationLeave();
+                                  }}
                                   onMouseOver={(e) => {
                                     e.currentTarget.style.boxShadow =
                                       "0 4px 8px rgba(0,0,0,0.25)";
@@ -1387,9 +1419,11 @@ function AdminPageComponent() {
                                     e.currentTarget.style.transform =
                                       "translateY(0px)";
                                   }}
-                                  onClick={() =>
-                                    handleReservationClick(reservation)
-                                  }
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleReservationClick(reservation);
+                                    setSidebarClicked(true); // Tıklandığında sidebar'ı açık tut
+                                  }}
                                 >
                                   {/* Sol tutamaç */}
                                   <div className="absolute left-0 top-0 h-full w-2 cursor-ew-resize opacity-0 hover:opacity-100 bg-white bg-opacity-20"></div>
@@ -1400,62 +1434,6 @@ function AdminPageComponent() {
                                     </div>
                                     <div className="text-white text-opacity-90 text-[11px]">
                                       {reservation.guestCount} kişi
-                                    </div>
-                                  </div>
-
-                                  {/* Basit tooltip */}
-                                  <div className="tooltip-content">
-                                    <div className="tooltip-row">
-                                      <span>Saat:</span>
-                                      <span>
-                                        {reservation.startTime} -{" "}
-                                        {reservation.endTime}
-                                      </span>
-                                    </div>
-                                    <div className="tooltip-row">
-                                      <span>Durum:</span>
-                                      <span
-                                        className={
-                                          reservation.status === "confirmed"
-                                            ? "text-green-600"
-                                            : reservation.status === "cancelled"
-                                            ? "text-red-600"
-                                            : "text-amber-600"
-                                        }
-                                      >
-                                        {reservation.status === "confirmed"
-                                          ? "Onaylandı"
-                                          : reservation.status === "cancelled"
-                                          ? "İptal Edildi"
-                                          : "Beklemede"}
-                                      </span>
-                                    </div>
-                                    {reservation.staffIds &&
-                                      reservation.staffIds.length > 0 && (
-                                        <div className="tooltip-row">
-                                          <span>Garsonlar:</span>
-                                          <span>
-                                            {reservation.staffIds
-                                              .map((staffId) => {
-                                                const staffMember = staff.find(
-                                                  (s) => s.id === staffId
-                                                );
-                                                return staffMember
-                                                  ? staffMember.name
-                                                  : "";
-                                              })
-                                              .join(", ")}
-                                          </span>
-                                        </div>
-                                      )}
-                                    {reservation.note && (
-                                      <div className="tooltip-row">
-                                        <span>Not:</span>
-                                        <span>{reservation.note}</span>
-                                      </div>
-                                    )}
-                                    <div className="tooltip-id">
-                                      ID: {reservation.id}
                                     </div>
                                   </div>
 
@@ -1509,7 +1487,11 @@ function AdminPageComponent() {
 
         {/* Sağ kenar çubuğu - Rezervasyon detayları ve düzenleme */}
         {isRightSidebarOpen && selectedReservation && (
-          <div className="w-96 bg-white border-l border-gray-200 h-full overflow-y-auto flex flex-col">
+          <div
+            className="w-96 bg-white border-l border-gray-200 h-full overflow-y-auto flex flex-col"
+            onClick={handleSidebarClick} // Sidebar'a tıklama işlevi
+            onMouseEnter={() => setSidebarClicked(true)} // Mouse sidebar'a girdiğinde de açık tut
+          >
             <div className="p-4 border-b border-gray-200 flex justify-between items-center">
               <h2 className="text-lg font-semibold">Rezervasyon Detayları</h2>
               <button
@@ -2049,168 +2031,20 @@ function AdminPageComponent() {
           animation: slideInRight 0.5s ease-out forwards;
         }
 
-        /* Basit tooltip stili */
-        .simple-tooltip {
-          position: relative;
-        }
-
-        .simple-tooltip .tooltip-content {
-          display: none;
-          position: absolute;
-          min-width: 220px;
-          padding: 12px;
-          background-color: white;
-          border-radius: 8px;
-          box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-          border: 1px solid #e5e7eb;
-          z-index: 9999;
-          color: #374151;
-        }
-
-        /* Ekranın sol tarafındaki rezervasyonlar için sağa doğru açılan tooltip */
-        .simple-tooltip:has([style*="left: 0px"]) .tooltip-content,
-        .simple-tooltip:has([style*="left: ${CELL_WIDTH}px"]) .tooltip-content,
-        .simple-tooltip:has([style*="left: ${CELL_WIDTH * 2}px"])
-          .tooltip-content {
-          left: 100%;
-          top: 0;
-          margin-left: 10px;
-        }
-
-        /* Ekranın sol tarafındaki rezervasyonlar için ok */
-        .simple-tooltip:has([style*="left: 0px"]) .tooltip-content::before,
-        .simple-tooltip:has([style*="left: ${CELL_WIDTH}px"])
-          .tooltip-content::before,
-        .simple-tooltip:has([style*="left: ${CELL_WIDTH * 2}px"])
-          .tooltip-content::before {
-          content: "";
-          position: absolute;
-          top: 10px;
-          left: -6px;
-          width: 12px;
-          height: 12px;
-          background-color: white;
-          transform: rotate(45deg);
-          border-left: 1px solid #e5e7eb;
-          border-bottom: 1px solid #e5e7eb;
-        }
-
-        /* Ekranın sağ tarafındaki rezervasyonlar için sola doğru açılan tooltip */
-        .simple-tooltip:has([style*="left: ${CELL_WIDTH * 10}px"])
-          .tooltip-content,
-        .simple-tooltip:has([style*="left: ${CELL_WIDTH * 11}px"])
-          .tooltip-content,
-        .simple-tooltip:has([style*="left: ${CELL_WIDTH * 12}px"])
-          .tooltip-content {
-          right: 100%;
-          top: 0;
-          margin-right: 10px;
-        }
-
-        /* Ekranın sağ tarafındaki rezervasyonlar için ok */
-        .simple-tooltip:has([style*="left: ${CELL_WIDTH * 10}px"])
-          .tooltip-content::before,
-        .simple-tooltip:has([style*="left: ${CELL_WIDTH * 11}px"])
-          .tooltip-content::before,
-        .simple-tooltip:has([style*="left: ${CELL_WIDTH * 12}px"])
-          .tooltip-content::before {
-          content: "";
-          position: absolute;
-          top: 10px;
-          right: -6px;
-          width: 12px;
-          height: 12px;
-          background-color: white;
-          transform: rotate(45deg);
-          border-right: 1px solid #e5e7eb;
-          border-top: 1px solid #e5e7eb;
-        }
-
-        /* Varsayılan (orta) rezervasyonlar için aşağıya doğru açılan tooltip */
-        .simple-tooltip:not(:has([style*="left: 0px"])):not(
-            :has([style*="left: ${CELL_WIDTH}px"])
-          ):not(:has([style*="left: ${CELL_WIDTH * 2}px"])):not(
-            :has([style*="left: ${CELL_WIDTH * 10}px"])
-          ):not(:has([style*="left: ${CELL_WIDTH * 11}px"])):not(
-            :has([style*="left: ${CELL_WIDTH * 12}px"])
-          )
-          .tooltip-content {
-          top: 100%;
-          left: 0;
-          margin-top: 10px;
-        }
-
-        /* Varsayılan (orta) rezervasyonlar için ok */
-        .simple-tooltip:not(:has([style*="left: 0px"])):not(
-            :has([style*="left: ${CELL_WIDTH}px"])
-          ):not(:has([style*="left: ${CELL_WIDTH * 2}px"])):not(
-            :has([style*="left: ${CELL_WIDTH * 10}px"])
-          ):not(:has([style*="left: ${CELL_WIDTH * 11}px"])):not(
-            :has([style*="left: ${CELL_WIDTH * 12}px"])
-          )
-          .tooltip-content::before {
-          content: "";
-          position: absolute;
-          top: -6px;
-          left: 20px;
-          width: 12px;
-          height: 12px;
-          background-color: white;
-          transform: rotate(45deg);
-          border-left: 1px solid #e5e7eb;
-          border-top: 1px solid #e5e7eb;
-        }
-
-        /* Son satırdaki rezervasyonlar için yukarıya doğru açılan tooltip */
-        .simple-tooltip.bottom-row .tooltip-content {
-          bottom: 100%;
-          top: auto;
-          margin-bottom: 10px;
-        }
-
-        /* Son satırdaki rezervasyonlar için ok */
-        .simple-tooltip.bottom-row .tooltip-content::before {
-          top: auto !important;
-          bottom: -6px !important;
-          border: none;
-          border-right: 1px solid #e5e7eb;
-          border-bottom: 1px solid #e5e7eb;
-        }
-
-        /* Tooltip görünürlüğü - hover */
-        .simple-tooltip:hover .tooltip-content {
-          display: block;
-        }
-
-        /* Tooltip içerik stilleri */
-        .tooltip-row {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 20px;
-          margin-bottom: 12px;
-          font-size: 14px;
-        }
-
-        .tooltip-id {
-          margin-top: 10px;
-          padding-top: 10px;
-          border-top: 1px solid #e5e7eb;
-          font-size: 12px;
-          color: #6b7280;
-        }
-
-        /* Durum renkleri */
-        .text-green-600 {
-          color: #059669;
-          font-weight: 500;
-        }
-
-        .text-amber-600 {
-          color: #d97706;
-          font-weight: 500;
+        /* Animasyon */
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+            transform: scale(0.95);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1);
+          }
         }
       `}</style>
+
+      {/* Tooltip ile ilgili hiçbir şey yok artık */}
     </div>
   );
 }

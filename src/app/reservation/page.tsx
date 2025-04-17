@@ -80,20 +80,50 @@ export default function ReservationPage() {
     `session_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
   );
 
-  // Mock veri yükleme
+  // Mock veri yükleme yerine gerçek API isteği
   useEffect(() => {
-    // Gerçek uygulamada burada API'den veri çekilir
-    setTimeout(() => {
-      setAvailableTables([
-        { id: "t1", number: 1, capacity: 2, location: "TERAS" },
-        { id: "t2", number: 2, capacity: 4, location: "TERAS" },
-        { id: "b1", number: 6, capacity: 2, location: "BAHÇE" },
-        { id: "b2", number: 7, capacity: 4, location: "BAHÇE" },
-        { id: "i1", number: 10, capacity: 2, location: "İÇ SALON" },
-        { id: "i4", number: 13, capacity: 8, location: "İÇ SALON" },
-      ]);
-    }, 1000);
-  }, []);
+    // Form aktif değilse API'ye istek atma
+    if (!formActive) return;
+
+    const fetchAvailableTables = async () => {
+      try {
+        // API'den müsait masaları getir
+        const response = await fetch(
+          `/api/tables/available?date=${formData.date}&time=${formData.startTime}&guests=${formData.guestCount}`
+        );
+
+        if (!response.ok) {
+          throw new Error("Masalar getirilemedi");
+        }
+
+        const data = await response.json();
+
+        if (data.success) {
+          setAvailableTables(data.tables || []);
+        } else {
+          toast.error("Müsait masa bulunamadı");
+          setAvailableTables([]);
+        }
+      } catch (error) {
+        console.error("Masalar yüklenirken hata:", error);
+        toast.error(
+          "Masa bilgileri yüklenemedi. Lütfen daha sonra tekrar deneyin."
+        );
+        setAvailableTables([]);
+      }
+    };
+
+    // 1. adımdan 2. adıma geçildiğinde masaları getir
+    if (currentStep === 2) {
+      fetchAvailableTables();
+    }
+  }, [
+    formData.date,
+    formData.startTime,
+    formData.guestCount,
+    currentStep,
+    formActive,
+  ]);
 
   useEffect(() => {
     // Form etkinleştirildiğinde WebSocket üzerinden admin paneline bildirim gönder
@@ -109,23 +139,35 @@ export default function ReservationPage() {
     };
   }, [formActive, formData]);
 
-  // Form alanı değiştiğinde admin paneline bildirim gönder (gerçekte WebSocket kullanılır)
-  const sendFormActivity = () => {
-    // Burada WebSocket bağlantısı yapılır ve veri gönderilir
-    console.log("Form aktivitesi bildiriliyor:", {
+  // Form alanı değiştiğinde admin paneline bildirim gönder
+  const sendFormActivity = (
+    status: "filling_form" | "selecting_table" | "completing" = "filling_form"
+  ) => {
+    // Gerçek uygulamada WebSocket bağlantısı yapılır ve veri gönderilir
+    // Bu fonksiyon örnek olarak sunulmuştur, gerçek implementasyon farklı olabilir
+
+    // WebSocket örneği:
+    // if (socket && socket.connected) {
+    //   socket.emit('reservation:activity', {
+    //     sessionId: formSessionId,
+    //     customerName: formData.customerName || "İsimsiz müşteri",
+    //     guestCount: formData.guestCount,
+    //     startTime: formData.startTime,
+    //     date: formData.date,
+    //     status: status,
+    //     timestamp: new Date().toISOString()
+    //   });
+    // }
+
+    console.log(`Form aktivitesi: ${status}`, {
       sessionId: formSessionId,
-      customerData: {
-        name: formData.customerName || "İsimsiz müşteri",
-        guests: formData.guestCount,
-        time: formData.startTime,
-        date: formData.date,
-      },
-      status: "form_active",
+      customerName: formData.customerName || "İsimsiz müşteri",
+      guestCount: formData.guestCount,
+      startTime: formData.startTime,
+      date: formData.date,
+      status: status,
       timestamp: new Date().toISOString(),
     });
-
-    // Admin panelinde gösterilecek animasyon için
-    // Burada normalde WebSocket mesajı gönderilir
   };
 
   // Form terk edildiğinde veya iptal edildiğinde bildirim
@@ -166,16 +208,43 @@ export default function ReservationPage() {
   };
 
   // Rezervasyon gönderimi
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async () => {
     setIsLoading(true);
 
     try {
       // Admin paneline rezervasyon başlatıldı bildirimi
-      console.log("Rezervasyon başlatılıyor...");
+      sendFormActivity("completing");
 
-      // API isteği simülasyonu
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      // API isteği hazırla
+      const reservationData = {
+        customer: {
+          name: formData.customerName,
+          email: formData.email,
+          phone: formData.phone,
+        },
+        date: formData.date,
+        startTime: formData.startTime,
+        endTime: formData.endTime,
+        guestCount: formData.guestCount,
+        tablePreference: formData.tablePreference,
+        specialRequests: formData.specialRequests,
+        sessionId: formSessionId,
+      };
+
+      // API'ye gönder
+      const response = await fetch("/api/reservations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(reservationData),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Rezervasyon oluşturulamadı");
+      }
 
       // Başarılı rezervasyon
       toast.success("Rezervasyonunuz başarıyla oluşturuldu!");
@@ -184,7 +253,11 @@ export default function ReservationPage() {
       setCurrentStep(3); // Son adım: Onay
       setFormActive(false);
     } catch (error) {
-      toast.error("Rezervasyon oluşturulurken bir hata oluştu!");
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Rezervasyon oluşturulurken bir hata oluştu";
+      toast.error(errorMessage);
       console.error("Rezervasyon hatası:", error);
     } finally {
       setIsLoading(false);
