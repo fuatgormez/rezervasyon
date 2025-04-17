@@ -726,60 +726,144 @@ function AdminPageComponent() {
     string | null
   >(null);
 
-  // Rezervasyon hover durumunda
+  // Boş hücre için hover state'i - ARTIK GEREKLİ DEĞİL, KALDIRIYORUZ
+  // const [hoveredEmptyCell, setHoveredEmptyCell] = useState<{tableId: string, hour: string} | null>(null);
+
+  // Rezervasyon hover durumunda - Sadece rezervasyon kartları için
   const handleReservationHover = (reservation: ReservationType) => {
+    // Eğer sidebar tıklama ile açık durumdaysa, hover özelliğini devre dışı bırak
+    if (sidebarClicked) return;
+
     // Hover edilen rezervasyon ID'sini güncelle
     setHoveredReservationId(reservation.id);
 
-    // Eğer bir zamanlayıcı varsa temizleyelim
-    if (hoverTimeoutRef.current) {
-      clearTimeout(hoverTimeoutRef.current);
-      hoverTimeoutRef.current = null;
-    }
-
-    // Hover durumunda daima seçili rezervasyonu güncelle
+    // Hover durumunda seçili rezervasyonu güncelle
     setSelectedReservation(reservation);
 
-    // Sidebar kapalıysa aç
-    if (!isRightSidebarOpen) {
-      setIsRightSidebarOpen(true);
-      setSidebarOpenedByHover(true);
-    } else {
-      // Sidebar açıksa ve hover ile açıldıysa, hover durumunu koru
-      if (sidebarOpenedByHover) {
-        setSidebarOpenedByHover(true);
-      }
+    // Sidebar'ı hemen aç
+    setIsRightSidebarOpen(true);
+    setSidebarOpenedByHover(true);
+  };
+
+  // Hover durumu bittiğinde - Hemen kapat
+  const handleReservationLeave = () => {
+    // Hover edilen rezervasyon ID'sini temizle
+    setHoveredReservationId(null);
+
+    // Eğer sidebar hover ile açıldıysa, hemen kapat (bekleme yok)
+    if (sidebarOpenedByHover && !sidebarClicked) {
+      setIsRightSidebarOpen(false);
+      setSidebarOpenedByHover(false);
     }
   };
 
-  // Hover durumu bittiğinde - reservationId parametresini kullanıyoruz
-  const handleReservationLeave = (reservationId: string) => {
-    // Eğer parametrenin ID'si, şu anki hover id'si ile aynıysa temizle
-    if (hoveredReservationId === reservationId) {
-      setHoveredReservationId(null);
+  // Boş hücreye tıklandığında - Yeni rezervasyon oluşturmak için özelliği koruyoruz
+  const handleEmptyCellClick = (tableId: string, hour: string) => {
+    // Masayı bul
+    const table = tables.find((t) => t.id === tableId);
+    if (!table) {
+      toast.error("Masa bulunamadı!");
+      return;
     }
 
-    // Eğer sidebar hover ile açıldıysa, kapanma için gecikme ekle
-    if (sidebarOpenedByHover && !sidebarClicked) {
-      // Varsa önceki zamanlayıcıyı temizle
-      if (hoverTimeoutRef.current) {
-        clearTimeout(hoverTimeoutRef.current);
-      }
-
-      // Yeni bir zamanlayıcı oluştur
-      hoverTimeoutRef.current = setTimeout(() => {
-        // Hâlâ hover durumunda değilse kapat
-        if (
-          sidebarOpenedByHover &&
-          !sidebarClicked &&
-          hoveredReservationId === null
-        ) {
-          setIsRightSidebarOpen(false);
-          setSidebarOpenedByHover(false);
-        }
-        hoverTimeoutRef.current = null;
-      }, 700); // Geçiş için daha uzun bir süre ver
+    // Masa kapasitesi kontrolü
+    if (table.capacity < 2) {
+      toast.error("Bu masa rezervasyon için çok küçük!");
+      return;
     }
+
+    // Bu masa ve saatte işlem yapılıyor mu kontrol et
+    const isTableBeingProcessed = activeForms.some(
+      (form) => form.tableId === tableId && form.startTime === hour
+    );
+
+    if (isTableBeingProcessed) {
+      toast.error("Bu masa ve saat için başka bir işlem devam ediyor!");
+      return;
+    }
+
+    // Çakışma kontrolü
+    const conflict = reservations.some(
+      (res) =>
+        res.tableId === tableId &&
+        hasTimeOverlap(
+          hour,
+          `${parseInt(hour) + 1}:00`,
+          res.startTime,
+          res.endTime
+        )
+    );
+
+    if (conflict) {
+      toast.error("Bu masa ve saatte zaten bir rezervasyon var!");
+      return;
+    }
+
+    // Varsayımsal rezervasyon oluştur
+    const tempReservation: ReservationType = {
+      id: "temp",
+      tableId: tableId,
+      customerName: "",
+      guestCount: 2, // Varsayılan 2 kişi
+      startTime: hour,
+      endTime: `${parseInt(hour) + 1}:00`, // 1 saat süre varsayılan
+      status: "pending",
+    };
+
+    // Yeni bir işlem ekle
+    // WebSocket ile diğer kullanıcılara bildir
+    const newForm = {
+      id: `form-${Date.now()}`,
+      tableId,
+      startTime: hour,
+      customerName: "Yeni Müşteri",
+      guestCount: 2,
+      lastActivity: new Date(),
+      status: "filling_form" as
+        | "filling_form"
+        | "selecting_table"
+        | "completing",
+    };
+
+    // Aktif formlar listesine ekle
+    setActiveForms((prev) => [...prev, newForm]);
+
+    // Rezervasyonu seç
+    setSelectedReservation(tempReservation);
+
+    // Sidebar'ı aç
+    setIsRightSidebarOpen(true);
+    setSidebarClicked(true);
+    setSidebarOpenedByHover(false);
+  };
+
+  // Rezervasyon zamanları çakışma kontrolü
+  const hasTimeOverlap = (
+    start1: string,
+    end1: string,
+    start2: string,
+    end2: string
+  ): boolean => {
+    // Saatleri dakikaya çevir
+    const convertTimeToMinutes = (time: string): number => {
+      const [hours, minutes] = time.split(":").map(Number);
+      return hours * 60 + minutes;
+    };
+
+    const start1Min = convertTimeToMinutes(start1);
+    const end1Min = convertTimeToMinutes(end1);
+    const start2Min = convertTimeToMinutes(start2);
+    const end2Min = convertTimeToMinutes(end2);
+
+    // Gece yarısını geçen rezervasyonlar için düzeltme
+    const adjustedEnd1Min = end1Min <= start1Min ? end1Min + 24 * 60 : end1Min;
+    const adjustedEnd2Min = end2Min <= start2Min ? end2Min + 24 * 60 : end2Min;
+
+    // Çakışma kontrolü: iki zaman aralığı çakışıyorsa true döndür
+    return (
+      (start1Min < adjustedEnd2Min && adjustedEnd1Min > start2Min) ||
+      (start2Min < adjustedEnd1Min && adjustedEnd2Min > start1Min)
+    );
   };
 
   // Sidebar tıklama durumu
@@ -859,7 +943,7 @@ function AdminPageComponent() {
     if (activeForms.length === 0) return null;
 
     return (
-      <div className="fixed right-4 top-24 z-50 space-y-3 pointer-events-none">
+      <div className="fixed right-4 top-4 z-50 space-y-3 pointer-events-none">
         {activeForms.map((form, index) => (
           <div
             key={form.id}
@@ -1414,6 +1498,9 @@ function AdminPageComponent() {
                               }}
                               data-hour={hour}
                               data-table={table.number}
+                              onClick={() =>
+                                handleEmptyCellClick(table.id, hour)
+                              }
                             ></div>
                           ))}
                         </div>
@@ -1460,10 +1547,7 @@ function AdminPageComponent() {
                                     // Hover işlevi ekle
                                     handleReservationHover(reservation);
                                   }}
-                                  onMouseLeave={() => {
-                                    // Mouse çıkınca kontrol et
-                                    handleReservationLeave(reservation.id);
-                                  }}
+                                  onMouseLeave={handleReservationLeave}
                                   onMouseOver={(e) => {
                                     e.currentTarget.style.boxShadow =
                                       "0 4px 8px rgba(0,0,0,0.25)";
@@ -1480,6 +1564,7 @@ function AdminPageComponent() {
                                     e.stopPropagation();
                                     handleReservationClick(reservation);
                                     setSidebarClicked(true); // Tıklandığında sidebar'ı açık tut
+                                    setSidebarOpenedByHover(false); // Artık hover değil, tıklama kontrol ediyor
                                   }}
                                 >
                                   {/* Sol tutamaç */}
