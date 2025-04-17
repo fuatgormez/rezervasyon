@@ -717,39 +717,68 @@ function AdminPageComponent() {
     setIsRightSidebarOpen(true);
   };
 
+  // Hover yönetimi için global bir referans değişkeni ekleyelim
+  // Bu özellikle kartlar arası geçişlerde stabilite sağlayacak
+  const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Tüm hover işlemleri için global bir state ekleyelim
+  const [hoveredReservationId, setHoveredReservationId] = useState<
+    string | null
+  >(null);
+
   // Rezervasyon hover durumunda
   const handleReservationHover = (reservation: ReservationType) => {
-    // Eğer zaten seçili olan rezervasyon ise ve sidebar açıksa
-    // tekrar açmaya çalışma (yani hover üzerinde gezinirken tekrar çağrılmasını engelle)
-    if (selectedReservation?.id === reservation.id && isRightSidebarOpen) {
-      return;
+    // Hover edilen rezervasyon ID'sini güncelle
+    setHoveredReservationId(reservation.id);
+
+    // Eğer bir zamanlayıcı varsa temizleyelim
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
     }
 
-    // Hover durumunda sadece sidebar açık değilse aç
+    // Hover durumunda daima seçili rezervasyonu güncelle
+    setSelectedReservation(reservation);
+
+    // Sidebar kapalıysa aç
     if (!isRightSidebarOpen) {
-      setSelectedReservation(reservation);
       setIsRightSidebarOpen(true);
-      // Geçici bir hover durumu olduğunu işaretle
       setSidebarOpenedByHover(true);
+    } else {
+      // Sidebar açıksa ve hover ile açıldıysa, hover durumunu koru
+      if (sidebarOpenedByHover) {
+        setSidebarOpenedByHover(true);
+      }
     }
   };
 
-  // Hover durumu bittiğinde
-  const handleReservationLeave = () => {
-    // Eğer sidebar hover ile açıldıysa kapat
-    if (sidebarOpenedByHover) {
-      // Hover ile açılan sidebar'ı hemen kapatma
-      // Kullanıcıya zaman tanı ve mouseOver/mouseOut hızlı geçişlerini engelle
-      const timer = setTimeout(() => {
-        // Bu sürede kullanıcı sidebar'a tıklamadıysa kapat
-        if (sidebarOpenedByHover && !sidebarClicked) {
+  // Hover durumu bittiğinde - reservationId parametresini kullanıyoruz
+  const handleReservationLeave = (reservationId: string) => {
+    // Eğer parametrenin ID'si, şu anki hover id'si ile aynıysa temizle
+    if (hoveredReservationId === reservationId) {
+      setHoveredReservationId(null);
+    }
+
+    // Eğer sidebar hover ile açıldıysa, kapanma için gecikme ekle
+    if (sidebarOpenedByHover && !sidebarClicked) {
+      // Varsa önceki zamanlayıcıyı temizle
+      if (hoverTimeoutRef.current) {
+        clearTimeout(hoverTimeoutRef.current);
+      }
+
+      // Yeni bir zamanlayıcı oluştur
+      hoverTimeoutRef.current = setTimeout(() => {
+        // Hâlâ hover durumunda değilse kapat
+        if (
+          sidebarOpenedByHover &&
+          !sidebarClicked &&
+          hoveredReservationId === null
+        ) {
           setIsRightSidebarOpen(false);
           setSidebarOpenedByHover(false);
         }
-      }, 500); // Daha uzun bir gecikme
-
-      // Timer'ı değişkene atayalım ki temizleyebilelim
-      return () => clearTimeout(timer);
+        hoverTimeoutRef.current = null;
+      }, 700); // Geçiş için daha uzun bir süre ver
     }
   };
 
@@ -1148,6 +1177,33 @@ function AdminPageComponent() {
     }
   };
 
+  // Main content div için mouse leave olayı
+  const handleMainContentLeave = () => {
+    // Eğer sidebar hover ile açıldıysa ve kullanıcı tıklamadıysa
+    if (sidebarOpenedByHover && !sidebarClicked) {
+      // Varsa önceki zamanlayıcıyı temizle
+      if (hoverTimeoutRef.current) {
+        clearTimeout(hoverTimeoutRef.current);
+      }
+
+      // Yeni bir zamanlayıcı oluştur - içerik alanından tamamen çıkıldığında hemen kapat
+      hoverTimeoutRef.current = setTimeout(() => {
+        setIsRightSidebarOpen(false);
+        setSidebarOpenedByHover(false);
+        hoverTimeoutRef.current = null;
+      }, 300);
+    }
+  };
+
+  // Component unmount olduğunda timeout'u temizle
+  useEffect(() => {
+    return () => {
+      if (hoverTimeoutRef.current) {
+        clearTimeout(hoverTimeoutRef.current);
+      }
+    };
+  }, []);
+
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-gray-50 text-gray-800">
       {/* Aktif rezervasyon bildirimleri */}
@@ -1241,6 +1297,7 @@ function AdminPageComponent() {
           <div
             className="flex-1 overflow-auto hide-scrollbar relative"
             ref={gridContainerRef}
+            onMouseLeave={handleMainContentLeave}
           >
             <div
               className="relative"
@@ -1405,7 +1462,7 @@ function AdminPageComponent() {
                                   }}
                                   onMouseLeave={() => {
                                     // Mouse çıkınca kontrol et
-                                    handleReservationLeave();
+                                    handleReservationLeave(reservation.id);
                                   }}
                                   onMouseOver={(e) => {
                                     e.currentTarget.style.boxShadow =
