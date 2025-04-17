@@ -9,6 +9,7 @@ import { IoMdRefresh } from "react-icons/io";
 import { HiOutlineDotsVertical } from "react-icons/hi";
 import { FiChevronDown, FiUsers } from "react-icons/fi";
 import Link from "next/link";
+import toast from "react-hot-toast";
 
 // Bu componenti sadece tarayıcıda çalıştırılacak şekilde dinamik olarak import ediyoruz
 // SSG sırasında çalıştırılmaz
@@ -158,11 +159,23 @@ function AdminPageComponent() {
   useEffect(() => {
     // Netlify dağıtımı ve SSG aşamasında atlanacak
     if (
-      process.env.NEXT_PUBLIC_NETLIFY_DEPLOYMENT === "true" &&
-      process.env.NEXT_PUBLIC_SKIP_SSG_ADMIN === "true" &&
+      (process.env.NEXT_PUBLIC_NETLIFY_DEPLOYMENT === "true" &&
+        process.env.NEXT_PUBLIC_SKIP_SSG_ADMIN === "true") ||
       typeof window === "undefined"
     ) {
       return;
+    }
+
+    // Karşılama mesajı kontrolü - sadece oturum başına bir kez göster
+    const hasShownWelcome = sessionStorage.getItem("hasShownWelcome");
+    if (!hasShownWelcome) {
+      // Sayfa yüklendiğinde karşılama mesajı göster
+      toast.success("Rezervasyon yönetim paneline hoş geldiniz!", {
+        icon: "👋",
+        duration: 5000,
+      });
+      // Flag'i kaydet
+      sessionStorage.setItem("hasShownWelcome", "true");
     }
 
     // Sayfa yüklendiğinde mevcut zamanı ayarla
@@ -631,6 +644,9 @@ function AdminPageComponent() {
   // Rezervasyona tıklanınca işlem yap
   const handleReservationClick = (reservation: ReservationType) => {
     console.log("Rezervasyon seçildi:", reservation);
+    toast.success(
+      `${reservation.customerName} - ${reservation.startTime}-${reservation.endTime} seçildi`
+    );
   };
 
   return (

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import toast from "react-hot-toast";
 
 // Garson türü tanımı
 interface Staff {
@@ -78,6 +79,7 @@ export default function StaffManagementPage() {
     localStorage.setItem("staff", JSON.stringify(updatedStaff));
 
     resetForm();
+    toast.success("Yeni garson başarıyla eklendi!");
   };
 
   // Garson güncelleme fonksiyonu
@@ -92,6 +94,7 @@ export default function StaffManagementPage() {
     localStorage.setItem("staff", JSON.stringify(updatedStaff));
 
     resetForm();
+    toast.success("Garson bilgileri güncellendi!");
   };
 
   // Garson silme fonksiyonu
@@ -99,6 +102,7 @@ export default function StaffManagementPage() {
     const updatedStaff = staff.filter((s) => s.id !== id);
     setStaff(updatedStaff);
     localStorage.setItem("staff", JSON.stringify(updatedStaff));
+    toast.success("Garson kaydı silindi!");
   };
 
   // Form sıfırlama fonksiyonu

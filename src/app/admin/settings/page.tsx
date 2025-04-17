@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import toast from "react-hot-toast";
 
 // Masa kategorisi arayüzü güncelleniyor
 interface TableCategory {
@@ -62,21 +63,21 @@ export default function SettingsPage() {
   const saveCompanySettings = () => {
     // API çağrısı yapılacak
     localStorage.setItem("companySettings", JSON.stringify(companySettings));
-    alert("Firma ayarları kaydedildi!");
+    toast.success("Firma ayarları kaydedildi!");
   };
 
   // Masa ayarlarını kaydetmek için fonksiyon
   const saveTableSettings = () => {
     // API çağrısı yapılacak
     localStorage.setItem("tableSettings", JSON.stringify(tableSettings));
-    alert("Masa ayarları kaydedildi!");
+    toast.success("Masa ayarları kaydedildi!");
   };
 
   // Saat ayarlarını kaydetmek için fonksiyon
   const saveTimeSettings = () => {
     // API çağrısı yapılacak
     localStorage.setItem("timeSettings", JSON.stringify(timeSettings));
-    alert("Saat ayarları kaydedildi!");
+    toast.success("Saat ayarları kaydedildi!");
   };
 
   // Firma ayarlarını yüklemek için useEffect

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import toast from "react-hot-toast";
 
 // Müşteri türü tanımı
 interface Customer {
@@ -97,6 +98,7 @@ export default function CustomerManagementPage() {
     localStorage.setItem("customers", JSON.stringify(updatedCustomers));
 
     resetForm();
+    toast.success("Yeni müşteri başarıyla eklendi!");
   };
 
   // Müşteri güncelleme fonksiyonu
@@ -120,6 +122,7 @@ export default function CustomerManagementPage() {
     localStorage.setItem("customers", JSON.stringify(updatedCustomers));
 
     resetForm();
+    toast.success("Müşteri bilgileri güncellendi!");
   };
 
   // Müşteri silme fonksiyonu
@@ -127,6 +130,7 @@ export default function CustomerManagementPage() {
     const updatedCustomers = customers.filter((c) => c.id !== id);
     setCustomers(updatedCustomers);
     localStorage.setItem("customers", JSON.stringify(updatedCustomers));
+    toast.success("Müşteri kaydı silindi!");
   };
 
   // Form sıfırlama fonksiyonu
