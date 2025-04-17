@@ -959,8 +959,177 @@ function AdminPageComponent() {
     });
   };
 
+  // Aktif rezervasyon formlarını izle ve görüntüle
+  const [activeForms, setActiveForms] = useState<
+    {
+      id: string;
+      customerName: string;
+      startTime: string;
+      tableId?: string;
+      guestCount: number;
+      lastActivity: Date;
+      status: "filling_form" | "selecting_table" | "completing";
+    }[]
+  >([]);
+
+  // Socket.IO bağlantısı
+  useEffect(() => {
+    // SSR/SSG sırasında çalıştırma
+    if (typeof window === "undefined") return;
+
+    // Test verileri
+    // Gerçek uygulamada buraya Socket.IO bağlantısı yapılır
+    const demoCustomers = [
+      {
+        id: `session_${Date.now()}_1`,
+        customerName: "Ali Yılmaz",
+        startTime: "19:00",
+        guestCount: 3,
+        lastActivity: new Date(),
+        status: "filling_form" as const,
+      },
+      {
+        id: `session_${Date.now()}_2`,
+        customerName: "Ayşe Demir",
+        startTime: "20:30",
+        guestCount: 2,
+        lastActivity: new Date(),
+        status: "selecting_table" as const,
+      },
+    ];
+
+    // Önce test verilerini göster
+    setActiveForms(demoCustomers);
+
+    // Periyodik olarak yeni müşteri ekleme simülasyonu (Socket.IO yerine)
+    const interval = setInterval(() => {
+      const randomCustomer = {
+        id: `session_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+        customerName: [
+          "Mehmet Kaya",
+          "Zeynep Şahin",
+          "Emre Yıldız",
+          "Seda Öztürk",
+        ][Math.floor(Math.random() * 4)],
+        startTime: ["18:00", "19:00", "20:00", "21:00"][
+          Math.floor(Math.random() * 4)
+        ],
+        guestCount: Math.floor(Math.random() * 6) + 1,
+        lastActivity: new Date(),
+        status: ["filling_form", "selecting_table", "completing"][
+          Math.floor(Math.random() * 3)
+        ] as "filling_form" | "selecting_table" | "completing",
+      };
+
+      // Rastgele yeni müşteri ekle veya mevcut müşterilerden birini kaldır
+      if (Math.random() > 0.3) {
+        setActiveForms((prev) => [...prev.slice(-4), randomCustomer]); // Max 5 müşteri göster
+      } else if (activeForms.length > 0) {
+        // Rastgele bir müşteriyi kaldır
+        const randomIndex = Math.floor(Math.random() * activeForms.length);
+        setActiveForms((prev) => prev.filter((_, i) => i !== randomIndex));
+      }
+    }, 15000); // 15 saniyede bir güncelle
+
+    return () => clearInterval(interval);
+  }, []);
+
+  // Ana içeriğe başlamadan önce aktif rezervasyonları göster
+  const ActiveReservations = () => {
+    if (activeForms.length === 0) return null;
+
+    return (
+      <div className="fixed right-4 top-24 z-50 space-y-3 pointer-events-none">
+        {activeForms.map((form, index) => (
+          <div
+            key={form.id}
+            className="bg-white rounded-lg shadow-lg p-4 w-72 pointer-events-auto animate-slideInRight"
+            style={{
+              animationDelay: `${index * 0.2}s`,
+              borderLeft: `4px solid ${
+                form.status === "filling_form"
+                  ? "#3B82F6"
+                  : form.status === "selecting_table"
+                  ? "#10B981"
+                  : "#F59E0B"
+              }`,
+            }}
+          >
+            <div className="flex justify-between items-start mb-1">
+              <h4 className="font-medium text-gray-800">
+                {form.customerName || "Yeni Müşteri"}
+              </h4>
+              <span
+                className={`text-xs px-2 py-1 rounded-full ${
+                  form.status === "filling_form"
+                    ? "bg-blue-100 text-blue-800"
+                    : form.status === "selecting_table"
+                    ? "bg-green-100 text-green-800"
+                    : "bg-yellow-100 text-yellow-800"
+                }`}
+              >
+                {form.status === "filling_form"
+                  ? "Form Dolduruyor"
+                  : form.status === "selecting_table"
+                  ? "Masa Seçiyor"
+                  : "Tamamlanıyor"}
+              </span>
+            </div>
+            <div className="text-gray-600 text-sm">
+              <div className="flex justify-between mb-1">
+                <span>Saat:</span>
+                <span>{form.startTime || "Henüz seçilmedi"}</span>
+              </div>
+              <div className="flex justify-between mb-1">
+                <span>Kişi:</span>
+                <span>{form.guestCount || "?"}</span>
+              </div>
+              <div className="flex justify-between text-xs text-gray-500">
+                <span>Son aktivite:</span>
+                <span>
+                  {form.lastActivity
+                    ? new Date(form.lastActivity).toLocaleTimeString()
+                    : "-"}
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-3 flex justify-end space-x-2">
+              <button
+                onClick={() => {
+                  // Yeni sekmede ilgili formu aç (gerçek uygulamada)
+                  toast.success(
+                    `${form.customerName} müşterisinin rezervasyonu görüntüleniyor`
+                  );
+                }}
+                className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-gray-700"
+              >
+                Görüntüle
+              </button>
+              <button
+                onClick={() => {
+                  // Bu müşteriyi listeden kaldır
+                  setActiveForms((prev) =>
+                    prev.filter((f) => f.id !== form.id)
+                  );
+                  toast.success("Bildirim kapatıldı");
+                }}
+                className="text-xs px-2 py-1 bg-red-50 hover:bg-red-100 rounded text-red-700"
+              >
+                Kapat
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-gray-50 text-gray-800">
+      {/* Aktif rezervasyon bildirimleri */}
+      <ActiveReservations />
+
       {/* Navbar */}
       <div className="flex justify-between items-center bg-white p-4 border-b border-gray-200 shadow-sm">
         <div className="flex items-center space-x-6">
@@ -988,6 +1157,12 @@ function AdminPageComponent() {
               className="px-4 py-2 rounded-lg hover:bg-gray-100"
             >
               Müşteri Yönetimi
+            </Link>
+            <Link
+              href="/reservation"
+              className="px-4 py-2 rounded-lg hover:bg-gray-100"
+            >
+              Rezervasyon
             </Link>
           </div>
         </div>
@@ -1856,6 +2031,22 @@ function AdminPageComponent() {
         .hide-scrollbar {
           -ms-overflow-style: none;
           scrollbar-width: none;
+        }
+
+        /* Rezervasyon bildirim animasyonu */
+        @keyframes slideInRight {
+          from {
+            transform: translateX(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(0);
+            opacity: 1;
+          }
+        }
+
+        .animate-slideInRight {
+          animation: slideInRight 0.5s ease-out forwards;
         }
 
         /* Basit tooltip stili */
