@@ -694,18 +694,13 @@ function AdminPageComponent() {
           (startMinute / 60) * CELL_WIDTH;
       }
 
-      // Debug bilgisi
-      console.log(`
-        Rezervasyon: ${startTime}-${endTime}
-        Saat İndeksleri: başlangıç=${startColumnIndex}, bitiş=${endColumnIndex}
-        Grid Pozisyonu: left=${startPosition.toFixed(
-          2
-        )}px, width=${width.toFixed(2)}px
-      `);
+      // Minimum genişlik kontrolü
+      const finalWidth = Math.max(width, 80); // En az 80px genişlik
 
+      // Kartlar için kenar boşluğu hesabını burada yapalım
       return {
         left: `${startPosition}px`,
-        width: `${Math.max(width, 80)}px`, // En az 80px genişlik
+        width: `${finalWidth}px`,
       };
     } catch (error) {
       console.error("Rezervasyon pozisyonu hesaplanamadı:", error);
@@ -1766,7 +1761,7 @@ function AdminPageComponent() {
                   <div className="flex">
                     {/* Kategori adı sol tarafta */}
                     <div
-                      className="flex-shrink-0 h-10 flex items-center px-4 border-b border-r font-semibold text-gray-600 text-sm sticky left-0 z-10"
+                      className="flex-shrink-0 h-14 flex items-center px-4 border-b border-r font-semibold text-gray-600 text-sm sticky left-0 z-10"
                       style={{
                         width: `${CATEGORY_WIDTH}px`,
                         borderColor: category.borderColor,
@@ -1779,7 +1774,7 @@ function AdminPageComponent() {
 
                     {/* Saat çizelgesinde kategori başlığı için boş alan */}
                     <div
-                      className="flex-1 h-10 border-b"
+                      className="flex-1 h-14 border-b"
                       style={{
                         borderBottomColor: category.borderColor,
                         borderBottomWidth: "2px",
@@ -1798,7 +1793,7 @@ function AdminPageComponent() {
                       >
                         {/* Masa bilgisi sol tarafta - sticky yapıyoruz */}
                         <div
-                          className="flex-shrink-0 flex items-center px-4 border-r border-gray-200 sticky left-0 z-10"
+                          className="flex-shrink-0 h-14 flex items-center px-4 border-r border-gray-200 sticky left-0 z-10"
                           style={{
                             width: `${CATEGORY_WIDTH}px`,
                             backgroundColor:
@@ -1823,7 +1818,7 @@ function AdminPageComponent() {
                           {hours.map((hour) => (
                             <div
                               key={`${table.id}-${hour}`}
-                              className="border-r border-gray-200 h-full relative cursor-pointer hover:bg-blue-50"
+                              className="border-r border-gray-200 h-14 relative cursor-pointer hover:bg-blue-50"
                               style={{
                                 width: `${CELL_WIDTH}px`,
                                 backgroundColor:
@@ -1886,57 +1881,48 @@ function AdminPageComponent() {
                                 <div
                                   key={reservation.id}
                                   id={`reservation-${reservation.id}`}
-                                  className="absolute rounded-sm cursor-pointer pointer-events-auto h-10 flex items-center overflow-visible"
+                                  className="absolute rounded-md cursor-pointer pointer-events-auto flex items-center overflow-visible shadow-md hover:shadow-lg transition-all duration-200"
                                   style={{
-                                    left: position.left,
-                                    width: position.width,
-                                    top: "2px", // Üstten sadece 2px aşağıda
+                                    left: `calc(${position.left} + 1px)`,
+                                    width: `calc(${position.width} - 2px)`,
+                                    top: "1px", // Üstten 1px boşluk
+                                    height: "calc(100% - 2px)", // Alt ve üst toplam 2px boşluk
                                     backgroundColor:
                                       reservation.color || category.color,
                                     borderLeft: `4px solid ${category.borderColor}`,
-                                    boxShadow: "0 2px 4px rgba(0,0,0,0.15)",
                                     minWidth: "80px",
                                     zIndex: 5,
-                                    transformOrigin: "left center",
-                                    transition:
-                                      "box-shadow 0.2s ease-in-out, transform 0.2s ease-in-out",
+                                    borderRadius: "4px",
                                   }}
                                   data-reservation-id={reservation.id}
                                   data-table-id={reservation.tableId}
                                   data-time={`${reservation.startTime}-${reservation.endTime}`}
                                   onMouseEnter={() => {
-                                    // Hover işlevi ekle
                                     handleReservationHover(reservation);
                                   }}
                                   onMouseLeave={handleReservationLeave}
-                                  onMouseOver={(e) => {
-                                    e.currentTarget.style.boxShadow =
-                                      "0 4px 8px rgba(0,0,0,0.25)";
-                                    e.currentTarget.style.transform =
-                                      "translateY(-1px)";
-                                  }}
-                                  onMouseOut={(e) => {
-                                    e.currentTarget.style.boxShadow =
-                                      "0 2px 4px rgba(0,0,0,0.15)";
-                                    e.currentTarget.style.transform =
-                                      "translateY(0px)";
-                                  }}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleReservationClick(reservation);
-                                    setSidebarClicked(true); // Tıklandığında sidebar'ı açık tut
-                                    setSidebarOpenedByHover(false); // Artık hover değil, tıklama kontrol ediyor
+                                    setSidebarClicked(true);
+                                    setSidebarOpenedByHover(false);
                                   }}
                                 >
                                   {/* Sol tutamaç */}
                                   <div className="absolute left-0 top-0 h-full w-2 cursor-ew-resize opacity-0 hover:opacity-100 bg-white bg-opacity-20"></div>
 
-                                  <div className="px-3 py-1 text-xs truncate max-w-full text-white">
-                                    <div className="font-medium">
+                                  <div className="px-3 py-0 text-xs truncate max-w-full text-white h-full flex flex-col justify-center">
+                                    <div className="font-semibold whitespace-nowrap overflow-hidden text-ellipsis">
                                       {reservation.customerName}
                                     </div>
-                                    <div className="text-white text-opacity-90 text-[11px]">
-                                      {reservation.guestCount} kişi
+                                    <div className="text-white text-opacity-95 text-[11px] flex items-center mt-1">
+                                      <span className="mr-1">
+                                        {reservation.startTime}-
+                                        {reservation.endTime}
+                                      </span>
+                                      <span className="bg-white bg-opacity-30 px-1 rounded text-[10px]">
+                                        {reservation.guestCount} kişi
+                                      </span>
                                     </div>
                                   </div>
 
