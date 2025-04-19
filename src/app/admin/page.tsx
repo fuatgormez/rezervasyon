@@ -1586,6 +1586,113 @@ function AdminPageComponent() {
     };
   }, []);
 
+  // Ana içerik bölümüne zoom durumu için state değişkenleri ekleyelim
+  const [zoomLevel, setZoomLevel] = useState<number>(100); // Yüzde olarak zoom seviyesi
+  const maxZoom = 200; // Maksimum zoom seviyesi
+  const minZoom = 50; // Minimum zoom seviyesi
+
+  // Grid scroll pozisyonunu merkeze getiren fonksiyon
+  const centerGridScroll = () => {
+    if (gridContainerRef.current) {
+      const gridContainer = gridContainerRef.current;
+      const gridContent = gridContainer.querySelector("div");
+
+      if (gridContent) {
+        // İçeriğin boyutları
+        const contentWidth = gridContent.scrollWidth;
+        const contentHeight = gridContent.scrollHeight;
+
+        // Görünüm alanı boyutları
+        const viewportWidth = gridContainer.clientWidth;
+        const viewportHeight = gridContainer.clientHeight;
+
+        // Merkez noktayı hesapla
+        const scrollLeftCenter = (contentWidth - viewportWidth) / 2;
+        const scrollTopCenter = (contentHeight - viewportHeight) / 2;
+
+        // Scroll pozisyonunu ayarla
+        gridContainer.scrollLeft = scrollLeftCenter;
+        gridContainer.scrollTop = scrollTopCenter;
+      }
+    }
+  };
+
+  // Zoom işlemlerini gerçekleştirecek fonksiyonlar
+  const handleZoomIn = () => {
+    setZoomLevel((prev) => {
+      const newZoomLevel = Math.min(prev + 10, maxZoom);
+      // Grid container scroll pozisyonunu ayarla
+      setTimeout(() => centerGridScroll(), 10);
+      return newZoomLevel;
+    });
+  };
+
+  const handleZoomOut = () => {
+    setZoomLevel((prev) => {
+      const newZoomLevel = Math.max(prev - 10, minZoom);
+      // Grid container scroll pozisyonunu ayarla
+      setTimeout(() => centerGridScroll(), 10);
+      return newZoomLevel;
+    });
+  };
+
+  const handleZoomReset = () => {
+    setZoomLevel(100);
+    // Varsayılan zoom'da scroll'u sıfırla
+    if (gridContainerRef.current) {
+      gridContainerRef.current.scrollLeft = 0;
+      gridContainerRef.current.scrollTop = 0;
+    }
+  };
+
+  const handleZoomChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newZoomLevel = parseInt(e.target.value);
+    setZoomLevel(newZoomLevel);
+    // Zoom değişikliği sonrası scroll pozisyonunu ayarla
+    setTimeout(() => centerGridScroll(), 10);
+  };
+
+  // Zoom seviyesini uygula
+  useEffect(() => {
+    if (gridContainerRef.current) {
+      // Ref'i daha kolay kullanmak için değişkene atayalım
+      const gridContainer = gridContainerRef.current;
+
+      // Grid içeriğinin container'ını bulalım
+      const gridContent = gridContainer.querySelector("div");
+      if (gridContent) {
+        // Transform origin'i ortaya alalım ki zoom merkeze göre yapılsın
+        gridContent.style.transformOrigin = "center";
+        gridContent.style.transform = `scale(${zoomLevel / 100})`;
+
+        // Minimum genişliği belirleyerek, küçültme durumunda bile tüm içeriğin görünmesini sağlayalım
+        if (zoomLevel < 100) {
+          // Eğer küçültüyorsak, içeriğin tamamen görünür olması için min-width verilebilir
+          gridContent.style.minWidth = "100%";
+        } else {
+          // Grid content genişliği en az viewportun %100'ü kadar olsun
+          gridContent.style.minWidth = `${zoomLevel}%`;
+        }
+
+        // Büyültme durumunda gridContainer'ın scrollbar'larını etkinleştirelim
+        gridContainer.style.overflowX = "auto";
+        gridContainer.style.overflowY = "auto";
+
+        // İlk yüklemede scroll pozisyonunu merkeze getirmek için
+        if (zoomLevel > 100) {
+          const scrollLeftCenter =
+            (gridContent.scrollWidth * (zoomLevel / 100 - 1)) / 2;
+          const scrollTopCenter =
+            (gridContent.scrollHeight * (zoomLevel / 100 - 1)) / 2;
+
+          // Scroll pozisyonunu içeriğin merkezine ayarla
+          gridContainer.scrollLeft = scrollLeftCenter;
+          gridContainer.scrollTop = scrollTopCenter;
+        }
+      }
+    }
+  }, [zoomLevel]);
+
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-gray-50 text-gray-800">
       {/* Aktif rezervasyon bildirimleri */}
@@ -1956,8 +2063,8 @@ function AdminPageComponent() {
             </div>
           </div>
 
-          {/* Footer Bölümü */}
-          <div className="h-[60px] bg-white border-t border-gray-200 flex items-center px-4 text-sm text-gray-600">
+          {/* Footer Bölümü - Zoom kontrollerini sağ tarafa eklenmiş haliyle */}
+          <div className="h-[60px] bg-white border-t border-gray-200 flex items-center justify-between px-4 text-sm text-gray-600">
             <div className="flex items-center space-x-4">
               <div className="flex items-center">
                 <div className="w-3 h-3 rounded bg-blue-600 mr-2"></div>
@@ -1967,9 +2074,76 @@ function AdminPageComponent() {
                 <div className="w-3 h-3 rounded bg-blue-600 mr-2 opacity-70"></div>
                 <span>Bekleyen Rezervasyon</span>
               </div>
-              <div className="ml-auto">
-                Toplam Misafir: {totalGuestCount} kişi
+              <div>Toplam Misafir: {totalGuestCount} kişi</div>
+            </div>
+
+            {/* Zoom kontrolleri - sağ tarafta */}
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={handleZoomOut}
+                className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors"
+                disabled={zoomLevel <= minZoom}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-4 w-4 text-gray-700"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M5 10a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </button>
+
+              <div className="flex items-center space-x-2">
+                <input
+                  type="range"
+                  min={minZoom}
+                  max={maxZoom}
+                  value={zoomLevel}
+                  onChange={handleZoomChange}
+                  className="w-24 h-1.5 appearance-none bg-gray-300 rounded-lg focus:outline-none cursor-pointer"
+                  style={{
+                    background: `linear-gradient(to right, #3B82F6 0%, #3B82F6 ${
+                      ((zoomLevel - minZoom) / (maxZoom - minZoom)) * 100
+                    }%, #D1D5DB ${
+                      ((zoomLevel - minZoom) / (maxZoom - minZoom)) * 100
+                    }%, #D1D5DB 100%)`,
+                  }}
+                />
+                <span className="text-xs font-medium text-gray-700 w-12 text-center">
+                  {zoomLevel}%
+                </span>
               </div>
+
+              <button
+                onClick={handleZoomIn}
+                className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors"
+                disabled={zoomLevel >= maxZoom}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-4 w-4 text-gray-700"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </button>
+
+              <button
+                onClick={handleZoomReset}
+                className="px-2 py-1 rounded text-xs font-medium bg-gray-100 hover:bg-gray-200 transition-colors text-gray-700"
+              >
+                Sıfırla
+              </button>
             </div>
           </div>
         </div>
