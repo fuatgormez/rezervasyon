@@ -8,6 +8,7 @@
 !.yarn/patches
 !.yarn/plugins
 !.yarn/releases
+!.yarn/sdks
 !.yarn/versions
 
 # testing
@@ -40,3 +41,35 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Redis
+dump.rdb
+appendonly.aof
+*.rdb
+
+# IDE
+.idea
+.vscode
+
+# Logs
+logs
+*.log
+
+# Cache
+.cache
+
+# local database files
+/kv-data
+/data
+.local-data
+.db
+
+# editor specific files
+.idea/
+.vscode/
+*.sublime-*
+.project
+
+# cache
+.cache/
+.parcel-cache/

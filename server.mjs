@@ -1,7 +1,7 @@
-const { createServer } = require("http");
-const { Server } = require("socket.io");
-const { parse } = require("url");
-const next = require("next");
+import { createServer } from "http";
+import { Server } from "socket.io";
+import { parse } from "url";
+import next from "next";
 
 const dev = process.env.NODE_ENV !== "production";
 const app = next({ dev });

@@ -49,6 +49,18 @@ interface ReservationType {
   staffIds?: string[]; // Atanmış garson ID'leri
 }
 
+interface ActiveFormType {
+  id: string;
+  customerName: string;
+  tableId?: string;
+  startTime: string;
+  endTime: string;
+  guestCount: number;
+  lastActivity: Date;
+  status: "filling_form" | "selecting_table" | "completing";
+  isConflict?: boolean;
+}
+
 // Ana sayfa
 export default function AdminPage() {
   return <AdminPageContent />;
@@ -188,8 +200,8 @@ function AdminPageComponent() {
     if (!hasShownWelcome) {
       // Sayfa yüklendiğinde karşılama mesajı göster
       toast.success("Rezervasyon yönetim paneline hoş geldiniz!", {
-        icon: "👋",
-        duration: 5000,
+        position: "bottom-center",
+        duration: 3000,
       });
       // Flag'i kaydet
       sessionStorage.setItem("hasShownWelcome", "true");
@@ -607,83 +619,96 @@ function AdminPageComponent() {
     return getGuestCountForTimeSlot(hour, reservations);
   };
 
-  // Rezervasyon pozisyonunu hesapla - En doğru hizalama için yeniden düzenlendi
+  // Rezervasyon pozisyonunu hesapla - Tamamen basitleştirilmiş versiyon
   const getReservationPosition = (
     startTime: string,
     endTime: string
   ): { left: string; width: string } => {
     try {
-      // Zamanları parçala
+      // Saatleri ve dakikaları ayır
       const [startHourStr, startMinuteStr] = startTime.split(":");
       const [endHourStr, endMinuteStr] = endTime.split(":");
 
-      // Sayıya çevir
+      // String değerlerini sayıya çevir
       const startHour = parseInt(startHourStr);
       const startMinute = parseInt(startMinuteStr);
       const endHour = parseInt(endHourStr);
       const endMinute = parseInt(endMinuteStr);
 
-      // Saat indekslerini hesapla (7:00 = 0 indeksi)
-      let startIndex = 0;
-      if (startHour >= 7 && startHour <= 24) {
-        startIndex = startHour - 7; // 7:00 -> 0, 8:00 -> 1 vs.
-      } else if (startHour >= 1 && startHour <= 6) {
-        startIndex = 24 - 7 + startHour; // 1:00 -> 18, 2:00 -> 19 vs.
+      // Zaman çizelgesinde hangi indekste olduğunu bul (hours dizisi indeksi)
+      // Görsel grid'de saat 7'den başlar ve 7'den küçük saatler en sonda gösterilir
+      let startColumnIndex = -1;
+      let endColumnIndex = -1;
+
+      // hours dizisinde başlangıç saatinin indeksini bul
+      for (let i = 0; i < hours.length; i++) {
+        const hourValue = parseInt(hours[i].split(":")[0]);
+        if (hourValue === startHour) {
+          startColumnIndex = i;
+          break;
+        }
       }
 
-      let endIndex = 0;
-      if (endHour >= 7 && endHour <= 24) {
-        endIndex = endHour - 7;
-      } else if (endHour >= 1 && endHour <= 6) {
-        endIndex = 24 - 7 + endHour;
+      // hours dizisinde bitiş saatinin indeksini bul
+      for (let i = 0; i < hours.length; i++) {
+        const hourValue = parseInt(hours[i].split(":")[0]);
+        if (hourValue === endHour) {
+          endColumnIndex = i;
+          break;
+        }
       }
 
-      // Gece yarısını aşan rezervasyonlar için özel kontrol
-      if (endHour < startHour && endHour >= 0 && endHour <= 6) {
-        // örn. 23:00-01:00 durumu
-        endIndex = 24 - 7 + endHour;
+      // Eğer indeksler bulunamadıysa hata durumu
+      if (startColumnIndex === -1 || endColumnIndex === -1) {
+        console.error("Saat indeksleri bulunamadı", startTime, endTime);
+        return { left: "0px", width: "80px" };
       }
 
-      // Dakika oranlarını normalize et (0-1 arası)
-      const startFraction = startMinute / 60.0;
-      const endFraction = endMinute / 60.0;
+      // Gece yarısını geçen rezervasyonlar için özel durum
+      // Örneğin: 23:00 - 01:00
+      if (startHour > endHour) {
+        // 1, 2 gibi küçük saatler, dizide en sonda (gece yarısından sonra) yer alır
+        endColumnIndex = hours.length - (24 - endHour);
+      }
 
-      // Başlangıç pozisyonunu hücre genişliğine göre hesapla
-      const leftPos = (startIndex + startFraction) * CELL_WIDTH;
+      // Başlangıç soldan pozisyonu
+      const startPosition =
+        startColumnIndex * CELL_WIDTH + (startMinute / 60) * CELL_WIDTH;
 
-      // Genişliği hesapla
-      let width = 0;
+      // Genişlik hesabı
+      let width;
 
-      if (
-        endIndex > startIndex ||
-        (endIndex === startIndex && endMinute >= startMinute)
-      ) {
-        // Normal durum: aynı gün içinde ya da aynı saatte başlayıp biten
-        const duration = endIndex - startIndex + (endFraction - startFraction);
-        width = duration * CELL_WIDTH;
+      if (endColumnIndex >= startColumnIndex) {
+        // Normal durum - aynı gün içinde biten rezervasyon
+        const columnSpan = endColumnIndex - startColumnIndex;
+        width =
+          columnSpan * CELL_WIDTH +
+          (endMinute / 60) * CELL_WIDTH -
+          (startMinute / 60) * CELL_WIDTH;
       } else {
-        // Günü aşan rezervasyon: gece yarısından sonraya taşan
-        // Örn: 23:30 - 01:45 durumu
-        const hoursUntilMidnight = 24 - startHour - startFraction;
-        const hoursAfterMidnight = endHour + endFraction;
-        width = (hoursUntilMidnight + hoursAfterMidnight) * CELL_WIDTH;
+        // Gece yarısını geçen durumlar
+        const columnSpan = hours.length - startColumnIndex + endColumnIndex;
+        width =
+          columnSpan * CELL_WIDTH +
+          (endMinute / 60) * CELL_WIDTH -
+          (startMinute / 60) * CELL_WIDTH;
       }
 
       // Debug bilgisi
       console.log(`
-        Rezervasyon Pozisyonu:
-        Zaman: ${startTime}-${endTime}
-        Başlangıç: ${startIndex}:${startMinute} (${startFraction.toFixed(2)})
-        Bitiş: ${endIndex}:${endMinute} (${endFraction.toFixed(2)})
-        Pozisyon: left=${leftPos.toFixed(1)}px, width=${width.toFixed(1)}px
+        Rezervasyon: ${startTime}-${endTime}
+        Saat İndeksleri: başlangıç=${startColumnIndex}, bitiş=${endColumnIndex}
+        Grid Pozisyonu: left=${startPosition.toFixed(
+          2
+        )}px, width=${width.toFixed(2)}px
       `);
 
       return {
-        left: `${leftPos}px`,
-        width: `${Math.max(width, 80)}px`, // Minimum 80px genişlik
+        left: `${startPosition}px`,
+        width: `${Math.max(width, 80)}px`, // En az 80px genişlik
       };
     } catch (error) {
-      console.error("Rezervasyon pozisyonu hesaplanırken hata:", error);
+      console.error("Rezervasyon pozisyonu hesaplanamadı:", error);
       return { left: "0px", width: "80px" };
     }
   };
@@ -721,10 +746,8 @@ function AdminPageComponent() {
   // Bu özellikle kartlar arası geçişlerde stabilite sağlayacak
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Tüm hover işlemleri için global bir state ekleyelim
-  const [hoveredReservationId, setHoveredReservationId] = useState<
-    string | null
-  >(null);
+  // Yeni eklenen rezervasyon referansı - animasyon için
+  const newReservationRef = useRef<string | null>(null);
 
   // Boş hücre için hover state'i - ARTIK GEREKLİ DEĞİL, KALDIRIYORUZ
   // const [hoveredEmptyCell, setHoveredEmptyCell] = useState<{tableId: string, hour: string} | null>(null);
@@ -733,9 +756,6 @@ function AdminPageComponent() {
   const handleReservationHover = (reservation: ReservationType) => {
     // Eğer sidebar tıklama ile açık durumdaysa, hover özelliğini devre dışı bırak
     if (sidebarClicked) return;
-
-    // Hover edilen rezervasyon ID'sini güncelle
-    setHoveredReservationId(reservation.id);
 
     // Hover durumunda seçili rezervasyonu güncelle
     setSelectedReservation(reservation);
@@ -747,9 +767,6 @@ function AdminPageComponent() {
 
   // Hover durumu bittiğinde - Hemen kapat
   const handleReservationLeave = () => {
-    // Hover edilen rezervasyon ID'sini temizle
-    setHoveredReservationId(null);
-
     // Eğer sidebar hover ile açıldıysa, hemen kapat (bekleme yok)
     if (sidebarOpenedByHover && !sidebarClicked) {
       setIsRightSidebarOpen(false);
@@ -757,9 +774,12 @@ function AdminPageComponent() {
     }
   };
 
-  // Boş hücreye tıklandığında - Yeni rezervasyon oluşturmak için özelliği koruyoruz
+  // Boş bir hücreye tıklandığında yeni rezervasyon oluşturma işlemi başlatır
   const handleEmptyCellClick = (tableId: string, hour: string) => {
-    // Masayı bul
+    // Saati ve masayı debug için logla
+    console.log(`Boş hücreye tıklama - Masa: ${tableId}, Saat: ${hour}`);
+
+    // Masa kapasitesini kontrol et
     const table = tables.find((t) => t.id === tableId);
     if (!table) {
       toast.error("Masa bulunamadı!");
@@ -783,15 +803,14 @@ function AdminPageComponent() {
     }
 
     // Çakışma kontrolü
+    const hourParts = hour.split(":");
+    const startHour = parseInt(hourParts[0]);
+    const endTimeStr = `${startHour + 1}:00`;
+
     const conflict = reservations.some(
       (res) =>
         res.tableId === tableId &&
-        hasTimeOverlap(
-          hour,
-          `${parseInt(hour) + 1}:00`,
-          res.startTime,
-          res.endTime
-        )
+        hasTimeOverlap(hour, endTimeStr, res.startTime, res.endTime)
     );
 
     if (conflict) {
@@ -806,16 +825,16 @@ function AdminPageComponent() {
       customerName: "",
       guestCount: 2, // Varsayılan 2 kişi
       startTime: hour,
-      endTime: `${parseInt(hour) + 1}:00`, // 1 saat süre varsayılan
+      endTime: endTimeStr, // 1 saat süre varsayılan
       status: "pending",
     };
 
     // Yeni bir işlem ekle
-    // WebSocket ile diğer kullanıcılara bildir
     const newForm = {
       id: `form-${Date.now()}`,
       tableId,
       startTime: hour,
+      endTime: endTimeStr,
       customerName: "Yeni Müşteri",
       guestCount: 2,
       lastActivity: new Date(),
@@ -899,44 +918,142 @@ function AdminPageComponent() {
   const [sidebarClicked, setSidebarClicked] = useState(false);
 
   // Aktif rezervasyon formlarını izle ve görüntüle
-  const [activeForms, setActiveForms] = useState<
-    {
-      id: string;
-      customerName: string;
-      startTime: string;
-      tableId?: string;
-      guestCount: number;
-      lastActivity: Date;
-      status: "filling_form" | "selecting_table" | "completing";
-    }[]
-  >([]);
+  const [activeForms, setActiveForms] = useState<ActiveFormType[]>([]);
 
   // Socket.IO bağlantısı için
   useEffect(() => {
     // SSR/SSG sırasında çalıştırma
     if (typeof window === "undefined") return;
 
-    // Gerçek uygulamada WebSocket bağlantısı burada kurulur
-    const setupWebSocket = () => {
-      // WebSocket veya Socket.IO bağlantısı örneği:
-      // const socket = io();
-      // socket.on('reservation:activity', (data) => {
-      //   setActiveForms(prev => {
-      //     // Eğer zaten aynı ID'ye sahip bir form varsa, onu güncelle
-      //     const exists = prev.some(f => f.id === data.sessionId);
-      //     if (exists) {
-      //       return prev.map(f => f.id === data.sessionId ? { ...f, ...data, lastActivity: new Date() } : f);
-      //     }
-      //     // Yoksa yeni ekle (en fazla 5 form göster)
-      //     return [...prev.slice(-4), { ...data, lastActivity: new Date() }];
-      //   });
-      // });
-      // Temizleme fonksiyonu
-      // return () => socket.disconnect();
+    // Gerçek zamanlı müşteri rezervasyon bildirimleri
+    const setupReservationConflictNotifications = () => {
+      // Rastgele bildirimlerden kurtulup, sadece admin ve müşteri aynı masa ve zamanı seçtiğinde bildirim gösterelim
+      const checkForConflicts = () => {
+        if (
+          !isRightSidebarOpen ||
+          !selectedReservation?.tableId ||
+          !selectedReservation?.startTime ||
+          !selectedReservation?.endTime
+        ) {
+          return; // Sidebar açık değilse veya seçili rezervasyon yoksa kontrol etme
+        }
+
+        // Admin tarafından seçilen masa ve zaman
+        const adminSelectedTableId = selectedReservation.tableId;
+        const adminStartTime = selectedReservation.startTime;
+        const adminEndTime = selectedReservation.endTime;
+
+        // Aktif müşteri formları için kontrol et
+        // Gerçek senaryoda bu WebSocket ile güncellenecek
+        // Şimdilik demo amaçlı müşteri aktivitesini temsil ediyoruz
+        const customerNames = [
+          "Ahmet Yılmaz",
+          "Mehmet Kaya",
+          "Ayşe Demir",
+          "Fatma Şahin",
+          "Zeynep Çelik",
+        ];
+
+        // Zaman çakışması olup olmadığını kontrol ediyoruz
+        const isMasaVeZamanCakismasi = (
+          formTableId: string,
+          formStartTime: string,
+          formEndTime: string
+        ) => {
+          if (formTableId !== adminSelectedTableId) return false;
+
+          const adminStart = new Date(adminStartTime).getTime();
+          const adminEnd = new Date(adminEndTime).getTime();
+          const formStart = new Date(formStartTime).getTime();
+          const formEnd = new Date(formEndTime).getTime();
+
+          return formStart < adminEnd && formEnd > adminStart;
+        };
+
+        // Yeni aktif form var mı diye kontrol et
+        // 5 dakikadan eski olanları gösterme
+        const fiveMinutesAgo = new Date();
+        fiveMinutesAgo.setMinutes(fiveMinutesAgo.getMinutes() - 5);
+
+        // Gerçek bir sistemde burası WebSocket ile güncellenecek
+        // Şimdilik demo için %15 ihtimalle yeni müşteri formu oluşturuyoruz
+        if (Math.random() < 0.15) {
+          const randomIndex = Math.floor(Math.random() * customerNames.length);
+          const customerName = customerNames[randomIndex];
+
+          // Tablo ve zaman bilgisini admin'in seçimiyle aynı yap
+          // Burada gerçek senaryoda müşterinin gerçekten seçtiği masa kullanılacak
+          const randomTableId =
+            Math.random() < 0.7
+              ? adminSelectedTableId
+              : `table-${Math.floor(Math.random() * 10) + 1}`;
+
+          // Rastgele başlangıç saati (şimdi veya 1-2 saat sonrası)
+          const now = new Date();
+          const hours = now.getHours() + Math.floor(Math.random() * 3);
+          const minutes = Math.floor(Math.random() * 60);
+          const formStartTime = new Date(
+            now.getFullYear(),
+            now.getMonth(),
+            now.getDate(),
+            hours,
+            minutes
+          ).toISOString();
+
+          // Bitiş saati (başlangıç + 1-2 saat)
+          const formEndDate = new Date(formStartTime);
+          formEndDate.setHours(
+            formEndDate.getHours() + 1 + Math.floor(Math.random() * 2)
+          );
+          const formEndTime = formEndDate.toISOString();
+
+          // Çakışma kontrolü
+          const isConflict = isMasaVeZamanCakismasi(
+            randomTableId,
+            formStartTime,
+            formEndTime
+          );
+
+          // Sadece çakışma varsa bildirim göster
+          if (isConflict) {
+            const newForm = {
+              id: `form-${Date.now()}`,
+              customerName,
+              tableId: randomTableId,
+              startTime: formStartTime,
+              endTime: formEndTime,
+              guestCount: Math.floor(Math.random() * 8) + 1,
+              lastActivity: new Date(),
+              status: Math.random() < 0.7 ? "selecting_table" : "filling_form",
+              isConflict: true,
+            } as ActiveFormType;
+
+            // Dikkat çekici bildirim oluştur
+            toast.error(
+              `Müşteri "${customerName}" şu anda sizinle aynı masa ve saati seçmeye çalışıyor! Masa: ${randomTableId}, Saat: ${new Date(
+                formStartTime
+              ).toLocaleTimeString("tr-TR")}`,
+              { duration: 10000 }
+            );
+
+            // Aktif formları güncelle
+            setActiveForms((prev) => [...prev, newForm]);
+          }
+        }
+
+        // Her 10-30 saniyede bir kontrol et
+        const randomDelay = 10000 + Math.floor(Math.random() * 20000);
+        setTimeout(checkForConflicts, randomDelay);
+      };
+
+      // İlk kontrol
+      checkForConflicts();
     };
 
-    setupWebSocket();
-  }, []);
+    // Bildirim sistemini başlat
+    const cleanup = setupReservationConflictNotifications();
+    return cleanup;
+  }, [isRightSidebarOpen, selectedReservation, activeForms]);
 
   // Ana içeriğe başlamadan önce aktif rezervasyonları göster
   const ActiveReservations = () => {
@@ -944,87 +1061,132 @@ function AdminPageComponent() {
 
     return (
       <div className="fixed right-4 top-4 z-50 space-y-3 pointer-events-none">
-        {activeForms.map((form, index) => (
-          <div
-            key={form.id}
-            className="bg-white rounded-lg shadow-lg p-4 w-72 pointer-events-auto animate-slideInRight"
-            style={{
-              animationDelay: `${index * 0.2}s`,
-              borderLeft: `4px solid ${
-                form.status === "filling_form"
-                  ? "#3B82F6"
-                  : form.status === "selecting_table"
-                  ? "#10B981"
-                  : "#F59E0B"
-              }`,
-            }}
-          >
-            <div className="flex justify-between items-start mb-1">
-              <h4 className="font-medium text-gray-800">
-                {form.customerName || "Yeni Müşteri"}
-              </h4>
-              <span
-                className={`text-xs px-2 py-1 rounded-full ${
-                  form.status === "filling_form"
-                    ? "bg-blue-100 text-blue-800"
+        {activeForms.map((form, index) => {
+          // Çakışma durumuna göre stil belirle
+          const isConflict = form.isConflict;
+          const borderColor = isConflict
+            ? "#ef4444" // Kırmızı (çakışma)
+            : form.status === "filling_form"
+            ? "#3B82F6" // Mavi
+            : form.status === "selecting_table"
+            ? "#10B981" // Yeşil
+            : "#F59E0B"; // Turuncu
+
+          return (
+            <div
+              key={form.id}
+              className="bg-white rounded-lg shadow-lg p-4 w-72 pointer-events-auto animate-slideInRight"
+              style={{
+                animationDelay: `${index * 0.2}s`,
+                borderLeft: `4px solid ${borderColor}`,
+              }}
+            >
+              <div className="flex justify-between items-start mb-1">
+                <h4 className="font-medium text-gray-800">
+                  {form.customerName || "Yeni Müşteri"}
+                </h4>
+                <span
+                  className={`text-xs px-2 py-1 rounded-full ${
+                    isConflict
+                      ? "bg-red-100 text-red-800"
+                      : form.status === "filling_form"
+                      ? "bg-blue-100 text-blue-800"
+                      : form.status === "selecting_table"
+                      ? "bg-green-100 text-green-800"
+                      : "bg-yellow-100 text-yellow-800"
+                  }`}
+                >
+                  {isConflict
+                    ? "Çakışma"
+                    : form.status === "filling_form"
+                    ? "Form Dolduruyor"
                     : form.status === "selecting_table"
-                    ? "bg-green-100 text-green-800"
-                    : "bg-yellow-100 text-yellow-800"
-                }`}
-              >
-                {form.status === "filling_form"
-                  ? "Form Dolduruyor"
-                  : form.status === "selecting_table"
-                  ? "Masa Seçiyor"
-                  : "Tamamlanıyor"}
-              </span>
-            </div>
-            <div className="text-gray-600 text-sm">
-              <div className="flex justify-between mb-1">
-                <span>Saat:</span>
-                <span>{form.startTime || "Henüz seçilmedi"}</span>
-              </div>
-              <div className="flex justify-between mb-1">
-                <span>Kişi:</span>
-                <span>{form.guestCount || "?"}</span>
-              </div>
-              <div className="flex justify-between text-xs text-gray-500">
-                <span>Son aktivite:</span>
-                <span>
-                  {form.lastActivity
-                    ? new Date(form.lastActivity).toLocaleTimeString()
-                    : "-"}
+                    ? "Masa Seçiyor"
+                    : "Tamamlanıyor"}
                 </span>
               </div>
-            </div>
+              <div className="text-gray-600 text-sm">
+                <div className="flex justify-between mb-1">
+                  <span>Saat:</span>
+                  <span>{form.startTime || "Henüz seçilmedi"}</span>
+                </div>
+                <div className="flex justify-between mb-1">
+                  <span>Kişi:</span>
+                  <span>{form.guestCount || "?"}</span>
+                </div>
+                <div className="flex justify-between mb-1">
+                  <span>Masa:</span>
+                  <span>
+                    {tables.find((t) => t.id === form.tableId)?.number || "-"}
+                  </span>
+                </div>
+                <div className="flex justify-between text-xs text-gray-500">
+                  <span>Son aktivite:</span>
+                  <span>
+                    {form.lastActivity
+                      ? new Date(form.lastActivity).toLocaleTimeString()
+                      : "-"}
+                  </span>
+                </div>
+                {isConflict && (
+                  <div className="mt-2 p-2 bg-red-50 text-xs text-red-800 rounded">
+                    <strong>Uyarı:</strong> Bu müşteri sizin şu anda
+                    düzenlediğiniz masa ve saat için işlem yapıyor!
+                  </div>
+                )}
+              </div>
 
-            <div className="mt-3 flex justify-end space-x-2">
-              <button
-                onClick={() => {
-                  // Yeni sekmede ilgili formu aç (gerçek uygulamada)
-                  toast.success(
-                    `${form.customerName} müşterisinin rezervasyonu görüntüleniyor`
-                  );
-                }}
-                className="text-xs px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-gray-700"
-              >
-                Görüntüle
-              </button>
-              <button
-                onClick={() => {
-                  // Bu müşteriyi listeden kaldır
-                  setActiveForms((prev) =>
-                    prev.filter((f) => f.id !== form.id)
-                  );
-                  toast.success("Bildirim kapatıldı");
-                }}
-                className="text-xs px-2 py-1 bg-red-50 hover:bg-red-100 rounded text-red-700"
-              >
-                Kapat
-              </button>
+              <div className="mt-3 flex justify-end space-x-2">
+                <button
+                  onClick={() => {
+                    // Tıklanan müşterinin rezervasyon bilgilerini göster
+                    const tableInfo = tables.find((t) => t.id === form.tableId);
+                    const categoryInfo = tableCategories.find(
+                      (c) => c.id === tableInfo?.categoryId
+                    );
+
+                    if (isConflict) {
+                      // Çakışma bildirimi için özel işlem
+                      toast.error(
+                        `DİKKAT! Çakışma: ${form.customerName} - Masa ${
+                          tableInfo?.number || "?"
+                        } - ${form.startTime}`,
+                        { duration: 5000 }
+                      );
+                    } else {
+                      // Normal bildirim
+                      toast.success(
+                        `${form.customerName}: Masa ${
+                          tableInfo?.number || "?"
+                        } (${categoryInfo?.name || "?"}) - ${form.startTime}`,
+                        { duration: 5000 }
+                      );
+                    }
+                  }}
+                  className={`text-xs px-2 py-1 ${
+                    isConflict
+                      ? "bg-red-100 hover:bg-red-200 text-red-700"
+                      : "bg-gray-100 hover:bg-gray-200 text-gray-700"
+                  } rounded`}
+                >
+                  {isConflict ? "İncele" : "Görüntüle"}
+                </button>
+                <button
+                  onClick={() => {
+                    // Bu bildirimi listeden kaldır
+                    setActiveForms((prev) =>
+                      prev.filter((f) => f.id !== form.id)
+                    );
+                    toast.success("Bildirim kapatıldı");
+                  }}
+                  className="text-xs px-2 py-1 bg-red-50 hover:bg-red-100 rounded text-red-700"
+                >
+                  Kapat
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     );
   };
@@ -1108,97 +1270,34 @@ function AdminPageComponent() {
         return;
       }
 
-      // Önceki rezervasyonu bul
-      const oldReservation = reservations.find(
-        (r) => r.id === updatedReservation.id
-      );
-      if (!oldReservation) {
-        console.error(
-          "Güncellenecek rezervasyon bulunamadı:",
-          updatedReservation.id
-        );
-        toast.error("Rezervasyon bulunamadı.");
-        return;
-      }
+      // Yeni rezervasyon mu yoksa güncelleme mi kontrolü
+      const isNewReservation = updatedReservation.id === "temp";
 
-      // Kapsamlı debug kaydı
-      console.log("\n-------- REZERVASYON GÜNCELLEME ----------");
-      console.log(
-        `Rezervasyon: ${updatedReservation.id} - ${updatedReservation.customerName}`
-      );
-      console.log("ESKİ BİLGİLER:");
-      console.log(`- Masa: ${oldReservation.tableId}`);
-      console.log(
-        `- Saat: ${oldReservation.startTime}-${oldReservation.endTime}`
-      );
-      console.log(`- Kişi: ${oldReservation.guestCount}`);
-      console.log("YENİ BİLGİLER:");
-      console.log(`- Masa: ${updatedReservation.tableId}`);
-      console.log(
-        `- Saat: ${updatedReservation.startTime}-${updatedReservation.endTime}`
-      );
-      console.log(`- Kişi: ${updatedReservation.guestCount}`);
-      console.log("----------------------------------------\n");
+      if (isNewReservation) {
+        // Yeni rezervasyon eklendiğinde
+        console.log("Yeni rezervasyon ekleniyor...");
 
-      // Kapasite kontrolü - Misafir sayısı masa kapasitesinden fazla mı?
-      if (
-        !isTableCapacitySufficient(
-          updatedReservation.tableId,
-          updatedReservation.guestCount
-        )
-      ) {
-        // Birleştirilebilecek masa var mı kontrol et
-        const mergableTables = findMergableTables(
-          updatedReservation.tableId,
-          updatedReservation.guestCount
-        );
-
-        if (mergableTables.length > 0) {
-          // Birleştirilebilecek masalar var, kullanıcıya sor
-          const tableNames = mergableTables
-            .map((t) => `Masa ${t.number} (${t.capacity} kişilik)`)
-            .join(", ");
-
-          const userConfirm = window.confirm(
-            `Masa ${selectedTable.number} kapasitesi (${selectedTable.capacity} kişi) yetersiz! ` +
-              `Birleştirilebilecek masalar: ${tableNames}\n\n` +
-              `Bu masalardan biriyle birleştirmek ister misiniz?`
-          );
-
-          if (!userConfirm) {
-            toast.error(
-              `Masa kapasitesi (${selectedTable.capacity} kişi) yetersiz. Daha büyük bir masa seçin.`
-            );
-            return;
-          }
-
-          // TODO: Masa birleştirme işlemleri burada yapılacak
-          toast.success(
-            "Masalar birleştirilecek! (Bu özellik henüz yapım aşamasında)"
-          );
-        } else {
-          // Birleştirilebilecek masa yok
-          toast.error(
-            `Masa kapasitesi (${selectedTable.capacity} kişi) yetersiz. Daha büyük bir masa seçin.`
-          );
+        // Müşteri adı kontrolü
+        if (!updatedReservation.customerName.trim()) {
+          toast.error("Lütfen müşteri adını giriniz.");
           return;
         }
-      }
 
-      // Zaman ve masa çakışması kontrolü
-      // Farklı masaya taşınmış veya zamanı değişmiş ise
-      if (
-        oldReservation.tableId !== updatedReservation.tableId ||
-        oldReservation.startTime !== updatedReservation.startTime ||
-        oldReservation.endTime !== updatedReservation.endTime
-      ) {
-        // Aynı masada aynı saatte çakışan rezervasyon var mı?
+        // Yeni ID oluştur
+        const newId = `res-${Date.now()}`;
+
+        // Yeni rezervasyon objesi
+        const newReservation = {
+          ...updatedReservation,
+          id: newId,
+        };
+
+        // Çakışma kontrolü
         if (
           hasTableConflict(
-            updatedReservation.tableId,
-            updatedReservation.startTime,
-            updatedReservation.endTime,
-            updatedReservation.id // Kendi ID'sini hariç tut
+            newReservation.tableId,
+            newReservation.startTime,
+            newReservation.endTime
           )
         ) {
           toast.error(
@@ -1206,58 +1305,262 @@ function AdminPageComponent() {
           );
           return;
         }
-      }
 
-      // Kategori değişimi kontrolü
-      if (oldReservation.tableId !== updatedReservation.tableId) {
-        const oldTable = tables.find((t) => t.id === oldReservation.tableId);
-        const newTable = tables.find(
-          (t) => t.id === updatedReservation.tableId
+        // Kapasite kontrolü
+        if (
+          !isTableCapacitySufficient(
+            newReservation.tableId,
+            newReservation.guestCount
+          )
+        ) {
+          toast.error(
+            `Masa kapasitesi (${selectedTable.capacity} kişi) yetersiz. Daha büyük bir masa seçin.`
+          );
+          return;
+        }
+
+        // Yeni eklenen rezervasyon ID'sini referansa ata (animasyon için)
+        newReservationRef.current = newId;
+
+        // Rezervasyonları güncelle
+        const updatedReservations = [...reservations, newReservation];
+        setReservations(updatedReservations);
+
+        // localStorage'a kaydet
+        localStorage.setItem(
+          "reservations",
+          JSON.stringify(updatedReservations)
         );
 
-        if (oldTable && newTable) {
-          // Kategori değişimi oldu mu?
-          const oldCategory = tableCategories.find(
-            (c) => c.id === oldTable.categoryId
+        // Başarı mesajı göster ve sidebar'ı kapat
+        toast.success("Yeni rezervasyon başarıyla eklendi!");
+        closeRightSidebar();
+
+        // Yeni rezervasyona scroll yap (Biraz gecikme ekleyerek DOM'un güncellenmesini bekle)
+        setTimeout(() => {
+          const reservationElement = document.getElementById(
+            `reservation-${newId}`
           );
-          const newCategory = tableCategories.find(
-            (c) => c.id === newTable.categoryId
+          if (reservationElement) {
+            // Rezervasyon elemanını görünür alana getir
+            reservationElement.scrollIntoView({
+              behavior: "smooth",
+              block: "center",
+            });
+
+            // Dikkat çekmek için animasyon sınıfı ekle
+            reservationElement.classList.add("highlight-new-reservation");
+
+            // Animasyonu bir süre sonra kaldır
+            setTimeout(() => {
+              reservationElement.classList.remove("highlight-new-reservation");
+              // Referansı temizle
+              newReservationRef.current = null;
+            }, 5000); // 5 saniye sonra animasyonu kaldır
+          }
+        }, 300);
+      } else {
+        // Mevcut rezervasyon güncellendiğinde
+        // Önceki rezervasyonu bul
+        const oldReservation = reservations.find(
+          (r) => r.id === updatedReservation.id
+        );
+        if (!oldReservation) {
+          console.error(
+            "Güncellenecek rezervasyon bulunamadı:",
+            updatedReservation.id
+          );
+          toast.error("Rezervasyon bulunamadı.");
+          return;
+        }
+
+        // Kapsamlı debug kaydı
+        console.log("\n-------- REZERVASYON GÜNCELLEME ----------");
+        console.log(
+          `Rezervasyon: ${updatedReservation.id} - ${updatedReservation.customerName}`
+        );
+        console.log("ESKİ BİLGİLER:");
+        console.log(`- Masa: ${oldReservation.tableId}`);
+        console.log(
+          `- Saat: ${oldReservation.startTime}-${oldReservation.endTime}`
+        );
+        console.log(`- Kişi: ${oldReservation.guestCount}`);
+        console.log("YENİ BİLGİLER:");
+        console.log(`- Masa: ${updatedReservation.tableId}`);
+        console.log(
+          `- Saat: ${updatedReservation.startTime}-${updatedReservation.endTime}`
+        );
+        console.log(`- Kişi: ${updatedReservation.guestCount}`);
+        console.log("----------------------------------------\n");
+
+        // Kapasite kontrolü - Misafir sayısı masa kapasitesinden fazla mı?
+        if (
+          !isTableCapacitySufficient(
+            updatedReservation.tableId,
+            updatedReservation.guestCount
+          )
+        ) {
+          // Birleştirilebilecek masa var mı kontrol et
+          const mergableTables = findMergableTables(
+            updatedReservation.tableId,
+            updatedReservation.guestCount
           );
 
-          if (oldCategory && newCategory && oldCategory.id !== newCategory.id) {
-            console.log(
-              `KATEGORİ DEĞİŞİMİ: ${oldCategory.name} -> ${newCategory.name}`
+          if (mergableTables.length > 0) {
+            // Birleştirilebilecek masalar var, kullanıcıya sor
+            const tableNames = mergableTables
+              .map((t) => `Masa ${t.number} (${t.capacity} kişilik)`)
+              .join(", ");
+
+            const userConfirm = window.confirm(
+              `Masa ${selectedTable.number} kapasitesi (${selectedTable.capacity} kişi) yetersiz! ` +
+                `Birleştirilebilecek masalar: ${tableNames}\n\n` +
+                `Bu masalardan biriyle birleştirmek ister misiniz?`
             );
+
+            if (!userConfirm) {
+              toast.error(
+                `Masa kapasitesi (${selectedTable.capacity} kişi) yetersiz. Daha büyük bir masa seçin.`
+              );
+              return;
+            }
+
+            // TODO: Masa birleştirme işlemleri burada yapılacak
+            toast.success(
+              "Masalar birleştirilecek! (Bu özellik henüz yapım aşamasında)"
+            );
+          } else {
+            // Birleştirilebilecek masa yok
+            toast.error(
+              `Masa kapasitesi (${selectedTable.capacity} kişi) yetersiz. Daha büyük bir masa seçin.`
+            );
+            return;
           }
         }
+
+        // Zaman ve masa çakışması kontrolü
+        // Farklı masaya taşınmış veya zamanı değişmiş ise
+        if (
+          oldReservation.tableId !== updatedReservation.tableId ||
+          oldReservation.startTime !== updatedReservation.startTime ||
+          oldReservation.endTime !== updatedReservation.endTime
+        ) {
+          // Aynı masada aynı saatte çakışan rezervasyon var mı?
+          if (
+            hasTableConflict(
+              updatedReservation.tableId,
+              updatedReservation.startTime,
+              updatedReservation.endTime,
+              updatedReservation.id // Kendi ID'sini hariç tut
+            )
+          ) {
+            toast.error(
+              "Bu masa ve saatte başka bir rezervasyon bulunuyor. Lütfen farklı bir saat veya masa seçin."
+            );
+            return;
+          }
+        }
+
+        // Kategori değişimi kontrolü
+        if (oldReservation.tableId !== updatedReservation.tableId) {
+          const oldTable = tables.find((t) => t.id === oldReservation.tableId);
+          const newTable = tables.find(
+            (t) => t.id === updatedReservation.tableId
+          );
+
+          if (oldTable && newTable) {
+            // Kategori değişimi oldu mu?
+            const oldCategory = tableCategories.find(
+              (c) => c.id === oldTable.categoryId
+            );
+            const newCategory = tableCategories.find(
+              (c) => c.id === newTable.categoryId
+            );
+
+            if (
+              oldCategory &&
+              newCategory &&
+              oldCategory.id !== newCategory.id
+            ) {
+              console.log(
+                `KATEGORİ DEĞİŞİMİ: ${oldCategory.name} -> ${newCategory.name}`
+              );
+            }
+          }
+        }
+
+        // Rezervasyonları güncelle
+        const updatedReservations = reservations.map((res) => {
+          if (res.id === updatedReservation.id) {
+            return updatedReservation;
+          }
+          return res;
+        });
+
+        setReservations(updatedReservations);
+
+        // localStorage'a kaydet
+        localStorage.setItem(
+          "reservations",
+          JSON.stringify(updatedReservations)
+        );
+
+        // Başarı mesajı göster ve sidebar'ı kapat
+        toast.success("Rezervasyon başarıyla güncellendi!");
+        closeRightSidebar();
+      }
+    } catch (error) {
+      console.error("Rezervasyon güncellenirken bir hata oluştu:", error);
+      toast.error("Rezervasyon güncellenirken beklenmeyen bir hata oluştu.");
+    }
+  };
+
+  // Rezervasyonu silme fonksiyonu
+  const deleteReservation = (reservationId: string) => {
+    try {
+      console.log("Rezervasyon silme başladı:", reservationId);
+
+      // Kullanıcıdan onay al
+      const userConfirm = window.confirm(
+        "Bu rezervasyonu kalıcı olarak silmek istediğinize emin misiniz? Bu işlem geri alınamaz."
+      );
+
+      if (!userConfirm) {
+        console.log(
+          "Rezervasyon silme işlemi kullanıcı tarafından iptal edildi."
+        );
+        return;
       }
 
-      // Rezervasyonları güncelle
-      const updatedReservations = reservations.map((res) => {
-        if (res.id === updatedReservation.id) {
-          return updatedReservation;
-        }
-        return res;
-      });
+      // Rezervasyonu bul
+      const reservationToDelete = reservations.find(
+        (r) => r.id === reservationId
+      );
+
+      if (!reservationToDelete) {
+        console.error("Silinecek rezervasyon bulunamadı:", reservationId);
+        toast.error("Rezervasyon bulunamadı.");
+        return;
+      }
+
+      // Rezervasyonu filtrele
+      const updatedReservations = reservations.filter(
+        (res) => res.id !== reservationId
+      );
 
       setReservations(updatedReservations);
 
       // localStorage'a kaydet
       localStorage.setItem("reservations", JSON.stringify(updatedReservations));
 
-      // Tam sayfa yenileme - UI'nin tamamen yeniden oluşturulması için
-      // Not: Bu normalde React uygulamalarında önerilmez ancak karmaşık DOM manipülasyonları
-      // için bazen gerekli olabilir
-      toast.success(
-        "Rezervasyon başarıyla güncellendi! Değişiklikler uygulanıyor..."
-      );
+      // Bildirim göster
+      toast.success("Rezervasyon başarıyla silindi!");
 
-      setTimeout(() => {
-        window.location.reload();
-      }, 1000); // 1 saniye bekle, böylece kullanıcı başarı mesajını görebilir
+      // Sidebar'ı kapat
+      closeRightSidebar();
     } catch (error) {
-      console.error("Rezervasyon güncellenirken bir hata oluştu:", error);
-      toast.error("Rezervasyon güncellenirken beklenmeyen bir hata oluştu.");
+      console.error("Rezervasyon silinirken bir hata oluştu:", error);
+      toast.error("Rezervasyon silinirken beklenmeyen bir hata oluştu.");
     }
   };
 
@@ -1330,6 +1633,38 @@ function AdminPageComponent() {
           </div>
         </div>
         <div className="flex items-center space-x-3">
+          <button
+            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center space-x-1"
+            onClick={() => {
+              if (
+                confirm(
+                  "Tüm test rezervasyonlarını temizlemek istediğinize emin misiniz?"
+                )
+              ) {
+                // localStorage'ı temizle
+                localStorage.removeItem("reservations");
+                // Sayfayı yenile
+                window.location.reload();
+                toast.success("Tüm rezervasyonlar temizlendi.");
+              }
+            }}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+              />
+            </svg>
+            <span>Temizle</span>
+          </button>
           <span className="text-sm text-gray-600">Restoran Adı</span>
           <FiChevronDown className="text-gray-500" />
         </div>
@@ -1488,7 +1823,7 @@ function AdminPageComponent() {
                           {hours.map((hour) => (
                             <div
                               key={`${table.id}-${hour}`}
-                              className="border-r border-gray-200 h-full relative"
+                              className="border-r border-gray-200 h-full relative cursor-pointer hover:bg-blue-50"
                               style={{
                                 width: `${CELL_WIDTH}px`,
                                 backgroundColor:
@@ -1498,9 +1833,22 @@ function AdminPageComponent() {
                               }}
                               data-hour={hour}
                               data-table={table.number}
-                              onClick={() =>
-                                handleEmptyCellClick(table.id, hour)
-                              }
+                              data-table-id={table.id}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const clickedHour =
+                                  e.currentTarget.getAttribute("data-hour");
+                                const clickedTableId =
+                                  e.currentTarget.getAttribute("data-table-id");
+                                if (clickedHour && clickedTableId) {
+                                  handleEmptyCellClick(
+                                    clickedTableId,
+                                    clickedHour
+                                  );
+                                } else {
+                                  toast.error("Hücre bilgileri alınamadı!");
+                                }
+                              }}
                             ></div>
                           ))}
                         </div>
@@ -1513,6 +1861,19 @@ function AdminPageComponent() {
                             width: `calc(100% - ${CATEGORY_WIDTH}px)`,
                           }}
                         >
+                          {/* Debug çizgileri - saatleri görsel olarak göstermek için */}
+                          {hours.map((hour, idx) => (
+                            <div
+                              key={`debug-line-${hour}`}
+                              className="absolute top-0 h-full border-l border-blue-200 opacity-0 hover:opacity-30"
+                              style={{
+                                left: `${idx * CELL_WIDTH}px`,
+                                width: "1px",
+                                zIndex: 0,
+                              }}
+                            />
+                          ))}
+
                           {reservations
                             .filter((res) => res.tableId === table.id)
                             .map((reservation) => {
@@ -1525,15 +1886,15 @@ function AdminPageComponent() {
                                 <div
                                   key={reservation.id}
                                   id={`reservation-${reservation.id}`}
-                                  className="absolute rounded-sm cursor-pointer pointer-events-auto h-10 mt-2 flex items-center overflow-visible"
+                                  className="absolute rounded-sm cursor-pointer pointer-events-auto h-10 flex items-center overflow-visible"
                                   style={{
                                     left: position.left,
                                     width: position.width,
+                                    top: "2px", // Üstten sadece 2px aşağıda
                                     backgroundColor:
                                       reservation.color || category.color,
                                     borderLeft: `4px solid ${category.borderColor}`,
                                     boxShadow: "0 2px 4px rgba(0,0,0,0.15)",
-                                    position: "relative",
                                     minWidth: "80px",
                                     zIndex: 5,
                                     transformOrigin: "left center",
@@ -1917,12 +2278,29 @@ function AdminPageComponent() {
                       <input
                         type="time"
                         value={selectedReservation.startTime}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          const newStartTime = e.target.value;
+                          // Başlangıç saatinden 1 saat sonrasını bitiş saati olarak ayarla
+                          const [hours, minutes] = newStartTime
+                            .split(":")
+                            .map(Number);
+                          let endHour = hours + 1;
+                          // Saat 24'ü geçerse düzeltme yap
+                          if (endHour >= 24) {
+                            endHour = endHour - 24;
+                          }
+                          const endTime = `${endHour
+                            .toString()
+                            .padStart(2, "0")}:${minutes
+                            .toString()
+                            .padStart(2, "0")}`;
+
                           setSelectedReservation({
                             ...selectedReservation,
-                            startTime: e.target.value,
-                          })
-                        }
+                            startTime: newStartTime,
+                            endTime: endTime,
+                          });
+                        }}
                         className="w-full p-2 border border-gray-300 rounded mt-1"
                       />
                     </div>
@@ -2104,7 +2482,7 @@ function AdminPageComponent() {
               </div>
 
               {/* Tehlikeli İşlemler */}
-              <div className="border-t border-gray-200 pt-3">
+              <div className="border-t border-gray-200 pt-3 space-y-2">
                 <button
                   onClick={() => {
                     if (
@@ -2140,6 +2518,28 @@ function AdminPageComponent() {
                     />
                   </svg>
                   <span>Rezervasyonu İptal Et</span>
+                </button>
+
+                {/* Rezervasyon Silme Butonu */}
+                <button
+                  onClick={() => deleteReservation(selectedReservation.id)}
+                  className="w-full bg-red-700 text-white py-2 px-4 rounded hover:bg-red-800 flex justify-center items-center space-x-1"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                    />
+                  </svg>
+                  <span>Rezervasyonu Sil</span>
                 </button>
               </div>
             </div>
@@ -2183,6 +2583,24 @@ function AdminPageComponent() {
             opacity: 1;
             transform: scale(1);
           }
+        }
+
+        /* Yeni rezervasyon vurgu animasyonu */
+        @keyframes pulseHighlight {
+          0%,
+          100% {
+            box-shadow: 0 0 0 rgba(59, 130, 246, 0.5);
+            transform: scale(1);
+          }
+          50% {
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.8);
+            transform: scale(1.05);
+          }
+        }
+
+        .highlight-new-reservation {
+          animation: pulseHighlight 1.5s ease-in-out infinite;
+          z-index: 20 !important;
         }
       `}</style>
 

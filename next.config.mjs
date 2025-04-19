@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
-const path = require("path");
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const nextConfig = {
   eslint: {
@@ -28,8 +31,6 @@ const nextConfig = {
   },
   // Statik optimize edilecek sayfaları yapılandır
   staticPageGenerationTimeout: 180,
-  // Client-side rendering içine dönüştürülecek sayfaları belirle
-  unstable_runtimeJS: true,
   webpack: (config, { isServer }) => {
     // Resolve alias'ların düzgün çalışmasını sağla
     config.resolve.alias["@"] = path.resolve(__dirname, "src");
@@ -58,4 +59,4 @@ const nextConfig = {
   },
 };
 
-module.exports = nextConfig;
+export default nextConfig;

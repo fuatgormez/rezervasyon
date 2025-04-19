@@ -1,36 +1,63 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Rezervasyon Sistemi
 
-## Getting Started
+Bu proje, restoran ve kafeler için kullanılabilecek kapsamlı bir rezervasyon sistemi sunar.
 
-First, run the development server:
+## Özellikler
+
+- Gerçek zamanlı masa rezervasyonu
+- Admin paneli ve müşteri portalı
+- Çakışma kontrolü ve bildirim sistemi
+- Ödeme entegrasyonu
+- Kullanıcı yönetimi
+
+## Kurulum
 
 ```bash
+# Depoyu klonlayın
+git clone https://github.com/kullaniciadi/rezervasyon.git
+cd rezervasyon
+
+# Bağımlılıkları yükleyin
+npm install
+
+# .env dosyasını kurun
+cp .env.example .env
+# .env dosyasını kendi bilgilerinizle düzenleyin
+
+# Geliştirme sunucusunu başlatın
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Redis Kurulumu
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Bu projede veritabanı olarak Redis kullanılmaktadır. Redis'i yerel olarak kurmanız gerekecektir:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Ubuntu/Debian
 
-## Learn More
+```bash
+sudo apt update
+sudo apt install redis-server
+sudo systemctl enable redis-server
+```
 
-To learn more about Next.js, take a look at the following resources:
+### macOS
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+brew install redis
+brew services start redis
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Windows
 
-## Deploy on Vercel
+Redis Desktop Manager veya Windows için Redis'in diğer sürümlerini kurabilirsiniz.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Kullanım
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Proje http://localhost:3000 adresinde çalışacaktır.
+
+- Admin paneli: http://localhost:3000/admin
+- Müşteri portalı: http://localhost:3000
+
+## Lisans
+
+MIT
