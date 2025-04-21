@@ -2052,18 +2052,43 @@ function AdminPageComponent() {
                                   <div className="absolute left-0 top-0 h-full w-2 cursor-ew-resize opacity-0 hover:opacity-100 bg-white bg-opacity-20"></div>
 
                                   <div className="px-3 py-0 text-xs truncate max-w-full text-white h-full flex flex-col justify-center">
-                                    <div className="font-semibold whitespace-nowrap overflow-hidden text-ellipsis">
-                                      {reservation.customerName}
-                                    </div>
-                                    <div className="text-white text-opacity-95 text-[11px] flex items-center mt-1">
-                                      <span className="mr-1">
-                                        {reservation.startTime}-
-                                        {reservation.endTime}
-                                      </span>
-                                      <span className="bg-white bg-opacity-30 px-1 rounded text-[10px]">
-                                        {reservation.guestCount} kişi
-                                      </span>
-                                    </div>
+                                    {cellHeight < 50 ? (
+                                      // Yükseklik 50px'den küçükse yan yana gösterim
+                                      <div className="flex items-center justify-between">
+                                        <div className="font-semibold whitespace-nowrap overflow-hidden text-ellipsis">
+                                          {reservation.customerName
+                                            .split(" ")
+                                            .map((word) =>
+                                              word.charAt(0).toUpperCase()
+                                            )
+                                            .join("")}
+                                        </div>
+                                        <div className="text-white text-opacity-95 text-[11px] flex items-center ml-2">
+                                          <span className="mr-1">
+                                            {reservation.startTime}
+                                          </span>
+                                          <span className="bg-white bg-opacity-30 px-1 rounded text-[10px]">
+                                            {reservation.guestCount}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      // Normal gösterim (50px ve üzeri)
+                                      <>
+                                        <div className="font-semibold whitespace-nowrap overflow-hidden text-ellipsis">
+                                          {reservation.customerName}
+                                        </div>
+                                        <div className="text-white text-opacity-95 text-[11px] flex items-center mt-1">
+                                          <span className="mr-1">
+                                            {reservation.startTime}-
+                                            {reservation.endTime}
+                                          </span>
+                                          <span className="bg-white bg-opacity-30 px-1 rounded text-[10px]">
+                                            {reservation.guestCount} kişi
+                                          </span>
+                                        </div>
+                                      </>
+                                    )}
                                   </div>
 
                                   {/* Sağ tutamaç */}
