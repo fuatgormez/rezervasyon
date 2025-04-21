@@ -90,9 +90,23 @@ function AdminPageComponent() {
     { id: "s3", name: "Mehmet Demir", position: "Şef Garson" },
   ]);
 
-  // CELL_WIDTH ve CATEGORY_WIDTH sabitlerini tanımla
-  const CELL_WIDTH = 160; // Saat hücresi genişliği
-  const CATEGORY_WIDTH = 140; // Kategori kolonu genişliği
+  // Sabit değerleri state'e dönüştürelim ki değiştirilebilir olsunlar
+  const [cellWidth, setCellWidth] = useState<number>(160); // Saat hücresi genişliği
+  const [cellHeight, setCellHeight] = useState<number>(56); // Saat hücresi yüksekliği (h-14 = 56px)
+
+  // CELL_WIDTH sabitini cellWidth state değişkeniyle değiştirelim
+  const CATEGORY_WIDTH = 200; // Kategori sütunu genişliği
+
+  // Hücre boyutlarını güncelleme fonksiyonu
+  const handleCellWidthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newWidth = parseInt(e.target.value);
+    setCellWidth(newWidth);
+  };
+
+  const handleCellHeightChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newHeight = parseInt(e.target.value);
+    setCellHeight(newHeight);
+  };
 
   // Sabit saat dizisi
   const hours = useMemo(() => {
@@ -226,7 +240,7 @@ function AdminPageComponent() {
 
     if (hourIndex >= 0) {
       // Saat ve dakikaya göre pozisyonu hesapla
-      const position = hourIndex * CELL_WIDTH + (minutePart / 60) * CELL_WIDTH;
+      const position = hourIndex * cellWidth + (minutePart / 60) * cellWidth;
 
       // Sayfanın ortasına scroll etmek için
       if (gridContainerRef.current) {
@@ -234,7 +248,7 @@ function AdminPageComponent() {
         setTimeout(() => {
           const screenWidth = window.innerWidth;
           const scrollPosition =
-            CATEGORY_WIDTH + position - screenWidth / 2 + CELL_WIDTH / 2;
+            CATEGORY_WIDTH + position - screenWidth / 2 + cellWidth / 2;
 
           gridContainerRef.current?.scrollTo({
             left: Math.max(0, scrollPosition),
@@ -252,7 +266,7 @@ function AdminPageComponent() {
 
     // Component unmount olduğunda timer'ı temizle
     return () => clearInterval(timer);
-  }, [CELL_WIDTH]);
+  }, [cellWidth]);
 
   // Mevcut rezervasyonlar
   const [reservations, setReservations] = useState<ReservationType[]>([
@@ -511,7 +525,7 @@ function AdminPageComponent() {
 
     if (hourIndex >= 0) {
       // Saat ve dakikaya göre pozisyonu hesapla
-      const position = hourIndex * CELL_WIDTH + (minutePart / 60) * CELL_WIDTH;
+      const position = hourIndex * cellWidth + (minutePart / 60) * cellWidth;
       setCurrentTimePosition(position);
       console.log("Zaman pozisyonu hesaplandı:", position, "px");
 
@@ -521,7 +535,7 @@ function AdminPageComponent() {
         const screenWidth = window.innerWidth;
         // Zaman çizgisinin pozisyonu + kategori genişliği - ekranın yarısı
         const scrollPosition =
-          CATEGORY_WIDTH + position - screenWidth / 2 + CELL_WIDTH / 2;
+          CATEGORY_WIDTH + position - screenWidth / 2 + cellWidth / 2;
 
         // Scroll pozisyonunu ayarla (animasyonlu olarak)
         setTimeout(() => {
@@ -544,7 +558,7 @@ function AdminPageComponent() {
     }, 60000); // Her dakika güncelle
 
     return () => clearInterval(timer);
-  }, [currentTime, CELL_WIDTH]);
+  }, [currentTime, cellWidth]);
 
   // Pencere boyutu değiştiğinde içeriği güncelle
   useEffect(() => {
@@ -673,7 +687,7 @@ function AdminPageComponent() {
 
       // Başlangıç soldan pozisyonu
       const startPosition =
-        startColumnIndex * CELL_WIDTH + (startMinute / 60) * CELL_WIDTH;
+        startColumnIndex * cellWidth + (startMinute / 60) * cellWidth;
 
       // Genişlik hesabı
       let width;
@@ -682,16 +696,16 @@ function AdminPageComponent() {
         // Normal durum - aynı gün içinde biten rezervasyon
         const columnSpan = endColumnIndex - startColumnIndex;
         width =
-          columnSpan * CELL_WIDTH +
-          (endMinute / 60) * CELL_WIDTH -
-          (startMinute / 60) * CELL_WIDTH;
+          columnSpan * cellWidth +
+          (endMinute / 60) * cellWidth -
+          (startMinute / 60) * cellWidth;
       } else {
         // Gece yarısını geçen durumlar
         const columnSpan = hours.length - startColumnIndex + endColumnIndex;
         width =
-          columnSpan * CELL_WIDTH +
-          (endMinute / 60) * CELL_WIDTH -
-          (startMinute / 60) * CELL_WIDTH;
+          columnSpan * cellWidth +
+          (endMinute / 60) * cellWidth -
+          (startMinute / 60) * cellWidth;
       }
 
       // Minimum genişlik kontrolü
@@ -1693,6 +1707,12 @@ function AdminPageComponent() {
     }
   }, [zoomLevel]);
 
+  // Hücre boyutlarını varsayılan değerlere sıfırla
+  const resetCellDimensions = () => {
+    setCellWidth(160);
+    setCellHeight(56);
+  };
+
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-gray-50 text-gray-800">
       {/* Aktif rezervasyon bildirimleri */}
@@ -1823,7 +1843,7 @@ function AdminPageComponent() {
             <div
               className="relative"
               style={{
-                width: `${CATEGORY_WIDTH + hours.length * CELL_WIDTH}px`,
+                width: `${CATEGORY_WIDTH + hours.length * cellWidth}px`,
                 minWidth: "100%",
               }}
             >
@@ -1831,8 +1851,11 @@ function AdminPageComponent() {
               <div className="sticky top-0 z-20 flex bg-white border-b border-gray-200">
                 {/* Kategoriler için boş alan */}
                 <div
-                  className="flex-shrink-0 h-14 bg-white border-r border-gray-200 sticky left-0 z-30"
-                  style={{ width: `${CATEGORY_WIDTH}px` }}
+                  className="flex-shrink-0 bg-white border-r border-gray-200 sticky left-0 z-30"
+                  style={{
+                    width: `${CATEGORY_WIDTH}px`,
+                    height: `${cellHeight}px`,
+                  }}
                 ></div>
 
                 {/* Saat başlıkları */}
@@ -1840,8 +1863,11 @@ function AdminPageComponent() {
                   {hours.map((hour) => (
                     <div
                       key={hour}
-                      className="border-r border-gray-200 h-14 flex flex-col justify-center items-center"
-                      style={{ width: `${CELL_WIDTH}px` }}
+                      className="border-r border-gray-200 flex flex-col justify-center items-center"
+                      style={{
+                        width: `${cellWidth}px`,
+                        height: `${cellHeight}px`,
+                      }}
                     >
                       <div className="font-medium text-sm text-gray-700">
                         {hour}
@@ -1868,9 +1894,10 @@ function AdminPageComponent() {
                   <div className="flex">
                     {/* Kategori adı sol tarafta */}
                     <div
-                      className="flex-shrink-0 h-14 flex items-center px-4 border-b border-r font-semibold text-gray-600 text-sm sticky left-0 z-10"
+                      className="flex-shrink-0 flex items-center px-4 border-b border-r font-semibold text-gray-600 text-sm sticky left-0 z-10"
                       style={{
                         width: `${CATEGORY_WIDTH}px`,
+                        height: `${cellHeight}px`,
                         borderColor: category.borderColor,
                         borderBottomWidth: "2px",
                         backgroundColor: getLighterColor(category.color),
@@ -1881,8 +1908,9 @@ function AdminPageComponent() {
 
                     {/* Saat çizelgesinde kategori başlığı için boş alan */}
                     <div
-                      className="flex-1 h-14 border-b"
+                      className="flex-1 border-b"
                       style={{
+                        height: `${cellHeight}px`,
                         borderBottomColor: category.borderColor,
                         borderBottomWidth: "2px",
                         backgroundColor: category.backgroundColor || "white",
@@ -1896,13 +1924,15 @@ function AdminPageComponent() {
                     .map((table) => (
                       <div
                         key={table.id}
-                        className="flex relative h-14 border-t border-gray-200"
+                        className="flex relative border-t border-gray-200"
+                        style={{ height: `${cellHeight}px` }}
                       >
                         {/* Masa bilgisi sol tarafta - sticky yapıyoruz */}
                         <div
-                          className="flex-shrink-0 h-14 flex items-center px-4 border-r border-gray-200 sticky left-0 z-10"
+                          className="flex-shrink-0 flex items-center px-4 border-r border-gray-200 sticky left-0 z-10"
                           style={{
                             width: `${CATEGORY_WIDTH}px`,
+                            height: `${cellHeight}px`,
                             backgroundColor:
                               category.backgroundColor || "#f9fafb",
                           }}
@@ -1925,9 +1955,10 @@ function AdminPageComponent() {
                           {hours.map((hour) => (
                             <div
                               key={`${table.id}-${hour}`}
-                              className="border-r border-gray-200 h-14 relative cursor-pointer hover:bg-blue-50"
+                              className="border-r border-gray-200 relative cursor-pointer hover:bg-blue-50"
                               style={{
-                                width: `${CELL_WIDTH}px`,
+                                width: `${cellWidth}px`,
+                                height: `${cellHeight}px`,
                                 backgroundColor:
                                   hour === currentTime.substring(0, 5)
                                     ? "rgba(255, 255, 255, 0.5)"
@@ -1961,6 +1992,7 @@ function AdminPageComponent() {
                           style={{
                             left: `${CATEGORY_WIDTH}px`,
                             width: `calc(100% - ${CATEGORY_WIDTH}px)`,
+                            height: `${cellHeight}px`,
                           }}
                         >
                           {/* Debug çizgileri - saatleri görsel olarak göstermek için */}
@@ -1969,8 +2001,9 @@ function AdminPageComponent() {
                               key={`debug-line-${hour}`}
                               className="absolute top-0 h-full border-l border-blue-200 opacity-0 hover:opacity-30"
                               style={{
-                                left: `${idx * CELL_WIDTH}px`,
+                                left: `${idx * cellWidth}px`,
                                 width: "1px",
+                                height: `${cellHeight}px`,
                                 zIndex: 0,
                               }}
                             />
@@ -1992,8 +2025,8 @@ function AdminPageComponent() {
                                   style={{
                                     left: `calc(${position.left} + 1px)`,
                                     width: `calc(${position.width} - 2px)`,
-                                    top: "1px", // Üstten 1px boşluk
-                                    height: "calc(100% - 2px)", // Alt ve üst toplam 2px boşluk
+                                    top: "1px",
+                                    height: `calc(${cellHeight}px - 2px)`,
                                     backgroundColor:
                                       reservation.color || category.color,
                                     borderLeft: `4px solid ${category.borderColor}`,
@@ -2144,6 +2177,63 @@ function AdminPageComponent() {
               >
                 Sıfırla
               </button>
+
+              <div className="h-8 border-l border-gray-300 mx-1"></div>
+
+              <div className="flex items-center space-x-2">
+                <div className="flex flex-col items-center">
+                  <label className="text-xs text-gray-600 mb-0.5">
+                    Genişlik
+                  </label>
+                  <div className="flex items-center">
+                    <input
+                      type="number"
+                      min="80"
+                      max="300"
+                      value={cellWidth}
+                      onChange={handleCellWidthChange}
+                      className="w-14 h-6 text-xs border border-gray-300 rounded px-1 py-0.5"
+                    />
+                    <span className="text-xs ml-0.5">px</span>
+                  </div>
+                </div>
+
+                <div className="flex flex-col items-center">
+                  <label className="text-xs text-gray-600 mb-0.5">
+                    Yükseklik
+                  </label>
+                  <div className="flex items-center">
+                    <input
+                      type="number"
+                      min="30"
+                      max="100"
+                      value={cellHeight}
+                      onChange={handleCellHeightChange}
+                      className="w-14 h-6 text-xs border border-gray-300 rounded px-1 py-0.5"
+                    />
+                    <span className="text-xs ml-0.5">px</span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={resetCellDimensions}
+                  title="Hücre boyutlarını sıfırla"
+                  className="w-6 h-6 mt-4 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-3.5 w-3.5 text-gray-700"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
         </div>
