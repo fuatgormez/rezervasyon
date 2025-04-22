@@ -510,55 +510,48 @@ function AdminPageComponent() {
       return;
     }
 
-    // Zamanın hangi hücrede olduğunu bul
-    const hourPart = parseInt(currentTime.split(":")[0]);
-    const minutePart = parseInt(currentTime.split(":")[1]);
-
-    // Geçerli saati bul (7'den başlayarak)
-    let hourIndex = -1;
-
-    if (hourPart >= 7 && hourPart <= 24) {
-      hourIndex = hourPart - 7;
-    } else if (hourPart >= 1 && hourPart <= 2) {
-      hourIndex = 24 - 7 + hourPart; // 01:00 ve 02:00 için
-    }
-
-    if (hourIndex >= 0) {
-      // Saat ve dakikaya göre pozisyonu hesapla
-      const position = hourIndex * cellWidth + (minutePart / 60) * cellWidth;
-      setCurrentTimePosition(position);
-      console.log("Zaman pozisyonu hesaplandı:", position, "px");
-
-      // Sayfanın ortasına scroll etmek için
-      if (gridContainerRef.current) {
-        // Ekranın ortasına konumlandırmak için ekran genişliğini hesapla
-        const screenWidth = window.innerWidth;
-        // Zaman çizgisinin pozisyonu + kategori genişliği - ekranın yarısı
-        const scrollPosition =
-          CATEGORY_WIDTH + position - screenWidth / 2 + cellWidth / 2;
-
-        // Scroll pozisyonunu ayarla (animasyonlu olarak)
-        setTimeout(() => {
-          gridContainerRef.current?.scrollTo({
-            left: Math.max(0, scrollPosition),
-            behavior: "smooth",
-          });
-        }, 500); // Sayfa yüklendikten sonra scroll işlemini yapmak için kısa bir gecikme
-      }
-    } else {
-      setCurrentTimePosition(null);
-      console.log("Geçerli saat aralığı dışında, çizgi gösterilmeyecek");
-    }
-
-    // Her saniye güncelleme için bir zamanlayıcı ekleyelim
-    const timer = setInterval(() => {
+    const updateTimePosition = () => {
       const now = new Date();
       const formattedTime = format(now, "HH:mm");
       setCurrentTime(formattedTime);
-    }, 60000); // Her dakika güncelle
+
+      // Zamanın hangi hücrede olduğunu bul
+      const hourPart = parseInt(formattedTime.split(":")[0]);
+      const minutePart = parseInt(formattedTime.split(":")[1]);
+
+      // Geçerli saati bul (7'den başlayarak)
+      let hourIndex = -1;
+
+      if (hourPart >= 7 && hourPart <= 24) {
+        hourIndex = hourPart - 7;
+      } else if (hourPart >= 1 && hourPart <= 2) {
+        hourIndex = 24 - 7 + hourPart; // 01:00 ve 02:00 için
+      }
+
+      if (hourIndex >= 0) {
+        // Saat ve dakikaya göre pozisyonu hesapla
+        const position = hourIndex * cellWidth + (minutePart / 60) * cellWidth;
+        setCurrentTimePosition(position);
+        console.log(
+          "Zaman pozisyonu güncellendi:",
+          formattedTime,
+          position,
+          "px"
+        );
+      } else {
+        setCurrentTimePosition(null);
+        console.log("Geçerli saat aralığı dışında, çizgi gösterilmeyecek");
+      }
+    };
+
+    // İlk yüklemede çalıştır
+    updateTimePosition();
+
+    // Her saniye güncelle
+    const timer = setInterval(updateTimePosition, 1000);
 
     return () => clearInterval(timer);
-  }, [currentTime, cellWidth]);
+  }, [cellWidth]); // cellWidth değiştiğinde de güncelle
 
   // Pencere boyutu değiştiğinde içeriği güncelle
   useEffect(() => {
