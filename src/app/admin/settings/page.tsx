@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import toast from "react-hot-toast";
+import { tables as tablesApi } from "@/lib/supabase/tables";
+import type { Table, TableInput } from "@/lib/supabase/tables";
 
 // Masa kategorisi arayüzü güncelleniyor
 interface TableCategory {
@@ -59,6 +61,13 @@ export default function SettingsPage() {
     reservationDuration: 120, // dakika cinsinden
   });
 
+  // Masa listesi için state
+  const [tablesList, setTablesList] = useState<{
+    list: Array<Table>;
+  }>({
+    list: [],
+  });
+
   // Firma ayarlarını kaydetmek için fonksiyon
   const saveCompanySettings = () => {
     // API çağrısı yapılacak
@@ -98,6 +107,88 @@ export default function SettingsPage() {
       setTimeSettings(JSON.parse(savedTimeSettings));
     }
   }, []);
+
+  // Masaları yükle
+  useEffect(() => {
+    loadTables();
+  }, []);
+
+  // Masaları yükleme fonksiyonu
+  const loadTables = async () => {
+    try {
+      console.log("Masalar yükleniyor...");
+      const tableData = await tablesApi.getAll();
+      console.log("Yüklenen masalar:", tableData);
+      setTablesList({ list: tableData });
+    } catch (error: any) {
+      console.error("Masalar yüklenirken detaylı hata:", error);
+      toast.error(
+        `Masalar yüklenirken bir hata oluştu: ${error?.message || error}`
+      );
+    }
+  };
+
+  // Yeni masa ekleme fonksiyonu
+  const addTable = async () => {
+    try {
+      console.log("Yeni masa ekleniyor...");
+      const newTable: TableInput = {
+        number: tablesList.list.length + 1,
+        capacity: 4,
+        category_id: parseInt(tableSettings.categories[0]?.id || "0"),
+        status: "active",
+        is_online_reservable: true,
+      };
+      console.log("Eklenecek masa bilgileri:", newTable);
+
+      const createdTable = await tablesApi.create(newTable);
+      console.log("Oluşturulan masa:", createdTable);
+      setTablesList({ list: [...tablesList.list, createdTable] });
+      toast.success("Yeni masa eklendi!");
+    } catch (error: any) {
+      console.error("Masa eklenirken detaylı hata:", error);
+      toast.error(
+        `Masa eklenirken bir hata oluştu: ${error?.message || error}`
+      );
+    }
+  };
+
+  // Masa güncelleme fonksiyonu
+  const updateTable = async (id: number, data: Partial<TableInput>) => {
+    try {
+      console.log(`${id} ID'li masa güncelleniyor:`, data);
+      const updatedTable = await tablesApi.update(id, data);
+      console.log("Güncellenen masa:", updatedTable);
+      setTablesList({
+        list: tablesList.list.map((table) =>
+          table.id === id ? updatedTable : table
+        ),
+      });
+      toast.success("Masa güncellendi!");
+    } catch (error: any) {
+      console.error("Masa güncellenirken detaylı hata:", error);
+      toast.error(
+        `Masa güncellenirken bir hata oluştu: ${error?.message || error}`
+      );
+    }
+  };
+
+  // Masa silme fonksiyonu
+  const deleteTable = async (id: number) => {
+    try {
+      console.log(`${id} ID'li masa siliniyor...`);
+      await tablesApi.delete(id);
+      setTablesList({
+        list: tablesList.list.filter((table) => table.id !== id),
+      });
+      toast.success("Masa silindi!");
+    } catch (error: any) {
+      console.error("Masa silinirken detaylı hata:", error);
+      toast.error(
+        `Masa silinirken bir hata oluştu: ${error?.message || error}`
+      );
+    }
+  };
 
   // Kategori ekleme fonksiyonu
   const addCategory = () => {
@@ -505,6 +596,130 @@ export default function SettingsPage() {
           >
             Masa Kategori Ayarlarını Kaydet
           </button>
+        </div>
+      </div>
+
+      {/* Masa Yönetimi */}
+      <div className="bg-white p-6 rounded-lg shadow-md mt-6">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-semibold">Masa Yönetimi</h2>
+          <button
+            onClick={addTable}
+            className="bg-green-500 text-white px-3 py-1 rounded-md hover:bg-green-600"
+          >
+            Yeni Masa Ekle
+          </button>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Masa No
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Kapasite
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Kategori
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Durum
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Online Rezervasyon
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  İşlemler
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {tablesList.list.map((table) => (
+                <tr key={table.id}>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <input
+                      type="number"
+                      value={table.number}
+                      onChange={(e) =>
+                        updateTable(table.id, {
+                          number: parseInt(e.target.value),
+                        })
+                      }
+                      className="border border-gray-300 rounded-md shadow-sm p-1 w-20"
+                    />
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <input
+                      type="number"
+                      value={table.capacity}
+                      onChange={(e) =>
+                        updateTable(table.id, {
+                          capacity: parseInt(e.target.value),
+                        })
+                      }
+                      className="border border-gray-300 rounded-md shadow-sm p-1 w-20"
+                      min="1"
+                    />
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <select
+                      value={table.category_id}
+                      onChange={(e) =>
+                        updateTable(table.id, {
+                          category_id: parseInt(e.target.value),
+                        })
+                      }
+                      className="border border-gray-300 rounded-md shadow-sm p-1"
+                    >
+                      {tableSettings.categories.map((category) => (
+                        <option key={category.id} value={category.id}>
+                          {category.name}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <select
+                      value={table.status}
+                      onChange={(e) =>
+                        updateTable(table.id, {
+                          status: e.target.value as "active" | "inactive",
+                        })
+                      }
+                      className="border border-gray-300 rounded-md shadow-sm p-1"
+                    >
+                      <option value="active">Aktif</option>
+                      <option value="inactive">Pasif</option>
+                    </select>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <select
+                      value={table.is_online_reservable.toString()}
+                      onChange={(e) =>
+                        updateTable(table.id, {
+                          is_online_reservable: e.target.value === "true",
+                        })
+                      }
+                      className="border border-gray-300 rounded-md shadow-sm p-1"
+                    >
+                      <option value="true">Açık</option>
+                      <option value="false">Kapalı</option>
+                    </select>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <button
+                      onClick={() => deleteTable(table.id)}
+                      className="text-red-600 hover:text-red-800"
+                    >
+                      Sil
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
