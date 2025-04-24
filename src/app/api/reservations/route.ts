@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ReservationModel } from "@/lib/kv";
 import { ReservationType } from "@/lib/kv/models/reservation";
+import { ReservationController } from "@/controllers/reservation.controller";
 
 // GET - Tüm rezervasyonları getir
 export async function GET(request: NextRequest) {
@@ -10,6 +11,14 @@ export async function GET(request: NextRequest) {
     const type = searchParams.get("type");
     const tableId = searchParams.get("tableId");
     const date = searchParams.get("date");
+    const companyId = searchParams.get("companyId");
+
+    if (!companyId) {
+      return NextResponse.json(
+        { error: "Company ID is required" },
+        { status: 400 }
+      );
+    }
 
     // Filtreleri hazırla
     const filters: {
@@ -25,7 +34,9 @@ export async function GET(request: NextRequest) {
     if (date) filters.date = date;
 
     // Vercel KV ile veri çek
-    const reservations = await ReservationModel.getAll(filters);
+    const reservations = await ReservationController.getCompanyReservations(
+      companyId
+    );
 
     return NextResponse.json({ reservations });
   } catch (error) {
@@ -40,84 +51,24 @@ export async function GET(request: NextRequest) {
 // POST - Yeni rezervasyon ekle
 export async function POST(request: NextRequest) {
   try {
-    const data = await request.json();
+    const { userId, companyId, date, time } = await request.json();
 
-    // Zorunlu alanları kontrol et
-    const requiredFields = [
-      "tableId",
-      "startTime",
-      "endTime",
-      "guests",
-      "customerName",
-    ];
-    const missingFields = requiredFields.filter((field) => !data[field]);
-
-    if (missingFields.length > 0) {
+    if (!userId || !companyId || !date || !time) {
       return NextResponse.json(
-        {
-          error: `Missing required fields: ${missingFields.join(", ")}`,
-        },
+        { error: "Missing required fields" },
         { status: 400 }
       );
     }
 
-    // Rezervasyon zamanını kontrol et - işletme saatlerinin 9:00 - 23:00 olduğunu varsayalım
-    const startTimeParts = data.startTime.split(":");
-    const hours = parseInt(startTimeParts[0], 10);
-
-    if (hours < 9 && hours >= 23) {
-      return NextResponse.json(
-        {
-          error: "Rezervasyonlar sadece 9:00 ve 23:00 arasında yapılabilir",
-        },
-        { status: 400 }
-      );
-    }
-
-    // Masa müsaitliğini kontrol et
-    const isAvailable = await ReservationModel.isTableAvailable(
-      data.tableId,
-      data.startTime,
-      data.endTime
+    const reservation = await ReservationController.createReservation(
+      userId,
+      companyId,
+      date,
+      time
     );
 
-    if (!isAvailable) {
-      return NextResponse.json(
-        {
-          error: "Seçilen masa belirtilen saatlerde müsait değil",
-        },
-        { status: 400 }
-      );
-    }
-
-    // Rezervasyon nesnesi oluştur
-    const reservationData: Omit<ReservationType, "id"> = {
-      customerId: data.customerId || `cust_${Date.now()}`,
-      customerName: data.customerName,
-      tableId: data.tableId,
-      startTime: data.startTime,
-      endTime: data.endTime,
-      guests: data.guests,
-      status: data.status || "confirmed",
-      type: data.type || "RESERVATION",
-      phone: data.phone,
-      isNewGuest: data.isNewGuest,
-      language: data.language,
-      color: data.color,
-    };
-
-    // Yeni rezervasyon oluştur
-    const newReservation = await ReservationModel.create(reservationData);
-
-    return NextResponse.json({
-      message: "Rezervasyon başarıyla oluşturuldu",
-      reservation: newReservation,
-    });
-  } catch (error) {
-    console.error("POST reservation error:", error);
-    return NextResponse.json(
-      { error: "Rezervasyon oluşturulamadı" },
-      { status: 500 }
-    );
+    return NextResponse.json(reservation);
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

@@ -23,7 +23,6 @@
     "@supabase/ssr": "^0.6.1",
     "@supabase/supabase-js": "^2.49.4",
     "@types/uuid": "^10.0.0",
-    "@vercel/kv": "^3.0.0",
     "autoprefixer": "^10.4.21",
     "bufferutil": "^4.0.8",
     "class-variance-authority": "^0.7.1",
