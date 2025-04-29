@@ -1,0 +1,30 @@
+            ref={gridContainerRef}
+            onMouseLeave={handleMainContentLeave}
+          >
+            {/* Herhangi bir rezervasyon yoksa ve tablolar yüklendiyse boş durum mesajı göster */}
+            {reservations.length === 0 && tables.length > 0 && (
+              <div
+                className="fixed inset-0 w-full h-full flex flex-col items-center justify-center bg-white bg-opacity-95 z-50 pointer-events-none"
+                style={{ maxWidth: "100vw", left: 0, right: 0 }}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-16 w-16 mb-4 text-gray-300"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                  />
+                </svg>
+                <p className="text-lg font-semibold text-gray-500 text-center px-4">
+                  {format(selectedDate, "dd MMMM yyyy", { locale: tr })}{" "}
+                  tarihinde rezervasyon bulunmamaktadır.
+                </p>
+                <p className="mt-2 text-gray-400 text-center px-4">
+                  Yeni rezervasyon oluşturmak için zaman çizelgesinde bir
+                  hücreye tıklayın.

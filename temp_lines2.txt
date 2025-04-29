@@ -1,0 +1,16 @@
+                </p>
+              </div>
+            )}
+
+            <div
+              className="relative"
+              style={{
+                width: `${CATEGORY_WIDTH + hours.length * cellWidth}px`,
+                minWidth: "100%",
+              }}
+            >
+              {/* Saatler başlık satırı - Sticky */}
+              <div className="sticky top-0 z-20 flex bg-white border-b border-gray-200">
+                {/* Kategoriler için boş alan */}
+                <div
+                  className="flex-shrink-0 bg-white border-r border-gray-200 sticky left-0 z-30"

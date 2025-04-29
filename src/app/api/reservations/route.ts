@@ -1,17 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ReservationModel } from "@/lib/kv";
-import { ReservationType } from "@/lib/kv/models/reservation";
 import { ReservationController } from "@/controllers/reservation.controller";
+import type { Reservation } from "@/models/types";
 
 // GET - Tüm rezervasyonları getir
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const status = searchParams.get("status");
-    const type = searchParams.get("type");
-    const tableId = searchParams.get("tableId");
-    const date = searchParams.get("date");
     const companyId = searchParams.get("companyId");
+    const date = searchParams.get("date");
+    const startDate = searchParams.get("startDate");
+    const endDate = searchParams.get("endDate");
 
     if (!companyId) {
       return NextResponse.json(
@@ -20,29 +18,41 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Filtreleri hazırla
-    const filters: {
-      status?: string;
-      type?: string;
-      tableId?: string;
-      date?: string;
-    } = {};
+    let reservations: Reservation[] = [];
 
-    if (status) filters.status = status;
-    if (type) filters.type = type;
-    if (tableId) filters.tableId = tableId;
-    if (date) filters.date = date;
-
-    // Vercel KV ile veri çek
-    const reservations = await ReservationController.getCompanyReservations(
-      companyId
-    );
+    try {
+      if (startDate && endDate) {
+        // Tarih aralığına göre rezervasyonları getir
+        reservations = await ReservationController.getReservationsByDateRange(
+          companyId,
+          new Date(startDate),
+          new Date(endDate)
+        );
+      } else if (date) {
+        // Belirli bir tarihe göre rezervasyonları getir
+        reservations = await ReservationController.getCompanyReservations(
+          companyId,
+          new Date(date)
+        );
+      } else {
+        // Tüm rezervasyonları getir
+        reservations = await ReservationController.getCompanyReservations(
+          companyId
+        );
+      }
+    } catch (error) {
+      console.error("Rezervasyonlar alınamadı:", error);
+      return NextResponse.json(
+        { error: "Rezervasyonlar alınamadı: " + (error as Error).message },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({ reservations });
-  } catch (error) {
+  } catch (error: any) {
     console.error("GET reservations error:", error);
     return NextResponse.json(
-      { error: "Failed to fetch reservations" },
+      { error: error.message || "Failed to fetch reservations" },
       { status: 500 }
     );
   }
@@ -51,24 +61,63 @@ export async function GET(request: NextRequest) {
 // POST - Yeni rezervasyon ekle
 export async function POST(request: NextRequest) {
   try {
-    const { userId, companyId, date, time } = await request.json();
+    const {
+      user_id,
+      company_id,
+      date,
+      time,
+      customer_name,
+      guest_count,
+      phone,
+      email,
+      table_id,
+      end_time,
+      notes,
+      status,
+    } = await request.json();
 
-    if (!userId || !companyId || !date || !time) {
+    if (!user_id || !company_id || !date || !time) {
       return NextResponse.json(
-        { error: "Missing required fields" },
+        { error: "Gerekli alanlar eksik" },
         { status: 400 }
       );
     }
 
-    const reservation = await ReservationController.createReservation(
-      userId,
-      companyId,
+    console.log("Rezervasyon verileri:", {
+      user_id,
+      company_id,
       date,
-      time
+      time,
+      customer_name,
+      guest_count,
+      phone,
+      email,
+      table_id,
+      end_time,
+      notes,
+      status,
+    });
+
+    const reservation = await ReservationController.createReservation(
+      user_id,
+      company_id,
+      date,
+      time,
+      {
+        customer_name,
+        guest_count,
+        phone,
+        email,
+        table_id,
+        end_time,
+        notes,
+        status: status || "pending",
+      }
     );
 
     return NextResponse.json(reservation);
   } catch (error: any) {
+    console.error("Rezervasyon oluşturma hatası:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

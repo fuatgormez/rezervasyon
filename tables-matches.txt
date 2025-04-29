@@ -1,0 +1,2 @@
+  const tables = useMemo<TableType[]>(
+    const tablesInSameCategory = tables.filter(

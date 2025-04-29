@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ReservationModel } from "@/lib/kv";
+import { SupabaseService } from "@/services/supabase.service";
 
 export async function GET(
   request: NextRequest,
@@ -7,20 +7,20 @@ export async function GET(
 ) {
   try {
     const id = params.id;
-    const reservation = await ReservationModel.getById(id);
+    const reservation = await SupabaseService.getReservationById(id);
 
     if (!reservation) {
       return NextResponse.json(
-        { error: "Reservation not found" },
+        { error: "Rezervasyon bulunamadı" },
         { status: 404 }
       );
     }
 
     return NextResponse.json({ reservation });
   } catch (error) {
-    console.error(`Error fetching reservation ${params.id}:`, error);
+    console.error(`Rezervasyon getirme hatası ${params.id}:`, error);
     return NextResponse.json(
-      { error: "Failed to fetch reservation" },
+      { error: "Rezervasyon getirilemedi" },
       { status: 500 }
     );
   }
@@ -34,23 +34,26 @@ export async function PATCH(
     const id = params.id;
     const updates = await request.json();
 
-    const updatedReservation = await ReservationModel.update(id, updates);
+    const updatedReservation = await SupabaseService.updateReservation(
+      id,
+      updates
+    );
 
     if (!updatedReservation) {
       return NextResponse.json(
-        { error: "Reservation not found" },
+        { error: "Rezervasyon bulunamadı" },
         { status: 404 }
       );
     }
 
     return NextResponse.json({
-      message: "Reservation updated successfully",
+      message: "Rezervasyon başarıyla güncellendi",
       reservation: updatedReservation,
     });
   } catch (error) {
-    console.error(`Error updating reservation ${params.id}:`, error);
+    console.error(`Rezervasyon güncelleme hatası ${params.id}:`, error);
     return NextResponse.json(
-      { error: "Failed to update reservation" },
+      { error: "Rezervasyon güncellenemedi" },
       { status: 500 }
     );
   }
@@ -62,22 +65,15 @@ export async function DELETE(
 ) {
   try {
     const id = params.id;
-    const result = await ReservationModel.delete(id);
-
-    if (!result) {
-      return NextResponse.json(
-        { error: "Reservation not found" },
-        { status: 404 }
-      );
-    }
+    await SupabaseService.deleteReservation(id);
 
     return NextResponse.json({
-      message: "Reservation deleted successfully",
+      message: "Rezervasyon başarıyla silindi",
     });
   } catch (error) {
-    console.error(`Error deleting reservation ${params.id}:`, error);
+    console.error(`Rezervasyon silme hatası ${params.id}:`, error);
     return NextResponse.json(
-      { error: "Failed to delete reservation" },
+      { error: "Rezervasyon silinemedi" },
       { status: 500 }
     );
   }

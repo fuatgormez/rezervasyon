@@ -296,6 +296,109 @@ function AdminPageComponent() {
   // Mevcut rezervasyonlar
   const [reservations, setReservations] = useState<ReservationType[]>([]);
 
+  // Masaları kategorilerine göre tanımla
+  const tables = useMemo<TableType[]>(
+    () => [
+      // TERAS kategorisindeki masalar
+      {
+        id: "t1",
+        number: 1,
+        capacity: 2,
+        status: "available",
+        categoryId: "1",
+      },
+      {
+        id: "t2",
+        number: 2,
+        capacity: 4,
+        status: "available",
+        categoryId: "1",
+      },
+      {
+        id: "t3",
+        number: 3,
+        capacity: 6,
+        status: "available",
+        categoryId: "1",
+      },
+      {
+        id: "t4",
+        number: 4,
+        capacity: 8,
+        status: "available",
+        categoryId: "1",
+      },
+      {
+        id: "t5",
+        number: 5,
+        capacity: 2,
+        status: "available",
+        categoryId: "1",
+      },
+
+      // BAHÇE kategorisindeki masalar
+      {
+        id: "b1",
+        number: 6,
+        capacity: 2,
+        status: "available",
+        categoryId: "2",
+      },
+      {
+        id: "b2",
+        number: 7,
+        capacity: 4,
+        status: "available",
+        categoryId: "2",
+      },
+      {
+        id: "b3",
+        number: 8,
+        capacity: 6,
+        status: "available",
+        categoryId: "2",
+      },
+      {
+        id: "b4",
+        number: 9,
+        capacity: 8,
+        status: "available",
+        categoryId: "2",
+      },
+
+      // İÇ SALON kategorisindeki masalar
+      {
+        id: "i1",
+        number: 10,
+        capacity: 2,
+        status: "available",
+        categoryId: "3",
+      },
+      {
+        id: "i2",
+        number: 11,
+        capacity: 4,
+        status: "available",
+        categoryId: "3",
+      },
+      {
+        id: "i3",
+        number: 12,
+        capacity: 6,
+        status: "available",
+        categoryId: "3",
+      },
+      {
+        id: "i4",
+        number: 13,
+        capacity: 8,
+        status: "available",
+        categoryId: "3",
+      },
+    ],
+    []
+  );
+
   // Mevcut zamanın pozisyonunu güncelle
   useEffect(() => {
     // Netlify dağıtımı ve SSG aşamasında atlanacak
@@ -1733,8 +1836,13 @@ function AdminPageComponent() {
       // Filtrelenmiş rezervasyonları güncelle
       setReservations(filteredReservations);
 
-      // Eğer rezervasyon yoksa toast bildirimi göstermiyoruz
-      // Toast kaldırıldı çünkü başka bir yerden zaten bildirim gösteriliyor
+      // Eğer rezervasyon varsa otomatik olarak ilgili bölüme kaydır
+      if (filteredReservations.length > 0) {
+        // İlk rezervasyonun saatine göre scroll yapabilirsiniz
+        const firstReservationHour =
+          filteredReservations[0].startTime?.split(" ")[1]; // "HH:mm" formatında
+        // TODO: İlgili saate scroll işlevi eklenebilir
+      }
     } catch (error) {
       console.error("Rezervasyonları filtreleme hatası:", error);
       toast.error("Rezervasyon verileri yüklenirken bir hata oluştu.");
@@ -1918,7 +2026,33 @@ function AdminPageComponent() {
             ref={gridContainerRef}
             onMouseLeave={handleMainContentLeave}
           >
-            {/* Boş durum mesajını kaldırdık, toast bildirimi kullanılacak */}
+            {/* Herhangi bir rezervasyon yoksa ve tablolar yüklendiyse boş durum mesajı göster */}
+            {reservations.length === 0 && tables.length > 0 && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-white bg-opacity-90 z-10 pointer-events-none">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-16 w-16 mb-4 text-gray-300"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                  />
+                </svg>
+                <p className="text-lg font-semibold text-gray-500">
+                  {format(selectedDate, "dd MMMM yyyy", { locale: tr })}{" "}
+                  tarihinde rezervasyon bulunmamaktadır.
+                </p>
+                <p className="mt-2 text-gray-400">
+                  Yeni rezervasyon oluşturmak için zaman çizelgesinde bir
+                  hücreye tıklayın.
+                </p>
+              </div>
+            )}
 
             <div
               className="relative"

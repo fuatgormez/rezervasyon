@@ -3,8 +3,8 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import toast from "react-hot-toast";
-import { tables as tablesApi } from "@/lib/supabase/tables";
-import type { Table, TableInput } from "@/lib/supabase/tables";
+import { mockTables, mockTableCategories } from "@/lib/supabase/tables";
+import type { Table } from "@/lib/supabase/tables";
 
 // Masa kategorisi arayüzü güncelleniyor
 interface TableCategory {
@@ -63,7 +63,7 @@ export default function SettingsPage() {
 
   // Masa listesi için state
   const [tablesList, setTablesList] = useState<{
-    list: Array<Table>;
+    list: Array<any>;
   }>({
     list: [],
   });
@@ -117,9 +117,21 @@ export default function SettingsPage() {
   const loadTables = async () => {
     try {
       console.log("Masalar yükleniyor...");
-      const tableData = await tablesApi.getAll();
-      console.log("Yüklenen masalar:", tableData);
-      setTablesList({ list: tableData });
+      // Gerçek API çağrısı yerine mock veri kullanıyoruz
+      setTablesList({ list: mockTables });
+
+      // Kategorileri de mock veriden yükle
+      setTableSettings({
+        categories: mockTableCategories.map((cat) => ({
+          id: cat.id,
+          name: cat.name,
+          color: cat.color,
+          borderColor: cat.border_color,
+          backgroundColor: cat.background_color,
+        })),
+      });
+
+      console.log("Yüklenen masalar:", mockTables);
     } catch (error: any) {
       console.error("Masalar yüklenirken detaylı hata:", error);
       toast.error(
@@ -132,18 +144,19 @@ export default function SettingsPage() {
   const addTable = async () => {
     try {
       console.log("Yeni masa ekleniyor...");
-      const newTable: TableInput = {
+      const newTable = {
+        id: `t${tablesList.list.length + 1}`,
         number: tablesList.list.length + 1,
         capacity: 4,
-        category_id: parseInt(tableSettings.categories[0]?.id || "0"),
-        status: "active",
-        is_online_reservable: true,
+        category_id: tableSettings.categories[0]?.id || "1",
+        status: "available",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       };
       console.log("Eklenecek masa bilgileri:", newTable);
 
-      const createdTable = await tablesApi.create(newTable);
-      console.log("Oluşturulan masa:", createdTable);
-      setTablesList({ list: [...tablesList.list, createdTable] });
+      // Gerçek API çağrısı yerine state güncelleme
+      setTablesList({ list: [...tablesList.list, newTable] });
       toast.success("Yeni masa eklendi!");
     } catch (error: any) {
       console.error("Masa eklenirken detaylı hata:", error);
@@ -154,14 +167,14 @@ export default function SettingsPage() {
   };
 
   // Masa güncelleme fonksiyonu
-  const updateTable = async (id: number, data: Partial<TableInput>) => {
+  const updateTable = async (id: string, data: any) => {
     try {
       console.log(`${id} ID'li masa güncelleniyor:`, data);
-      const updatedTable = await tablesApi.update(id, data);
-      console.log("Güncellenen masa:", updatedTable);
+
+      // Gerçek API çağrısı yerine state güncelleme
       setTablesList({
         list: tablesList.list.map((table) =>
-          table.id === id ? updatedTable : table
+          table.id === id ? { ...table, ...data } : table
         ),
       });
       toast.success("Masa güncellendi!");
@@ -174,10 +187,11 @@ export default function SettingsPage() {
   };
 
   // Masa silme fonksiyonu
-  const deleteTable = async (id: number) => {
+  const deleteTable = async (id: string) => {
     try {
       console.log(`${id} ID'li masa siliniyor...`);
-      await tablesApi.delete(id);
+
+      // Gerçek API çağrısı yerine state güncelleme
       setTablesList({
         list: tablesList.list.filter((table) => table.id !== id),
       });
@@ -202,13 +216,31 @@ export default function SettingsPage() {
       name: "Yeni Kategori",
       color: hexToRgba(randomColor, 0.8), // RGBA formatında şeffaf renk
       borderColor: randomColor, // Kenarlık rengi tam opak
-      backgroundColor: randomColor, // Arkaplan rengi tam opak
+      backgroundColor: getLighterColor(randomColor), // Açık tonda arkaplan rengi
     };
 
     setTableSettings({
       ...tableSettings,
       categories: [...tableSettings.categories, newCategory],
     });
+  };
+
+  // Açık renk oluşturma fonksiyonu
+  const getLighterColor = (hexColor: string, factor: number = 0.92): string => {
+    // HEX değerini RGB'ye çevir
+    const r = parseInt(hexColor.slice(1, 3), 16);
+    const g = parseInt(hexColor.slice(3, 5), 16);
+    const b = parseInt(hexColor.slice(5, 7), 16);
+
+    // Her bir renge açıklık ekle (beyaza doğru kaydir)
+    const newR = Math.min(255, r + Math.round((255 - r) * factor));
+    const newG = Math.min(255, g + Math.round((255 - g) * factor));
+    const newB = Math.min(255, b + Math.round((255 - b) * factor));
+
+    // RGB'yi HEX'e çevir
+    return `#${newR.toString(16).padStart(2, "0")}${newG
+      .toString(16)
+      .padStart(2, "0")}${newB.toString(16).padStart(2, "0")}`;
   };
 
   // Kategori silme fonksiyonu
@@ -248,34 +280,9 @@ export default function SettingsPage() {
     hexColor: string,
     opacity: number
   ) => {
-    const rgbaColor = hexToRgba(hexColor, opacity);
-    updateCategory(id, "color", rgbaColor);
-  };
-
-  // HEX rengini RGBA'dan çıkarma
-  const getRgbaValues = (rgba: string) => {
-    // rgba değerini parçalara ayır
-    const matches = rgba.match(/rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)/);
-
-    if (!matches) {
-      // Eğer rgba formatında değilse, varsayılan değerler döndür
-      return { hex: "#000000", opacity: 1 };
-    }
-
-    // RGB değerlerini al ve HEX formatına çevir
-    const r = parseInt(matches[1]);
-    const g = parseInt(matches[2]);
-    const b = parseInt(matches[3]);
-    const opacity = parseFloat(matches[4]);
-
-    // RGB'yi HEX'e çevir
-    const hex =
-      "#" +
-      r.toString(16).padStart(2, "0") +
-      g.toString(16).padStart(2, "0") +
-      b.toString(16).padStart(2, "0");
-
-    return { hex, opacity };
+    updateCategory(id, "color", hexToRgba(hexColor, opacity));
+    updateCategory(id, "borderColor", hexColor);
+    updateCategory(id, "backgroundColor", getLighterColor(hexColor));
   };
 
   return (
@@ -507,45 +514,12 @@ export default function SettingsPage() {
                       <div className="flex flex-col space-y-2">
                         <input
                           type="color"
-                          value={getRgbaValues(category.color).hex}
+                          value={category.color}
                           onChange={(e) => {
-                            // Mevcut opacity değerini koru
-                            const currentOpacity = getRgbaValues(
-                              category.color
-                            ).opacity;
-                            updateCategoryColor(
-                              category.id,
-                              e.target.value,
-                              currentOpacity
-                            );
+                            updateCategoryColor(category.id, e.target.value, 1);
                           }}
                           className="w-full h-8"
                         />
-                        <div className="flex items-center">
-                          <span className="text-xs mr-2">Şeffaflık:</span>
-                          <input
-                            type="range"
-                            min="0"
-                            max="1"
-                            step="0.1"
-                            value={getRgbaValues(category.color).opacity}
-                            onChange={(e) => {
-                              // Mevcut hex değerini koru
-                              const currentHex = getRgbaValues(
-                                category.color
-                              ).hex;
-                              updateCategoryColor(
-                                category.id,
-                                currentHex,
-                                parseFloat(e.target.value)
-                              );
-                            }}
-                            className="w-full"
-                          />
-                          <span className="text-xs ml-2">
-                            {getRgbaValues(category.color).opacity.toFixed(1)}
-                          </span>
-                        </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -628,9 +602,6 @@ export default function SettingsPage() {
                   Durum
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Online Rezervasyon
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   İşlemler
                 </th>
               </tr>
@@ -668,7 +639,7 @@ export default function SettingsPage() {
                       value={table.category_id}
                       onChange={(e) =>
                         updateTable(table.id, {
-                          category_id: parseInt(e.target.value),
+                          category_id: e.target.value,
                         })
                       }
                       className="border border-gray-300 rounded-md shadow-sm p-1"
@@ -692,20 +663,6 @@ export default function SettingsPage() {
                     >
                       <option value="active">Aktif</option>
                       <option value="inactive">Pasif</option>
-                    </select>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <select
-                      value={table.is_online_reservable.toString()}
-                      onChange={(e) =>
-                        updateTable(table.id, {
-                          is_online_reservable: e.target.value === "true",
-                        })
-                      }
-                      className="border border-gray-300 rounded-md shadow-sm p-1"
-                    >
-                      <option value="true">Açık</option>
-                      <option value="false">Kapalı</option>
                     </select>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">

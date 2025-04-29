@@ -14,6 +14,13 @@ export interface Reservation {
   time: string;
   status: "pending" | "confirmed" | "cancelled";
   created_at: string;
+  customer_name?: string;
+  guest_count?: number;
+  phone?: string;
+  email?: string;
+  notes?: string;
+  table_id?: string | null;
+  end_time?: string | null;
 }
 
 export interface Company {
