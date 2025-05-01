@@ -11,6 +11,10 @@ import { FiChevronDown, FiUsers } from "react-icons/fi";
 import Link from "next/link";
 import toast from "react-hot-toast";
 import { DayPicker } from "react-day-picker";
+import Draggable from "react-draggable";
+import { Resizable, ResizeCallbackData } from "react-resizable";
+import "react-resizable/css/styles.css";
+import DraggableReservationCard from "@/components/reservation/DraggableReservationCard";
 
 // Bu componenti sadece tarayıcıda çalıştırılacak şekilde dinamik olarak import ediyoruz
 // SSG sırasında çalıştırılmaz
@@ -48,6 +52,7 @@ interface ReservationType {
   note?: string;
   color?: string;
   staffIds?: string[]; // Atanmış garson ID'leri
+  position?: { x: number; y: number }; // Sürükleme pozisyonu
 }
 
 interface ActiveFormType {
@@ -66,6 +71,36 @@ interface ActiveFormType {
 export default function AdminPage() {
   return <AdminPageContent />;
 }
+
+// Dakikayı saat:dakika formatına çevirme
+const convertMinutesToTime = (totalMinutes: number): string => {
+  // Gün aşımlarını elle hesapla
+  let adjustedMinutes = totalMinutes;
+
+  // Dakika negatifse veya 24 saati aşıyorsa düzelt
+  while (adjustedMinutes < 0) {
+    adjustedMinutes += 24 * 60; // 24 saat ekle
+  }
+
+  while (adjustedMinutes >= 24 * 60) {
+    adjustedMinutes -= 24 * 60; // 24 saat çıkar
+  }
+
+  const hours = Math.floor(adjustedMinutes / 60);
+  const minutes = adjustedMinutes % 60;
+
+  return `${hours.toString().padStart(2, "0")}:${minutes
+    .toString()
+    .padStart(2, "0")}`;
+};
+
+// Saati dakikaya çevirme
+const convertTimeToMinutes = (time: string): number => {
+  const [hoursStr, minutesStr] = time.split(":");
+  const hours = parseInt(hoursStr, 10);
+  const minutes = parseInt(minutesStr, 10);
+  return hours * 60 + minutes;
+};
 
 // Asıl içerik - Window ve tarayıcı API'larını kullanabilir
 function AdminPageComponent() {
@@ -1741,6 +1776,262 @@ function AdminPageComponent() {
     }
   };
 
+  const [isDragging, setIsDragging] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
+  const [resizeDirection, setResizeDirection] = useState<
+    "left" | "right" | null
+  >(null);
+  const [draggedReservation, setDraggedReservation] =
+    useState<ReservationType | null>(null);
+  const [initialDragPosition, setInitialDragPosition] = useState({
+    x: 0,
+    y: 0,
+  });
+  const [initialStartTime, setInitialStartTime] = useState("");
+  const [initialEndTime, setInitialEndTime] = useState("");
+  const [initialTableId, setInitialTableId] = useState("");
+
+  // Sürüklemeye başladığında
+  const handleDragStart = (
+    reservation: ReservationType,
+    e: React.MouseEvent
+  ) => {
+    setIsDragging(true);
+    setDraggedReservation(reservation);
+
+    // Başlangıç değerlerini kaydet
+    setInitialStartTime(reservation.startTime);
+    setInitialEndTime(reservation.endTime);
+    setInitialTableId(reservation.tableId);
+  };
+
+  // Sürükleme sırasında
+  const handleDrag = (e: any, data: { x: number; y: number }) => {
+    if (!draggedReservation) return;
+
+    // Mevcut pozisyonu güncelle
+    const offsetX = data.x;
+    const offsetY = data.y;
+
+    // Elementin altındaki masa ID'sini bul
+    const targetElement = document
+      .elementFromPoint(e.clientX, e.clientY)
+      ?.closest(".table-row") as HTMLElement;
+
+    if (targetElement) {
+      const tableId = targetElement.getAttribute("data-table-id");
+      if (tableId) {
+        draggedReservation.tableId = tableId;
+      }
+    }
+
+    // Zaman hesaplama - sürükleme mesafesine göre zaman güncelleme
+    const cellWidthMinutes = 60;
+    const minuteOffset = Math.round((offsetX / cellWidth) * cellWidthMinutes);
+
+    // Yeni başlangıç ve bitiş zamanlarını hesapla (taşıma sırasında süre aynı kalır)
+    const startMinutes = convertTimeToMinutes(initialStartTime);
+    const endMinutes = convertTimeToMinutes(initialEndTime);
+    const duration = endMinutes - startMinutes;
+
+    const newStartMinutes = startMinutes + minuteOffset;
+    const newEndMinutes = newStartMinutes + duration;
+
+    // Yeni zamanları ayarla
+    draggedReservation.startTime = convertMinutesToTime(newStartMinutes);
+    draggedReservation.endTime = convertMinutesToTime(newEndMinutes);
+
+    // Güncellenmiş pozisyonu göster
+    // Not: Burada render trigger etmek için state'i güncelliyoruz
+    setDraggedReservation({ ...draggedReservation });
+  };
+
+  // Sürükleme tamamlandığında çağrılacak fonksiyon
+  const handleDragStop = (e: any, ui: { x: number; y: number }) => {
+    if (!draggedReservation) {
+      setIsDragging(false);
+      return;
+    }
+
+    // Varsa çakışmaları kontrol et
+    const hasConflict = hasTableConflict(
+      draggedReservation.tableId,
+      draggedReservation.startTime,
+      draggedReservation.endTime,
+      draggedReservation.id
+    );
+
+    if (hasConflict) {
+      // Çakışma varsa, orijinal pozisyona geri dön
+      toast.error(
+        "Bu masa ve zaman aralığında başka bir rezervasyon bulunuyor!"
+      );
+
+      // Orijinal değerlere geri dön
+      draggedReservation.tableId = initialTableId;
+      draggedReservation.startTime = initialStartTime;
+      draggedReservation.endTime = initialEndTime;
+
+      setDraggedReservation({ ...draggedReservation });
+    } else {
+      // Çakışma yoksa, güncellenmiş rezervasyonu kaydet
+      updateReservation(draggedReservation);
+      toast.success("Rezervasyon başarıyla taşındı!");
+
+      // Sidebar'ı güncelle
+      if (selectedReservation?.id === draggedReservation.id) {
+        setSelectedReservation(draggedReservation);
+      }
+    }
+
+    setIsDragging(false);
+    setDraggedReservation(null);
+  };
+
+  // Genişletmeye başladığında
+  const handleResizeStart = (
+    e: React.MouseEvent,
+    direction: "left" | "right",
+    reservation: ReservationType
+  ) => {
+    e.stopPropagation();
+    setIsResizing(true);
+    setResizeDirection(direction);
+    setDraggedReservation(reservation);
+
+    // Başlangıç değerlerini kaydet
+    setInitialStartTime(reservation.startTime);
+    setInitialEndTime(reservation.endTime);
+
+    // Başlangıç pozisyonunu kaydet
+    const position = getReservationPosition(
+      reservation.startTime,
+      reservation.endTime
+    );
+    const leftPx = parseInt(position.left);
+    setInitialDragPosition({ x: leftPx, y: 0 });
+
+    // Tüm diğer rezervasyonları gölgele
+    document.querySelectorAll("[data-reservation-id]").forEach((el) => {
+      if (el.getAttribute("data-reservation-id") !== reservation.id) {
+        (el as HTMLElement).style.opacity = "0.5";
+      }
+    });
+  };
+
+  // Genişletme esnasında
+  const handleResize = (
+    e: React.SyntheticEvent,
+    data: ResizeCallbackData,
+    reservation: ReservationType,
+    direction: "left" | "right"
+  ) => {
+    if (!draggedReservation) return;
+
+    const { size } = data;
+    const cellWidthMinutes = 60;
+
+    // Sağdan veya soldan boyutlandırma durumunu hesapla
+    if (direction === "right") {
+      // Sağdan boyutlandırma - sadece genişlik değişir, sol pozisyon sabit kalır
+      const currentWidth = parseInt(
+        getReservationPosition(
+          draggedReservation.startTime,
+          draggedReservation.endTime
+        ).width
+      );
+      const widthDiff = size.width - currentWidth;
+      const minutesDiff = Math.round(
+        (widthDiff / cellWidth) * cellWidthMinutes
+      );
+
+      // Bitiş zamanını güncelle
+      const endMinutes = convertTimeToMinutes(draggedReservation.endTime);
+      const newEndMinutes = endMinutes + minutesDiff;
+      const startMinutes = convertTimeToMinutes(draggedReservation.startTime);
+
+      // Minimum süre kontrolü (15 dakika)
+      if (newEndMinutes - startMinutes >= 15) {
+        draggedReservation.endTime = convertMinutesToTime(newEndMinutes);
+      }
+    } else if (direction === "left") {
+      // Soldan boyutlandırma - sol pozisyon ve genişlik değişir
+      const currentPosition = getReservationPosition(
+        initialStartTime,
+        initialEndTime
+      );
+      const currentLeft = parseInt(currentPosition.left);
+      const positionDiff =
+        parseInt(
+          getReservationPosition(
+            draggedReservation.startTime,
+            draggedReservation.endTime
+          ).left
+        ) - currentLeft;
+      const minutesDiff = Math.round(
+        (positionDiff / cellWidth) * cellWidthMinutes
+      );
+
+      // Başlangıç zamanını güncelle
+      const startMinutes = convertTimeToMinutes(initialStartTime);
+      const newStartMinutes = startMinutes + minutesDiff;
+      const endMinutes = convertTimeToMinutes(draggedReservation.endTime);
+
+      // Minimum süre kontrolü (15 dakika)
+      if (endMinutes - newStartMinutes >= 15) {
+        draggedReservation.startTime = convertMinutesToTime(newStartMinutes);
+      }
+    }
+
+    // Pozisyonu güncelle
+    setDraggedReservation({ ...draggedReservation });
+  };
+
+  // Genişletme tamamlandığında
+  const handleResizeStop = (
+    e: React.SyntheticEvent,
+    data: ResizeCallbackData,
+    reservation: ReservationType
+  ) => {
+    if (!draggedReservation) {
+      setIsResizing(false);
+      setResizeDirection(null);
+      return;
+    }
+
+    // Varsa çakışmaları kontrol et
+    const hasConflict = hasTableConflict(
+      draggedReservation.tableId,
+      draggedReservation.startTime,
+      draggedReservation.endTime,
+      draggedReservation.id
+    );
+
+    if (hasConflict) {
+      // Çakışma varsa, orijinal pozisyona geri dön
+      toast.error("Bu zaman aralığında çakışma bulunuyor!");
+
+      // Orijinal değerlere geri dön
+      draggedReservation.startTime = initialStartTime;
+      draggedReservation.endTime = initialEndTime;
+
+      setDraggedReservation({ ...draggedReservation });
+    } else {
+      // Çakışma yoksa, güncellenmiş rezervasyonu kaydet
+      updateReservation(draggedReservation);
+      toast.success("Rezervasyon süresi güncellendi!");
+
+      // Sidebar'ı güncelle
+      if (selectedReservation?.id === draggedReservation.id) {
+        setSelectedReservation(draggedReservation);
+      }
+    }
+
+    setIsResizing(false);
+    setResizeDirection(null);
+    setDraggedReservation(null);
+  };
+
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-gray-50 text-gray-800">
       {/* Aktif rezervasyon bildirimleri */}
@@ -2098,82 +2389,24 @@ function AdminPageComponent() {
                               );
 
                               return (
-                                <div
+                                <DraggableReservationCard
                                   key={reservation.id}
-                                  id={`reservation-${reservation.id}`}
-                                  className="absolute rounded-md cursor-pointer pointer-events-auto flex items-center overflow-visible shadow-md hover:shadow-lg transition-all duration-200"
-                                  style={{
-                                    left: `calc(${position.left} + 1px)`,
-                                    width: `calc(${position.width} - 2px)`,
-                                    top: "1px",
-                                    height: `calc(${cellHeight}px - 2px)`,
-                                    backgroundColor:
-                                      reservation.color || category.color,
-                                    borderLeft: `4px solid ${category.borderColor}`,
-                                    minWidth: "80px",
-                                    zIndex: 5,
-                                    borderRadius: "4px",
-                                  }}
-                                  data-reservation-id={reservation.id}
-                                  data-table-id={reservation.tableId}
-                                  data-time={`${reservation.startTime}-${reservation.endTime}`}
-                                  onMouseEnter={() => {
-                                    handleReservationHover(reservation);
-                                  }}
-                                  onMouseLeave={handleReservationLeave}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleReservationClick(reservation);
+                                  reservation={reservation}
+                                  cellWidth={cellWidth}
+                                  cellHeight={cellHeight}
+                                  position={position}
+                                  categoryColor={category.color}
+                                  categoryBorderColor={category.borderColor}
+                                  onReservationClick={(res) => {
+                                    handleReservationClick(res);
                                     setSidebarClicked(true);
                                     setSidebarOpenedByHover(false);
                                   }}
-                                >
-                                  {/* Sol tutamaç */}
-                                  <div className="absolute left-0 top-0 h-full w-2 cursor-ew-resize opacity-0 hover:opacity-100 bg-white bg-opacity-20"></div>
-
-                                  <div className="px-3 py-0 text-xs truncate max-w-full text-white h-full flex flex-col justify-center">
-                                    {cellHeight < 50 ? (
-                                      // Yükseklik 50px'den küçükse yan yana gösterim
-                                      <div className="flex items-center justify-between">
-                                        <div className="font-semibold whitespace-nowrap overflow-hidden text-ellipsis">
-                                          {reservation.customerName
-                                            .split(" ")
-                                            .map((word) =>
-                                              word.charAt(0).toUpperCase()
-                                            )
-                                            .join("")}
-                                        </div>
-                                        <div className="text-white text-opacity-95 text-[11px] flex items-center ml-2">
-                                          <span className="mr-1">
-                                            {reservation.startTime}
-                                          </span>
-                                          <span className="bg-white bg-opacity-30 px-1 rounded text-[10px]">
-                                            {reservation.guestCount}
-                                          </span>
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      // Normal gösterim (50px ve üzeri)
-                                      <>
-                                        <div className="font-semibold whitespace-nowrap overflow-hidden text-ellipsis">
-                                          {reservation.customerName}
-                                        </div>
-                                        <div className="text-white text-opacity-95 text-[11px] flex items-center mt-1">
-                                          <span className="mr-1">
-                                            {reservation.startTime}-
-                                            {reservation.endTime}
-                                          </span>
-                                          <span className="bg-white bg-opacity-30 px-1 rounded text-[10px]">
-                                            {reservation.guestCount} kişi
-                                          </span>
-                                        </div>
-                                      </>
-                                    )}
-                                  </div>
-
-                                  {/* Sağ tutamaç */}
-                                  <div className="absolute right-0 top-0 h-full w-2 cursor-ew-resize opacity-0 hover:opacity-100 bg-white bg-opacity-20"></div>
-                                </div>
+                                  onReservationHover={handleReservationHover}
+                                  onReservationLeave={handleReservationLeave}
+                                  onReservationUpdate={updateReservation}
+                                  hasTableConflict={hasTableConflict}
+                                />
                               );
                             })}
                         </div>
