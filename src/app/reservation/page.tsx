@@ -6,8 +6,8 @@ import { format } from "date-fns";
 import { tr } from "date-fns/locale";
 import toast, { Toaster } from "react-hot-toast";
 import DatePicker from "@/components/DatePicker";
-import { ReservationController } from "@/controllers/reservation.controller";
 import type { Reservation } from "@/models/types";
+import { db } from "@/lib/supabase/client";
 
 // Framer Motion animasyonları
 const AnimatePresence = ({
@@ -18,7 +18,6 @@ const AnimatePresence = ({
   mode?: string;
 }) => {
   // mode parametresi şu anda kullanılmıyor ama ileride kullanılabilir
-  console.log("AnimatePresence mode:", mode);
   return <>{children}</>;
 };
 
@@ -62,20 +61,45 @@ export default function ReservationPage() {
   const fetchReservations = async (date: Date) => {
     setLoading(true);
     try {
-      const companyId = "your_company_id"; // Gerçek company_id ile değiştirin
-      const formattedDate = format(date, "yyyy-MM-dd");
-      const reservations = await ReservationController.getCompanyReservations(
-        companyId
+      const startDate = new Date(date);
+      startDate.setHours(0, 0, 0, 0);
+
+      const endDate = new Date(date);
+      endDate.setHours(23, 59, 59, 999);
+
+      // Supabase'den rezervasyonları çek
+      const data = await db.reservations.getByDateRange(
+        startDate.toISOString(),
+        endDate.toISOString()
       );
 
-      // Seçilen tarihe göre filtrele
-      const filteredReservations = reservations.filter(
-        (reservation) => reservation.date === formattedDate
-      );
+      // Verileri model tipine dönüştür
+      const formattedReservations = data.map((res) => ({
+        id: res.id,
+        user_id: res.created_by || "",
+        company_id: res.company_id || "",
+        branch_id: res.branch_id || "",
+        table_id: res.table_id,
+        date: format(new Date(res.start_time), "yyyy-MM-dd"),
+        time: format(new Date(res.start_time), "HH:mm"),
+        start_time: res.start_time,
+        end_time: res.end_time,
+        status: res.status,
+        payment_status: res.payment_status,
+        created_at: res.created_at,
+        updated_at: res.updated_at,
+        customer_name: res.customer_name,
+        guest_count: res.guest_count,
+        phone: res.customer_phone || "",
+        email: res.customer_email || "",
+        notes: res.note || "",
+        color: res.color || "",
+      })) as Reservation[];
 
-      setReservations(filteredReservations);
+      setReservations(formattedReservations);
     } catch (error) {
       console.error("Rezervasyonlar yüklenirken hata:", error);
+      toast.error("Rezervasyonlar yüklenemedi.");
     } finally {
       setLoading(false);
     }
@@ -91,8 +115,28 @@ export default function ReservationPage() {
     setSelectedDate(date);
   };
 
+  // Rezervasyon durumu değiştirme
+  const handleStatusChange = async (
+    id: string,
+    status: Reservation["status"]
+  ) => {
+    try {
+      toast.loading("Rezervasyon durumu değiştiriliyor...");
+      await db.reservations.updateStatus(id, status);
+      toast.dismiss();
+      toast.success("Rezervasyon durumu güncellendi");
+      // Listeyi yenile
+      fetchReservations(selectedDate);
+    } catch (error) {
+      toast.dismiss();
+      toast.error("İşlem sırasında bir hata oluştu");
+      console.error("Durum değiştirme hatası:", error);
+    }
+  };
+
   return (
     <div className="container mx-auto px-4 py-8">
+      <Toaster position="top-right" />
       <h1 className="text-2xl font-bold mb-6">Rezervasyonlar</h1>
 
       {/* Tarih Seçici */}
@@ -126,27 +170,116 @@ export default function ReservationPage() {
                 className="border rounded-lg p-4 hover:bg-gray-50 transition-colors"
               >
                 <div className="flex justify-between items-start">
-                  <div>
-                    <p className="font-medium">Rezervasyon #{reservation.id}</p>
-                    <p className="text-sm text-gray-600 mt-1">
-                      Saat: {reservation.time}
+                  <div className="space-y-1">
+                    <p className="font-medium">{reservation.customer_name}</p>
+                    <p className="text-sm text-gray-600">
+                      {reservation.time} -{" "}
+                      {reservation.end_time
+                        ? format(new Date(reservation.end_time), "HH:mm")
+                        : ""}
                     </p>
+                    <p className="text-sm text-gray-600">
+                      Kişi Sayısı: {reservation.guest_count}
+                    </p>
+                    {reservation.phone && (
+                      <p className="text-sm text-gray-600">
+                        Tel: {reservation.phone}
+                      </p>
+                    )}
+                    {reservation.email && (
+                      <p className="text-sm text-gray-600">
+                        Email: {reservation.email}
+                      </p>
+                    )}
+                    {reservation.notes && (
+                      <p className="text-sm text-gray-600 italic">
+                        Not: {reservation.notes}
+                      </p>
+                    )}
                   </div>
-                  <span
-                    className={`px-3 py-1 rounded-full text-sm ${
-                      reservation.status === "confirmed"
-                        ? "bg-green-100 text-green-800"
+                  <div className="flex flex-col gap-2 items-end">
+                    <span
+                      className={`px-3 py-1 rounded-full text-sm ${
+                        reservation.status === "confirmed"
+                          ? "bg-green-100 text-green-800"
+                          : reservation.status === "pending"
+                          ? "bg-yellow-100 text-yellow-800"
+                          : reservation.status === "completed"
+                          ? "bg-blue-100 text-blue-800"
+                          : "bg-red-100 text-red-800"
+                      }`}
+                    >
+                      {reservation.status === "confirmed"
+                        ? "Onaylandı"
                         : reservation.status === "pending"
-                        ? "bg-yellow-100 text-yellow-800"
-                        : "bg-red-100 text-red-800"
-                    }`}
-                  >
-                    {reservation.status === "confirmed"
-                      ? "Onaylandı"
-                      : reservation.status === "pending"
-                      ? "Beklemede"
-                      : "İptal Edildi"}
-                  </span>
+                        ? "Beklemede"
+                        : reservation.status === "completed"
+                        ? "Tamamlandı"
+                        : "İptal Edildi"}
+                    </span>
+
+                    {/* Ödeme Durumu */}
+                    {reservation.payment_status && (
+                      <span
+                        className={`px-3 py-1 rounded-full text-sm ${
+                          reservation.payment_status === "paid"
+                            ? "bg-green-100 text-green-800"
+                            : reservation.payment_status === "partial"
+                            ? "bg-yellow-100 text-yellow-800"
+                            : "bg-gray-100 text-gray-800"
+                        }`}
+                      >
+                        {reservation.payment_status === "paid"
+                          ? "Ödendi"
+                          : reservation.payment_status === "partial"
+                          ? "Kısmi Ödeme"
+                          : "Ödenmedi"}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* İşlem Butonları */}
+                <div className="mt-4 flex justify-end gap-2">
+                  {reservation.status === "pending" && (
+                    <button
+                      onClick={() =>
+                        handleStatusChange(reservation.id, "confirmed")
+                      }
+                      className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700"
+                    >
+                      Onayla
+                    </button>
+                  )}
+
+                  {(reservation.status === "pending" ||
+                    reservation.status === "confirmed") && (
+                    <button
+                      onClick={() =>
+                        handleStatusChange(reservation.id, "completed")
+                      }
+                      className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+                    >
+                      Tamamlandı
+                    </button>
+                  )}
+
+                  {reservation.status !== "cancelled" && (
+                    <button
+                      onClick={() =>
+                        handleStatusChange(reservation.id, "cancelled")
+                      }
+                      className="px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700"
+                    >
+                      İptal
+                    </button>
+                  )}
+
+                  <Link href={`/reservation/${reservation.id}`}>
+                    <button className="px-3 py-1 bg-gray-600 text-white text-sm rounded hover:bg-gray-700">
+                      Düzenle
+                    </button>
+                  </Link>
                 </div>
               </div>
             ))}
@@ -156,12 +289,11 @@ export default function ReservationPage() {
 
       {/* Yeni Rezervasyon Butonu */}
       <div className="mt-6 text-center">
-        <button
-          onClick={() => (window.location.href = "/reservation/new")}
-          className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          Yeni Rezervasyon Oluştur
-        </button>
+        <Link href="/reservation/new">
+          <button className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+            Yeni Rezervasyon Oluştur
+          </button>
+        </Link>
       </div>
     </div>
   );

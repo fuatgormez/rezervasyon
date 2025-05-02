@@ -10,17 +10,22 @@ export interface Reservation {
   id: string;
   user_id: string;
   company_id: string;
+  branch_id?: string;
+  table_id: string;
   date: string;
   time: string;
-  status: "pending" | "confirmed" | "cancelled";
+  start_time?: string;
+  end_time?: string;
+  status: "pending" | "confirmed" | "cancelled" | "completed";
+  payment_status?: "unpaid" | "partial" | "paid";
   created_at: string;
-  customer_name?: string;
-  guest_count?: number;
+  updated_at?: string;
+  customer_name: string;
+  guest_count: number;
   phone?: string;
   email?: string;
   notes?: string;
-  table_id?: string | null;
-  end_time?: string | null;
+  color?: string;
 }
 
 export interface Company {

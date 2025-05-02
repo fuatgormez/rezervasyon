@@ -33,13 +33,18 @@ export interface Reservation {
   id: string;
   table_id: string;
   customer_name: string;
+  customer_phone?: string;
+  customer_email?: string;
   guest_count: number;
   start_time: string;
   end_time: string;
-  status: "confirmed" | "pending" | "cancelled";
+  status: "confirmed" | "pending" | "cancelled" | "completed";
   note?: string;
+  payment_status?: "unpaid" | "partial" | "paid";
   color?: string;
-  staff_ids?: string[];
+  created_by?: string;
+  company_id?: string;
+  branch_id?: string;
   created_at: string;
   updated_at: string;
 }
@@ -155,6 +160,17 @@ export const db = {
       return data as Reservation[];
     },
 
+    async getById(id: string) {
+      const { data, error } = await supabase
+        .from("reservations")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (error) throw error;
+      return data as Reservation;
+    },
+
     async create(
       reservation: Omit<Reservation, "id" | "created_at" | "updated_at">
     ) {
@@ -201,6 +217,25 @@ export const db = {
       return data as Reservation[];
     },
 
+    async getByTableId(tableId: string) {
+      const { data, error } = await supabase
+        .from("reservations")
+        .select("*")
+        .eq("table_id", tableId)
+        .order("start_time", { ascending: true });
+
+      if (error) throw error;
+      return data as Reservation[];
+    },
+
+    async getTodayReservations() {
+      const today = new Date();
+      const startOfDay = new Date(today.setHours(0, 0, 0, 0)).toISOString();
+      const endOfDay = new Date(today.setHours(23, 59, 59, 999)).toISOString();
+
+      return this.getByDateRange(startOfDay, endOfDay);
+    },
+
     async checkConflict(
       tableId: string,
       startTime: string,
@@ -211,7 +246,8 @@ export const db = {
         .from("reservations")
         .select("*")
         .eq("table_id", tableId)
-        .overlaps("start_time", "end_time", startTime, endTime);
+        .filter("start_time", "lt", endTime)
+        .filter("end_time", "gt", startTime);
 
       if (excludeId) {
         query = query.neq("id", excludeId);
@@ -221,6 +257,17 @@ export const db = {
 
       if (error) throw error;
       return (data as Reservation[]).length > 0;
+    },
+
+    async updateStatus(id: string, status: Reservation["status"]) {
+      return this.update(id, { status });
+    },
+
+    async updatePaymentStatus(
+      id: string,
+      paymentStatus: Reservation["payment_status"]
+    ) {
+      return this.update(id, { payment_status: paymentStatus });
     },
   },
 

@@ -6,21 +6,30 @@ import { format } from "date-fns";
 import { tr } from "date-fns/locale";
 import DatePicker from "@/components/DatePicker";
 import TimeGrid from "@/components/reservation/TimeGrid";
-import { ReservationController } from "@/controllers/reservation.controller";
-import toast from "react-hot-toast";
+import toast, { Toaster } from "react-hot-toast";
+import { db } from "@/lib/supabase/client";
 
 interface Table {
   id: string;
   number: number;
   capacity: number;
-  status: "available" | "unavailable" | "reserved";
+  status: string;
+  category_id?: string;
+}
+
+interface ReservationData {
+  id: string;
+  table_id: string;
+  customer_name: string;
+  start_time: string;
+  end_time: string;
 }
 
 export default function NewReservationPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [reservations, setReservations] = useState<any[]>([]);
+  const [reservations, setReservations] = useState<ReservationData[]>([]);
   const [tables, setTables] = useState<Table[]>([]);
 
   // Form verisi için state
@@ -32,6 +41,7 @@ export default function NewReservationPage() {
     guestCount: 2,
     tableId: "",
     tableName: "",
+    endTime: "21:00",
     specialRequests: "",
   });
 
@@ -39,35 +49,23 @@ export default function NewReservationPage() {
   useEffect(() => {
     const loadTablesAndReservations = async () => {
       try {
-        // Burada gerçek API çağrıları olacak, şimdilik örnek veriler kullanıyoruz
-        const mockTables: Table[] = [
-          { id: "1", number: 1, capacity: 2, status: "available" },
-          { id: "2", number: 2, capacity: 4, status: "available" },
-          { id: "3", number: 3, capacity: 6, status: "available" },
-          { id: "4", number: 4, capacity: 2, status: "available" },
-          { id: "5", number: 5, capacity: 4, status: "available" },
-        ];
+        // Masaları yükle
+        const tableData = await db.tables.getAll();
+        setTables(tableData);
 
-        const formattedDate = format(selectedDate, "yyyy-MM-dd");
-        const mockReservations = [
-          {
-            id: "1",
-            table_id: "1",
-            time: "12:00",
-            date: formattedDate,
-            customer_name: "Ahmet Yılmaz",
-          },
-          {
-            id: "2",
-            table_id: "3",
-            time: "19:00",
-            date: formattedDate,
-            customer_name: "Mehmet Kaya",
-          },
-        ];
+        // Seçilen gün için rezervasyonları yükle
+        const startDate = new Date(selectedDate);
+        startDate.setHours(0, 0, 0, 0);
 
-        setTables(mockTables);
-        setReservations(mockReservations);
+        const endDate = new Date(selectedDate);
+        endDate.setHours(23, 59, 59, 999);
+
+        const reservationData = await db.reservations.getByDateRange(
+          startDate.toISOString(),
+          endDate.toISOString()
+        );
+
+        setReservations(reservationData);
       } catch (error) {
         console.error("Veri yüklenirken hata:", error);
         toast.error("Veriler yüklenirken bir hata oluştu.");
@@ -87,16 +85,28 @@ export default function NewReservationPage() {
     tableId: string,
     tableName: string
   ) => {
+    // Bitiş saatini hesapla (varsayılan 2 saat)
+    const [hours, minutes] = time.split(":").map(Number);
+    const startTime = new Date(selectedDate);
+    startTime.setHours(hours, minutes, 0, 0);
+
+    const endTime = new Date(startTime.getTime() + 120 * 60000); // 120 dakika = 2 saat
+    const endTimeStr = `${endTime
+      .getHours()
+      .toString()
+      .padStart(2, "0")}:${endTime.getMinutes().toString().padStart(2, "0")}`;
+
     // Form verilerini güncelle
     setFormData((prev) => ({
       ...prev,
       time,
+      endTime: endTimeStr,
       tableId,
-      tableName,
+      tableName: `Masa ${tableName}`,
     }));
 
     // Kullanıcıya geri bildirim ver
-    toast.success(`${tableName}, Saat: ${time} seçildi!`);
+    toast.success(`Masa ${tableName}, Saat: ${time} seçildi!`);
   };
 
   const handleInputChange = (
@@ -123,45 +133,36 @@ export default function NewReservationPage() {
         return;
       }
 
-      // Bitiş saatini hesapla (varsayılan 2 saat)
-      const [hours, minutes] = formData.time.split(":").map(Number);
-      const startDate = new Date(selectedDate);
-      startDate.setHours(hours, minutes, 0, 0);
+      // Başlangıç ve bitiş zamanlarını oluştur
+      const dateStr = format(selectedDate, "yyyy-MM-dd");
+      const startTimeStr = `${dateStr}T${formData.time}:00`;
+      const endTimeStr = `${dateStr}T${formData.endTime}:00`;
 
-      const endDate = new Date(startDate.getTime() + 120 * 60000); // 120 dakika = 2 saat
-      const endTime = `${endDate
-        .getHours()
-        .toString()
-        .padStart(2, "0")}:${endDate.getMinutes().toString().padStart(2, "0")}`;
+      // Rezervasyon çakışmasını kontrol et
+      const hasConflict = await db.reservations.checkConflict(
+        formData.tableId,
+        startTimeStr,
+        endTimeStr
+      );
 
-      // API'ye gönderilecek veri
-      const reservationData = {
-        user_id: "1", // Normalde giriş yapmış kullanıcının ID'si olmalı
-        company_id: "1", // Şirket ID'si, gerçek uygulamada değiştirilmeli
-        date: format(selectedDate, "yyyy-MM-dd"),
-        time: formData.time,
-        customer_name: formData.customerName,
-        guest_count: formData.guestCount,
-        table_id: formData.tableId,
-        end_time: endTime,
-        phone: formData.phone,
-        email: formData.email,
-        notes: formData.specialRequests,
-        status: "pending",
-      };
-
-      const response = await fetch("/api/reservations", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(reservationData),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Rezervasyon oluşturulamadı");
+      if (hasConflict) {
+        toast.error("Bu zaman diliminde masa zaten rezerve edilmiş!");
+        setLoading(false);
+        return;
       }
+
+      // Rezervasyon oluştur
+      await db.reservations.create({
+        table_id: formData.tableId,
+        customer_name: formData.customerName,
+        customer_phone: formData.phone,
+        customer_email: formData.email,
+        guest_count: formData.guestCount,
+        start_time: startTimeStr,
+        end_time: endTimeStr,
+        status: "confirmed",
+        note: formData.specialRequests,
+      });
 
       toast.success("Rezervasyon başarıyla oluşturuldu!");
       router.push("/reservation");
@@ -173,8 +174,48 @@ export default function NewReservationPage() {
     }
   };
 
+  // Saatleri göster
+  const availableTimes: string[] = [];
+  for (let hour = 8; hour <= 23; hour++) {
+    availableTimes.push(`${hour.toString().padStart(2, "0")}:00`);
+    availableTimes.push(`${hour.toString().padStart(2, "0")}:30`);
+  }
+
+  // TimeGrid için rezervasyon haritası oluştur
+  const reservationMap: Record<
+    string,
+    Record<string, { id: string; customerName: string }>
+  > = {};
+  reservations.forEach((res) => {
+    if (!reservationMap[res.table_id]) {
+      reservationMap[res.table_id] = {};
+    }
+
+    const startTime = new Date(res.start_time);
+    const endTime = new Date(res.end_time);
+
+    // Her yarım saatlik dilimi kontrol et
+    for (
+      let time = new Date(startTime);
+      time < endTime;
+      time.setMinutes(time.getMinutes() + 30)
+    ) {
+      const timeStr = `${time.getHours().toString().padStart(2, "0")}:${time
+        .getMinutes()
+        .toString()
+        .padStart(2, "0")}`;
+      if (availableTimes.includes(timeStr)) {
+        reservationMap[res.table_id][timeStr] = {
+          id: res.id,
+          customerName: res.customer_name,
+        };
+      }
+    }
+  });
+
   return (
     <div className="container mx-auto px-4 py-8">
+      <Toaster position="top-right" />
       <h1 className="text-2xl font-bold mb-6">Yeni Rezervasyon</h1>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -251,71 +292,94 @@ export default function NewReservationPage() {
               </div>
             </div>
 
-            <div>
-              <label
-                htmlFor="time"
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
-                Saat *
-              </label>
-              <select
-                id="time"
-                name="time"
-                required
-                value={formData.time}
-                onChange={handleInputChange}
-                className="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                {Array.from({ length: 14 }, (_, i) => {
-                  const hour = i + 9; // 09:00'dan başla
-                  return (
-                    <option
-                      key={`${hour}:00`}
-                      value={`${hour.toString().padStart(2, "0")}:00`}
-                    >
-                      {`${hour.toString().padStart(2, "0")}:00`}
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label
+                  htmlFor="time"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Başlangıç Saati *
+                </label>
+                <select
+                  id="time"
+                  name="time"
+                  required
+                  value={formData.time}
+                  onChange={handleInputChange}
+                  className="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  {availableTimes.map((time) => (
+                    <option key={time} value={time}>
+                      {time}
                     </option>
-                  );
-                })}
-              </select>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="endTime"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Bitiş Saati *
+                </label>
+                <select
+                  id="endTime"
+                  name="endTime"
+                  required
+                  value={formData.endTime}
+                  onChange={handleInputChange}
+                  className="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  {availableTimes.map((time) => (
+                    <option key={time} value={time}>
+                      {time}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="guestCount"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Kişi Sayısı *
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="20"
+                  id="guestCount"
+                  name="guestCount"
+                  required
+                  value={formData.guestCount}
+                  onChange={handleInputChange}
+                  className="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
             </div>
 
             <div>
               <label
-                htmlFor="guestCount"
+                htmlFor="tableId"
                 className="block text-sm font-medium text-gray-700 mb-1"
               >
-                Kişi Sayısı *
-              </label>
-              <select
-                id="guestCount"
-                name="guestCount"
-                required
-                value={formData.guestCount}
-                onChange={handleInputChange}
-                className="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                {Array.from({ length: 10 }, (_, i) => (
-                  <option key={i + 1} value={i + 1}>
-                    {i + 1} Kişi
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label
-                htmlFor="tableName"
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
-                Seçili Masa
+                Seçilen Masa
               </label>
               <input
                 type="text"
                 id="tableName"
-                value={formData.tableName || "Lütfen çizelgeden bir masa seçin"}
+                name="tableName"
                 readOnly
+                value={formData.tableName}
                 className="w-full border border-gray-300 rounded-md p-2 bg-gray-50"
+              />
+              <input
+                type="hidden"
+                id="tableId"
+                name="tableId"
+                value={formData.tableId}
               />
             </div>
 
@@ -333,61 +397,90 @@ export default function NewReservationPage() {
                 value={formData.specialRequests}
                 onChange={handleInputChange}
                 className="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Varsa özel isteklerinizi belirtiniz..."
-              />
+              ></textarea>
             </div>
 
             <div className="pt-4">
               <button
                 type="submit"
-                disabled={loading || !formData.tableId}
-                className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={loading}
+                className={`w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${
+                  loading ? "opacity-70 cursor-not-allowed" : ""
+                }`}
               >
-                {loading ? "İşleniyor..." : "Rezervasyon Oluştur"}
+                {loading ? "İşleniyor..." : "Rezervasyonu Tamamla"}
               </button>
             </div>
           </form>
         </div>
 
-        {/* Sağ Taraf - Rezervasyon Çizelgesi */}
-        <div>
-          <div className="bg-white rounded-lg shadow mb-4">
-            <div className="p-4 border-b">
-              <h2 className="text-lg font-semibold">
-                {format(selectedDate, "d MMMM yyyy", { locale: tr })} Günü
-                Rezervasyonları
-              </h2>
-            </div>
-            <div className="p-4 bg-blue-50">
-              <p className="text-blue-600 text-sm">
-                Lütfen rezervasyon için çizelgeden uygun bir masa ve saat seçin.
-                Seçim yaptığınızda form otomatik olarak doldurulacaktır.
-              </p>
-              {formData.tableId && (
-                <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-md">
-                  <p className="text-green-700 text-sm">
-                    <span className="font-semibold">Seçili Masa:</span>{" "}
-                    {formData.tableName},{" "}
-                    <span className="font-semibold">Saat:</span> {formData.time}
-                  </p>
-                </div>
-              )}
-            </div>
+        {/* Sağ Taraf - Masa ve Saat Seçimi */}
+        <div className="bg-white rounded-lg shadow">
+          <div className="p-6">
+            <h2 className="text-lg font-semibold mb-4">Masa ve Saat Seçimi</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Lütfen aşağıdaki tabloda uygun bir masa ve saat seçin. Yeşil
+              hücreler müsait, kırmızı hücreler dolu masaları gösterir.
+            </p>
           </div>
 
-          <div className="bg-white rounded-lg shadow">
-            {loading ? (
-              <div className="p-8 flex justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-              </div>
-            ) : (
-              <TimeGrid
-                date={selectedDate}
-                tables={tables}
-                reservations={reservations}
-                onCellClick={handleCellClick}
-              />
-            )}
+          <div className="overflow-x-auto">
+            <table className="min-w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Masa
+                  </th>
+                  {availableTimes.map((time) => (
+                    <th
+                      key={time}
+                      className="px-1 py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap"
+                    >
+                      {time}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {tables.map((table) => (
+                  <tr key={table.id}>
+                    <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
+                      Masa {table.number} ({table.capacity} kişilik)
+                    </td>
+                    {availableTimes.map((time) => {
+                      const isReserved = reservationMap[table.id]?.[time];
+                      return (
+                        <td
+                          key={`${table.id}-${time}`}
+                          className={`px-1 py-2 whitespace-nowrap text-center text-xs ${
+                            isReserved
+                              ? "bg-red-100 text-red-800 cursor-not-allowed"
+                              : "bg-green-100 text-green-800 cursor-pointer hover:bg-green-200"
+                          }`}
+                          onClick={() => {
+                            if (!isReserved) {
+                              handleCellClick(
+                                time,
+                                table.id,
+                                table.number.toString()
+                              );
+                            }
+                          }}
+                        >
+                          {isReserved ? (
+                            <span title={`${isReserved.customerName}`}>
+                              Dolu
+                            </span>
+                          ) : (
+                            "Müsait"
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
