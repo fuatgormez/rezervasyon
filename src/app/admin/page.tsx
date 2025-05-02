@@ -1814,14 +1814,71 @@ function AdminPageComponent() {
     const offsetY = data.y;
 
     // Elementin altındaki masa ID'sini bul
-    const targetElement = document
-      .elementFromPoint(e.clientX, e.clientY)
-      ?.closest(".table-row") as HTMLElement;
+    // Daha güvenilir bir yöntem kullanıyoruz: document.elementsFromPoint
+    const elementsAtPoint = document.elementsFromPoint(e.clientX, e.clientY);
 
-    if (targetElement) {
-      const tableId = targetElement.getAttribute("data-table-id");
+    // Debug için tüm bulunan elementleri loglayalım
+    console.log(
+      "Bulunan elementler (admin):",
+      elementsAtPoint.map((el) => ({
+        tag: el.tagName,
+        className: el.className,
+        dataTableId: el.getAttribute("data-table-id"),
+        dataHour: el.getAttribute("data-hour"),
+      }))
+    );
+
+    // Masa ID'sini bulmaya çalışalım
+    let foundTableId = false;
+
+    // 1. Yöntem: Doğrudan data-table-id özniteliği olan elementi bul
+    for (const element of elementsAtPoint) {
+      const tableId = element.getAttribute("data-table-id");
       if (tableId) {
+        console.log(
+          "Bulundu! tableId:",
+          tableId,
+          "element:",
+          element.tagName,
+          element.className
+        );
         draggedReservation.tableId = tableId;
+        foundTableId = true;
+        break;
+      }
+    }
+
+    // 2. Yöntem: Eğer bulunamadıysa, bir üst veya parent elementi kontrol et
+    if (!foundTableId) {
+      for (const element of elementsAtPoint) {
+        const parent = element.parentElement;
+        if (parent) {
+          const parentTableId = parent.getAttribute("data-table-id");
+          if (parentTableId) {
+            console.log("Parent'ta bulundu! tableId:", parentTableId);
+            draggedReservation.tableId = parentTableId;
+            foundTableId = true;
+            break;
+          }
+        }
+      }
+    }
+
+    // 3. Yöntem: table-row sınıfına sahip elementleri dene
+    if (!foundTableId) {
+      for (const element of elementsAtPoint) {
+        if (element.classList && element.classList.contains("table-row")) {
+          const closestWithTableId = element.closest("[data-table-id]");
+          if (closestWithTableId) {
+            const tableRowId = closestWithTableId.getAttribute("data-table-id");
+            if (tableRowId) {
+              console.log("table-row üzerinden bulundu! tableId:", tableRowId);
+              draggedReservation.tableId = tableRowId;
+              foundTableId = true;
+              break;
+            }
+          }
+        }
       }
     }
 
@@ -1844,6 +1901,13 @@ function AdminPageComponent() {
     // Güncellenmiş pozisyonu göster
     // Not: Burada render trigger etmek için state'i güncelliyoruz
     setDraggedReservation({ ...draggedReservation });
+
+    // Masa değişimini loglayalım
+    if (foundTableId && draggedReservation.tableId !== initialTableId) {
+      console.log(
+        `Masa değişiyor (admin): ${initialTableId} -> ${draggedReservation.tableId}`
+      );
+    }
   };
 
   // Sürükleme tamamlandığında çağrılacak fonksiyon
@@ -1852,6 +1916,9 @@ function AdminPageComponent() {
       setIsDragging(false);
       return;
     }
+
+    // Masa değişimi oldu mu kontrol et
+    const hasMasaChanged = initialTableId !== draggedReservation.tableId;
 
     // Varsa çakışmaları kontrol et
     const hasConflict = hasTableConflict(
@@ -1873,8 +1940,46 @@ function AdminPageComponent() {
       draggedReservation.endTime = initialEndTime;
 
       setDraggedReservation({ ...draggedReservation });
+    } else if (hasMasaChanged) {
+      // Çakışma yoksa ve masa değişimi varsa kullanıcıya sor
+      const oldTable = tables.find((t) => t.id === initialTableId);
+      const newTable = tables.find((t) => t.id === draggedReservation.tableId);
+
+      if (oldTable && newTable) {
+        const userConfirm = window.confirm(
+          `Rezervasyonu Masa ${oldTable.number}'den Masa ${newTable.number}'e taşımak istediğinize emin misiniz?`
+        );
+
+        if (userConfirm) {
+          // Onay verilince güncellemeyi yap
+          updateReservation(draggedReservation);
+          toast.success(
+            `Rezervasyon Masa ${newTable.number}'e başarıyla taşındı!`
+          );
+
+          // Sidebar'ı güncelle
+          if (selectedReservation?.id === draggedReservation.id) {
+            setSelectedReservation(draggedReservation);
+          }
+        } else {
+          // Onay verilmezse orijinal değerlere geri dön
+          draggedReservation.tableId = initialTableId;
+          draggedReservation.startTime = initialStartTime;
+          draggedReservation.endTime = initialEndTime;
+
+          setDraggedReservation({ ...draggedReservation });
+        }
+      } else {
+        // Masa bulunamadıysa güncellemeyi gerçekleştir
+        updateReservation(draggedReservation);
+        toast.success("Rezervasyon başarıyla taşındı!");
+
+        if (selectedReservation?.id === draggedReservation.id) {
+          setSelectedReservation(draggedReservation);
+        }
+      }
     } else {
-      // Çakışma yoksa, güncellenmiş rezervasyonu kaydet
+      // Çakışma yoksa ve masa değişimi yoksa, sadece zaman değişimi
       updateReservation(draggedReservation);
       toast.success("Rezervasyon başarıyla taşındı!");
 
@@ -2031,6 +2136,37 @@ function AdminPageComponent() {
     setResizeDirection(null);
     setDraggedReservation(null);
   };
+
+  // Masa taşıma ve elementler arasındaki etkileşimi geliştirmek için
+  useEffect(() => {
+    // Sayfadaki tüm masa hücrelerinin doğru şekilde işaretlendiğinden emin olalım
+    const markAllTableCells = () => {
+      // Her masa hücresine data-table-id özniteliğini ekleyelim
+      document.querySelectorAll(".table-row").forEach((tableRow) => {
+        if (!tableRow.hasAttribute("data-table-id")) {
+          // Eğer yoksa, bu hücre için bir üst elementten almaya çalışalım
+          const parentWithTableId = tableRow.closest("[data-table-id]");
+          if (parentWithTableId) {
+            const tableId = parentWithTableId.getAttribute("data-table-id");
+            if (tableId) {
+              tableRow.setAttribute("data-table-id", tableId);
+              console.log("Hücreye data-table-id eklendi:", tableId);
+            }
+          }
+        }
+      });
+    };
+
+    // Sayfa yüklendikten sonra çalıştır
+    setTimeout(markAllTableCells, 1000);
+
+    // Sayfa değişikliklerinde de çalıştır
+    window.addEventListener("resize", markAllTableCells);
+
+    return () => {
+      window.removeEventListener("resize", markAllTableCells);
+    };
+  }, [tables]);
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-gray-50 text-gray-800">
@@ -2297,6 +2433,7 @@ function AdminPageComponent() {
                         key={table.id}
                         className="flex relative border-t border-gray-200"
                         style={{ height: `${cellHeight}px` }}
+                        data-table-id={table.id}
                       >
                         {/* Masa bilgisi sol tarafta - sticky yapıyoruz */}
                         <div
@@ -2326,7 +2463,7 @@ function AdminPageComponent() {
                           {hours.map((hour) => (
                             <div
                               key={`${table.id}-${hour}`}
-                              className="border-r border-gray-200 relative cursor-pointer hover:bg-blue-50"
+                              className="border-r border-gray-200 relative cursor-pointer hover:bg-blue-50 table-row"
                               style={{
                                 width: `${cellWidth}px`,
                                 height: `${cellHeight}px`,

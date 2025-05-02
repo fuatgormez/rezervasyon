@@ -118,15 +118,53 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
       clientY = (e as MouseEvent).clientY;
     }
 
-    // Elementin altındaki masa ID'sini bul
-    const targetElement = document
-      .elementFromPoint(clientX, clientY)
-      ?.closest(".table-row") as HTMLElement;
+    // Elementin altındaki masa ID'sini bul - farklı yöntemleri deneyelim
+    const elementsAtPoint = document.elementsFromPoint(clientX, clientY);
 
-    if (targetElement) {
-      const tableId = targetElement.getAttribute("data-table-id");
+    // Debug için tüm bulunan elementleri loglayalım
+    console.log(
+      "Bulunan elementler:",
+      elementsAtPoint.map((el) => ({
+        tag: el.tagName,
+        className: el.className,
+        dataTableId: el.getAttribute("data-table-id"),
+        dataHour: el.getAttribute("data-hour"),
+      }))
+    );
+
+    // Masa ID'sini bulmaya çalışalım
+    let foundTableId = false;
+
+    // 1. Yöntem: Doğrudan data-table-id özniteliği olan elementi bul
+    for (const element of elementsAtPoint) {
+      const tableId = element.getAttribute("data-table-id");
       if (tableId) {
+        console.log(
+          "Bulundu! tableId:",
+          tableId,
+          "element:",
+          element.tagName,
+          element.className
+        );
         draggedReservation.tableId = tableId;
+        foundTableId = true;
+        break;
+      }
+    }
+
+    // 2. Yöntem: Eğer bulunamadıysa, üst elementleri kontrol et
+    if (!foundTableId) {
+      for (const element of elementsAtPoint) {
+        const parent = element.parentElement;
+        if (parent) {
+          const parentTableId = parent.getAttribute("data-table-id");
+          if (parentTableId) {
+            console.log("Parent'ta bulundu! tableId:", parentTableId);
+            draggedReservation.tableId = parentTableId;
+            foundTableId = true;
+            break;
+          }
+        }
       }
     }
 
@@ -147,6 +185,13 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
     draggedReservation.endTime = convertMinutesToTime(newEndMinutes);
 
     setDraggedReservation({ ...draggedReservation });
+
+    // Masa değişimini loglayalım
+    if (foundTableId && draggedReservation.tableId !== initialTableId) {
+      console.log(
+        `Masa değişiyor: ${initialTableId} -> ${draggedReservation.tableId}`
+      );
+    }
   };
 
   // Sürükleme tamamlandığında
@@ -155,6 +200,9 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
       setIsDragging(false);
       return;
     }
+
+    // Masa değişimi oldu mu kontrol et
+    const hasMasaChanged = initialTableId !== draggedReservation.tableId;
 
     // Çakışma kontrolü
     const hasConflict = hasTableConflict(
@@ -173,9 +221,25 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
       return;
     }
 
-    // Çakışma yoksa güncelleyelim
-    onReservationUpdate(draggedReservation);
-    toast.success("Rezervasyon başarıyla taşındı!");
+    if (hasMasaChanged) {
+      // Masa değişimi varsa onay al
+      const userConfirm = window.confirm(
+        `Rezervasyonu yeni masaya taşımak istediğinize emin misiniz?`
+      );
+
+      if (userConfirm) {
+        // Çakışma yoksa güncelleyelim
+        onReservationUpdate(draggedReservation);
+        toast.success("Rezervasyon başarıyla taşındı!");
+      } else {
+        // Onay verilmezse işlemi iptal et
+        toast("Taşıma işlemi iptal edildi");
+      }
+    } else {
+      // Masa değişimi yoksa direkt güncelle
+      onReservationUpdate(draggedReservation);
+      toast.success("Rezervasyon başarıyla taşındı!");
+    }
 
     setIsDragging(false);
     setDraggedReservation(null);
