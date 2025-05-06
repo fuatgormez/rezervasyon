@@ -1,18 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  getAllTables,
-  createTable,
-  initializeDefaultTables,
-} from "../../../lib/kv/tables";
+import { supabase } from "@/lib/supabase/client";
 
 // GET - Tüm masaları getir
 export async function GET() {
   try {
-    let tables = await getAllTables();
+    const { data: tables, error } = await supabase.from("tables").select("*");
+
+    if (error) {
+      throw error;
+    }
 
     // Eğer hiç masa yoksa, varsayılan masaları oluştur
     if (tables.length === 0) {
-      tables = await initializeDefaultTables();
+      const defaultTables = Array.from({ length: 10 }, (_, i) => ({
+        id: `t${i + 1}`,
+        number: i + 1,
+        capacity: 4,
+        status: "available",
+      }));
+
+      const { data: createdTables, error: createError } = await supabase
+        .from("tables")
+        .insert(defaultTables)
+        .select();
+
+      if (createError) {
+        throw createError;
+      }
+
+      return NextResponse.json({ tables: createdTables });
     }
 
     return NextResponse.json({ tables });
@@ -31,7 +47,15 @@ export async function POST(request: NextRequest) {
     const data = await request.json();
 
     // Yeni masa oluştur
-    const newTable = await createTable(data);
+    const { data: newTable, error } = await supabase
+      .from("tables")
+      .insert(data)
+      .select()
+      .single();
+
+    if (error) {
+      throw error;
+    }
 
     return NextResponse.json({
       message: "Table created successfully",

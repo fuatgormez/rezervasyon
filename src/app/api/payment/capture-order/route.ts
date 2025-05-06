@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ReservationModel } from "@/lib/kv";
+import { ReservationModel } from "@/models/reservation";
 
 export async function POST(request: Request) {
   try {

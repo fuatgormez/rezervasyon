@@ -1,12 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { CompanySettingsModel } from "@/lib/kv";
+import { supabase } from "@/lib/supabase/client";
 
 // GET - Sistem ayarlarını getir
 export async function GET() {
   try {
-    const settings = await CompanySettingsModel.getSettings();
+    const { data: settings, error } = await supabase
+      .from("settings")
+      .select("*")
+      .single();
 
-    return NextResponse.json(settings, { status: 200 });
+    if (error) {
+      throw error;
+    }
+
+    return NextResponse.json(settings);
   } catch (error) {
     console.error("Ayarlar getirilirken hata:", error);
     return NextResponse.json(
@@ -36,7 +43,16 @@ export async function POST(req: NextRequest) {
     }
 
     // Ayarları güncelle
-    const settings = await CompanySettingsModel.updateSettings(data);
+    const { data: settings, error } = await supabase
+      .from("settings")
+      .update(data)
+      .eq("id", 1)
+      .select()
+      .single();
+
+    if (error) {
+      throw error;
+    }
 
     return NextResponse.json(settings, { status: 200 });
   } catch (error) {

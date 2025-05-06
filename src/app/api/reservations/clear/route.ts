@@ -1,22 +1,29 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
+import { supabase } from "@/lib/supabase/client";
+
+export const dynamic = "force-dynamic";
 
 // Test rezervasyonlarını temizlemek için özel endpoint
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    // Gerçek API'de veritabanında işlem yapılır, bu sadece localStorage için bir simülasyon
-    return NextResponse.json({
-      success: true,
-      message:
-        "Tüm rezervasyonlar temizlendi. Sayfayı yenilemek için localStorage'ı temizleyin.",
-    });
+    const { error } = await supabase
+      .from("reservations")
+      .delete()
+      .neq("id", "00000000-0000-0000-0000-000000000000");
+
+    if (error) {
+      throw error;
+    }
+
+    return new NextResponse(
+      JSON.stringify({ message: "Tüm rezervasyonlar başarıyla temizlendi" }),
+      { headers: { "Content-Type": "application/json" } }
+    );
   } catch (error) {
     console.error("Rezervasyonlar temizlenirken hata:", error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Rezervasyonlar temizlenirken bir hata oluştu",
-      },
-      { status: 500 }
+    return new NextResponse(
+      JSON.stringify({ error: "Rezervasyonlar temizlenirken bir hata oluştu" }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
 }

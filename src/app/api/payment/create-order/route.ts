@@ -1,17 +1,8 @@
 import { NextResponse } from "next/server";
-import { ReservationModel } from "@/lib/kv";
 
 export async function POST(request: Request) {
   try {
     const { reservationId, paymentAmount = 100 } = await request.json();
-
-    const reservation = await ReservationModel.getById(reservationId);
-    if (!reservation) {
-      return NextResponse.json(
-        { error: "Rezervasyon bulunamadı" },
-        { status: 404 }
-      );
-    }
 
     // PayPal API'si ile sipariş oluştur
     const response = await fetch(

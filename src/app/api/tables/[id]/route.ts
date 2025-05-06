@@ -1,9 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  getTableById,
-  updateTable,
-  deleteTable,
-} from "../../../../lib/kv/tables";
+import { supabase } from "@/lib/supabase/client";
 
 export async function GET(
   request: NextRequest,
@@ -11,7 +7,15 @@ export async function GET(
 ) {
   try {
     const id = params.id;
-    const table = await getTableById(id);
+    const { data: table, error } = await supabase
+      .from("tables")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (error) {
+      throw error;
+    }
 
     if (!table) {
       return NextResponse.json({ error: "Table not found" }, { status: 404 });
@@ -36,7 +40,16 @@ export async function PATCH(
     const id = params.id;
     const updates = await request.json();
 
-    const updatedTable = await updateTable(id, updates);
+    const { data: updatedTable, error } = await supabase
+      .from("tables")
+      .update(updates)
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) {
+      throw error;
+    }
 
     return NextResponse.json({
       message: "Table updated successfully",
@@ -58,7 +71,11 @@ export async function DELETE(
 ) {
   try {
     const id = params.id;
-    await deleteTable(id);
+    const { error } = await supabase.from("tables").delete().eq("id", id);
+
+    if (error) {
+      throw error;
+    }
 
     return NextResponse.json({
       message: "Table deleted successfully",

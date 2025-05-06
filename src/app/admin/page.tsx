@@ -15,6 +15,7 @@ import Draggable from "react-draggable";
 import { Resizable, ResizeCallbackData } from "react-resizable";
 import "react-resizable/css/styles.css";
 import DraggableReservationCard from "@/components/reservation/DraggableReservationCard";
+import { supabase } from "@/lib/supabase/client";
 
 // Bu componenti sadece tarayıcıda çalıştırılacak şekilde dinamik olarak import ediyoruz
 // SSG sırasında çalıştırılmaz

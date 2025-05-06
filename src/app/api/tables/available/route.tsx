@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { supabase } from "@/lib/supabase/client";
 
 // Masa tipi
 interface Table {
@@ -38,107 +39,71 @@ const allTables: Table[] = [
 ];
 
 // GET - Müsait masaları getir
-export async function GET(request: NextRequest) {
+export const dynamic = "force-dynamic";
+
+export async function GET(request: Request) {
   try {
-    // URL parametrelerini al
-    const searchParams = request.nextUrl.searchParams;
+    const { searchParams } = new URL(request.url);
     const date = searchParams.get("date");
     const time = searchParams.get("time");
-    const guestsStr = searchParams.get("guests");
+    const guests = parseInt(searchParams.get("guests") || "1");
 
-    // Parametreleri kontrol et
     if (!date || !time) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Eksik parametreler: tarih ve saat gereklidir",
-        },
-        { status: 400 }
+      return new NextResponse(
+        JSON.stringify({ error: "Tarih ve saat parametreleri gerekli" }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
 
-    const guests = guestsStr ? parseInt(guestsStr) : 1;
+    // Tüm masaları getir
+    const { data: tables, error: tablesError } = await supabase
+      .from("tables")
+      .select("*");
 
-    // Burada gerçek bir veritabanından rezervasyonları sorgulayacağız
-    // Şimdilik boş bir array olarak simüle ediyoruz, gerçekte veritabanı sorgulanacak
-    const existingReservations: Reservation[] = [];
-
-    // Gerçek uygulamada, bu fonksiyon veritabanındaki rezervasyonları kontrol edecek
-    // ve belirtilen tarih/saatte rezerve edilmiş masaları belirleyecek
-    const getReservedTableIds = (date: string, time: string): string[] => {
-      // Örnek implementasyon - gerçekte veritabanı sorgusu olacak
-      return existingReservations
-        .filter((res) => {
-          if (res.date !== date) return false;
-          if (res.status === "cancelled") return false;
-
-          // Zaman kontrolü - istenilen saat, rezervasyon zaman aralığında mı?
-          const requestHour = parseInt(time.split(":")[0]);
-          const requestMinute = parseInt(time.split(":")[1] || "0");
-          const requestTimeInMinutes = requestHour * 60 + requestMinute;
-
-          const startHour = parseInt(res.startTime.split(":")[0]);
-          const startMinute = parseInt(res.startTime.split(":")[1] || "0");
-          const startTimeInMinutes = startHour * 60 + startMinute;
-
-          const endHour = parseInt(res.endTime.split(":")[0]);
-          const endMinute = parseInt(res.endTime.split(":")[1] || "0");
-          const endTimeInMinutes = endHour * 60 + endMinute;
-
-          // Gece yarısını geçen rezervasyonlar için özel durum kontrolü
-          if (endTimeInMinutes < startTimeInMinutes) {
-            // 23:00 - 01:00 gibi durumlar
-            return (
-              requestTimeInMinutes >= startTimeInMinutes ||
-              requestTimeInMinutes <= endTimeInMinutes
-            );
-          }
-
-          return (
-            requestTimeInMinutes >= startTimeInMinutes &&
-            requestTimeInMinutes < endTimeInMinutes
-          );
-        })
-        .map((res) => res.tableId);
-    };
-
-    // Rezerve edilmiş masaları bul
-    const reservedTableIds = getReservedTableIds(date, time);
-
-    // Uygun masaları filtrele (rezervasyonu olmayan ve kapasitesi yeterli olanlar)
-    const availableTables = allTables
-      .filter((table) => !reservedTableIds.includes(table.id))
-      .filter((table) => table.capacity >= guests)
-      .map((table) => ({
-        id: table.id,
-        number: table.number,
-        capacity: table.capacity,
-        location: table.location,
-      }));
-
-    // Müsait masa yoksa uygun bir mesaj döndür
-    if (availableTables.length === 0) {
-      return NextResponse.json({
-        success: false,
-        message: `${date} tarihinde ${time} saatinde ${guests} kişi için uygun masa bulunamadı.`,
-        tables: [],
-      });
+    if (tablesError) {
+      throw tablesError;
     }
 
-    // Başarılı yanıt ile masaları döndür
-    return NextResponse.json({
-      success: true,
-      message: `${availableTables.length} müsait masa bulundu.`,
-      tables: availableTables,
+    // Seçilen tarih için rezervasyonları getir
+    const { data: reservations, error: reservationsError } = await supabase
+      .from("reservations")
+      .select("*")
+      .eq("date", date);
+
+    if (reservationsError) {
+      throw reservationsError;
+    }
+
+    // Müsait masaları filtrele
+    const availableTables = tables.filter((table) => {
+      // Kapasite kontrolü
+      if (table.capacity < guests) {
+        return false;
+      }
+
+      // Rezervasyon kontrolü
+      const tableReservations = reservations.filter(
+        (reservation) => reservation.table_id === table.id
+      );
+
+      return !tableReservations.some((reservation) => {
+        const reservationTime = new Date(reservation.time);
+        const requestedTime = new Date(`${date}T${time}`);
+        const timeDiff = Math.abs(
+          reservationTime.getTime() - requestedTime.getTime()
+        );
+        return timeDiff < 2 * 60 * 60 * 1000; // 2 saat
+      });
+    });
+
+    return new NextResponse(JSON.stringify(availableTables), {
+      headers: { "Content-Type": "application/json" },
     });
   } catch (error) {
     console.error("Müsait masaları getirirken hata:", error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Masa bilgileri alınırken bir hata oluştu",
-      },
-      { status: 500 }
+    return new NextResponse(
+      JSON.stringify({ error: "Müsait masalar getirilemedi" }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
 }

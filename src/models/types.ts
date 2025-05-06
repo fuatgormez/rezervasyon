@@ -59,3 +59,44 @@ export interface Break {
   start: string;
   end: string;
 }
+
+export interface ReservationType {
+  id: string;
+  customerId: string;
+  customerName: string;
+  tableId: string;
+  startTime: string;
+  endTime: string;
+  guests: number;
+  status: "confirmed" | "pending" | "cancelled";
+  type: "RESERVATION";
+  phone?: string;
+  isNewGuest?: boolean;
+  language?: string;
+}
+
+export interface TableType {
+  id: string;
+  number: number;
+  capacity: number;
+  status: "available" | "unavailable" | "reserved";
+  categoryId?: string;
+}
+
+export interface TableCategoryType {
+  id: string;
+  name: string;
+  color: string;
+  borderColor: string;
+  backgroundColor: string;
+}
+
+export interface SettingsType {
+  id: number;
+  workingHours: {
+    start: string;
+    end: string;
+  };
+  minPayment: number;
+  isSystemActive: boolean;
+}

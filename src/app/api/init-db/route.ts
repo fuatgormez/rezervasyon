@@ -1,56 +1,54 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/config/supabase";
+import { supabase } from "@/lib/supabase/client";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    console.log("Supabase bağlantısı test ediliyor...");
+    // Varsayılan masaları oluştur
+    const defaultTables = Array.from({ length: 10 }, (_, i) => ({
+      id: `table-${i + 1}`,
+      number: i + 1,
+      capacity: Math.floor(Math.random() * 4) + 2, // 2-6 arası kapasite
+      status: "available",
+    }));
 
-    // Supabase bağlantısını test et
-    try {
-      const { data, error } = await supabase
-        .from("reservations")
-        .select("*")
-        .limit(1);
-      console.log("Mevcut rezervasyonlar:", data);
+    const { error: tablesError } = await supabase
+      .from("tables")
+      .upsert(defaultTables, { onConflict: "id" });
 
-      if (error) {
-        console.error("Supabase sorgu hatası:", error);
-      }
-
-      // Tabloyu oluşturmaya çalış
-      await supabase.from("reservations").insert({
-        user_id: "test-user",
-        company_id: "test-company",
-        date: "2025-04-30",
-        time: "12:00",
-        customer_name: "Test Müşteri",
-        guest_count: 2,
-        status: "pending",
-      });
-
-      return NextResponse.json({
-        success: true,
-        message: "Test rezervasyonu başarıyla oluşturuldu",
-      });
-    } catch (error) {
-      console.error("Supabase test hatası:", error);
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Supabase bağlantısı başarısız oldu",
-          details: error instanceof Error ? error.message : String(error),
-        },
-        { status: 500 }
-      );
+    if (tablesError) {
+      throw tablesError;
     }
-  } catch (error) {
-    console.error("Genel hata:", error);
-    return NextResponse.json(
-      {
-        error: "İşlem başarısız oldu",
-        details: error instanceof Error ? error.message : String(error),
+
+    // Varsayılan ayarları oluştur
+    const defaultSettings = {
+      id: "default",
+      working_hours: {
+        start: "09:00",
+        end: "22:00",
       },
-      { status: 500 }
+      min_payment: 100,
+      is_active: true,
+    };
+
+    const { error: settingsError } = await supabase
+      .from("settings")
+      .upsert(defaultSettings, { onConflict: "id" });
+
+    if (settingsError) {
+      throw settingsError;
+    }
+
+    return new NextResponse(
+      JSON.stringify({ message: "Veritabanı başarıyla başlatıldı" }),
+      { headers: { "Content-Type": "application/json" } }
+    );
+  } catch (error) {
+    console.error("Veritabanı başlatılırken hata:", error);
+    return new NextResponse(
+      JSON.stringify({ error: "Veritabanı başlatılırken bir hata oluştu" }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
 }

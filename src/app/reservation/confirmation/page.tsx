@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ReservationType } from "@/lib/kv/models/reservation";
-import { ReservationModel } from "@/lib/kv";
+import { ReservationType } from "@/models/types";
+import { ReservationModel } from "@/models/reservation";
 
 export default function ConfirmationPage() {
   const searchParams = useSearchParams();
@@ -34,7 +34,7 @@ export default function ConfirmationPage() {
           phone: "5551234567",
           isNewGuest: true,
           language: "TR",
-        } as ReservationType);
+        });
         return;
       }
 
