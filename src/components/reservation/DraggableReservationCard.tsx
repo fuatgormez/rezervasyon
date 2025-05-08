@@ -55,6 +55,24 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
   const [initialEndTime, setInitialEndTime] = useState("");
   const [initialTableId, setInitialTableId] = useState("");
 
+  // --- YENİ: Zaman dilimi uzatma/kısaltma için ---
+  const [resizeDir, setResizeDir] = useState<null | "left" | "right">(null);
+  const [resizeStartX, setResizeStartX] = useState<number | null>(null);
+  const [resizeStartWidth, setResizeStartWidth] = useState<number | null>(null);
+  const [resizeStartLeft, setResizeStartLeft] = useState<number | null>(null);
+  const [resizeStartTime, setResizeStartTime] = useState<string>("");
+  const [resizeEndTime, setResizeEndTime] = useState<string>("");
+  // left ve width state olarak tutulacak
+  const [leftPx, setLeftPx] = useState<number>(parseInt(position.left));
+  const [widthPx, setWidthPx] = useState<number>(parseInt(position.width));
+  // Son adım indexini tut (her adımda bir kez güncelleme için)
+  const [lastStep, setLastStep] = useState<number>(0);
+
+  useEffect(() => {
+    setLeftPx(parseInt(position.left));
+    setWidthPx(parseInt(position.width));
+  }, [position.left, position.width]);
+
   // Dakikayı saat:dakika formatına çevirme
   const convertMinutesToTime = (totalMinutes: number): string => {
     // Gün aşımlarını elle hesapla
@@ -245,6 +263,99 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
     setDraggedReservation(null);
   };
 
+  // Mouse hareketi ile kartı uzat/kısalt
+  useEffect(() => {
+    if (!resizeDir) return;
+    function onMouseMove(e: MouseEvent) {
+      if (resizeStartX === null || resizeStartWidth === null) return;
+      const cellWidthMinutes = 60;
+      const minuteStep = 15;
+      const pxPerStep = cellWidth * (minuteStep / cellWidthMinutes); // 15 dakikalık adımın px karşılığı
+      let diffX = e.clientX - resizeStartX;
+      let step = Math.round(diffX / pxPerStep);
+      if (step === lastStep) return; // Aynı adımda kalıyorsak güncelleme yapma
+      setLastStep(step);
+      let newWidth = resizeStartWidth;
+      let newLeft = leftPx;
+      let newStart = resizeStartTime;
+      let newEnd = resizeEndTime;
+      if (resizeDir === "left") {
+        // Sola çekince (step negatif): sola uzama, sağa çekince (step pozitif): sağa daralma
+        newWidth = resizeStartWidth - step * pxPerStep;
+        newLeft = (resizeStartLeft ?? leftPx) + step * pxPerStep;
+        // Minimum genişlik kontrolü
+        if (newWidth < cellWidth) {
+          // Sağdan daralma sınırı
+          newLeft += newWidth - cellWidth; // left'i sağa kaydır
+          newWidth = cellWidth;
+          step = Math.floor((resizeStartWidth - cellWidth) / pxPerStep);
+        }
+        // Saat güncelle
+        const startMins =
+          convertTimeToMinutes(resizeStartTime) + step * minuteStep;
+        newStart = convertMinutesToTime(startMins);
+      } else if (resizeDir === "right") {
+        newWidth = resizeStartWidth + step * pxPerStep;
+        if (newWidth < cellWidth) {
+          newWidth = cellWidth;
+          step = Math.floor((cellWidth - resizeStartWidth) / pxPerStep);
+        }
+        newLeft = leftPx;
+        // Saat güncelle
+        const endMins = convertTimeToMinutes(resizeEndTime) + step * minuteStep;
+        newEnd = convertMinutesToTime(endMins);
+      }
+      setWidthPx(newWidth);
+      setLeftPx(newLeft);
+      setDraggedReservation((r) =>
+        r ? { ...r, startTime: newStart, endTime: newEnd } : null
+      );
+      // Hemen güncelle (senkron)
+      if (draggedReservation) {
+        const updated = {
+          ...draggedReservation,
+          startTime: newStart,
+          endTime: newEnd,
+        };
+        const startTime = convertTimeToMinutes(updated.startTime);
+        const endTime = convertTimeToMinutes(updated.endTime);
+        if (endTime > startTime) {
+          const hasConflict = hasTableConflict(
+            updated.tableId,
+            updated.startTime,
+            updated.endTime,
+            updated.id
+          );
+          if (!hasConflict) {
+            onReservationUpdate(updated);
+          }
+        }
+      }
+    }
+    function onMouseUp() {
+      setResizeDir(null);
+      setDraggedReservation(null);
+      setLastStep(0);
+    }
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+  }, [
+    resizeDir,
+    resizeStartX,
+    resizeStartWidth,
+    resizeStartLeft,
+    resizeStartTime,
+    resizeEndTime,
+    draggedReservation,
+    cellWidth,
+    leftPx,
+    lastStep,
+  ]);
+
   return (
     <Draggable
       defaultClassName="reservation-draggable"
@@ -253,7 +364,7 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
       onDrag={handleDrag}
       onStop={handleDragStop}
       position={{ x: 0, y: 0 }}
-      grid={[cellWidth / 4, cellHeight]} // Çeyrek saatlik adımlarla hareket etsin
+      grid={[cellWidth / 4, cellHeight]}
       cancel=".resize-handle"
     >
       <div
@@ -262,8 +373,8 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
           isDragging ? "cursor-grabbing z-50" : "cursor-grab z-5"
         }`}
         style={{
-          left: `calc(${position.left} + 1px)`,
-          width: `calc(${position.width} - 2px)`,
+          left: resizeDir ? `${leftPx}px` : position.left,
+          width: resizeDir ? `${widthPx}px` : position.width,
           top: "1px",
           height: `calc(${cellHeight}px - 2px)`,
           backgroundColor: reservation.color || categoryColor,
@@ -292,7 +403,19 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
         }}
       >
         {/* Sol tutamaç - Genişletme işlemi için */}
-        <div className="resize-handle absolute left-0 top-0 h-full w-4 cursor-ew-resize hover:bg-white hover:bg-opacity-20 z-10"></div>
+        <div
+          className="resize-handle absolute left-0 top-0 h-full w-4 cursor-ew-resize hover:bg-white hover:bg-opacity-20 z-10"
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            setResizeDir("left");
+            setResizeStartX(e.clientX);
+            setResizeStartWidth(widthPx);
+            setResizeStartLeft(leftPx);
+            setResizeStartTime(reservation.startTime);
+            setResizeEndTime(reservation.endTime);
+            setDraggedReservation({ ...reservation });
+          }}
+        ></div>
 
         <div className="px-3 py-0 text-xs truncate max-w-full text-white h-full flex flex-col justify-center">
           {cellHeight < 50 ? (
@@ -305,7 +428,9 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
                   .join("")}
               </div>
               <div className="text-white text-opacity-95 text-[11px] flex items-center ml-2">
-                <span className="mr-1">{reservation.startTime}</span>
+                <span className="mr-1">
+                  {draggedReservation?.startTime || reservation.startTime}
+                </span>
                 <span className="bg-white bg-opacity-30 px-1 rounded text-[10px]">
                   {reservation.guestCount}
                 </span>
@@ -319,7 +444,8 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
               </div>
               <div className="text-white text-opacity-95 text-[11px] flex items-center mt-1">
                 <span className="mr-1">
-                  {reservation.startTime}-{reservation.endTime}
+                  {draggedReservation?.startTime || reservation.startTime}-
+                  {draggedReservation?.endTime || reservation.endTime}
                 </span>
                 <span className="bg-white bg-opacity-30 px-1 rounded text-[10px]">
                   {reservation.guestCount} kişi
@@ -330,7 +456,19 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
         </div>
 
         {/* Sağ tutamaç - Genişletme işlemi için */}
-        <div className="resize-handle absolute right-0 top-0 h-full w-4 cursor-ew-resize hover:bg-white hover:bg-opacity-20 z-10"></div>
+        <div
+          className="resize-handle absolute right-0 top-0 h-full w-4 cursor-ew-resize hover:bg-white hover:bg-opacity-20 z-10"
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            setResizeDir("right");
+            setResizeStartX(e.clientX);
+            setResizeStartWidth(widthPx);
+            setResizeStartLeft(leftPx);
+            setResizeStartTime(reservation.startTime);
+            setResizeEndTime(reservation.endTime);
+            setDraggedReservation({ ...reservation });
+          }}
+        ></div>
       </div>
     </Draggable>
   );
