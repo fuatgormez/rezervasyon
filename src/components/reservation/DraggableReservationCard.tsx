@@ -139,17 +139,6 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
     // Elementin altındaki masa ID'sini bul - farklı yöntemleri deneyelim
     const elementsAtPoint = document.elementsFromPoint(clientX, clientY);
 
-    // Debug için tüm bulunan elementleri loglayalım
-    console.log(
-      "Bulunan elementler:",
-      elementsAtPoint.map((el) => ({
-        tag: el.tagName,
-        className: el.className,
-        dataTableId: el.getAttribute("data-table-id"),
-        dataHour: el.getAttribute("data-hour"),
-      }))
-    );
-
     // Masa ID'sini bulmaya çalışalım
     let foundTableId = false;
 
@@ -157,13 +146,6 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
     for (const element of elementsAtPoint) {
       const tableId = element.getAttribute("data-table-id");
       if (tableId) {
-        console.log(
-          "Bulundu! tableId:",
-          tableId,
-          "element:",
-          element.tagName,
-          element.className
-        );
         draggedReservation.tableId = tableId;
         foundTableId = true;
         break;
@@ -177,7 +159,6 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
         if (parent) {
           const parentTableId = parent.getAttribute("data-table-id");
           if (parentTableId) {
-            console.log("Parent'ta bulundu! tableId:", parentTableId);
             draggedReservation.tableId = parentTableId;
             foundTableId = true;
             break;
@@ -188,7 +169,9 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
 
     // Zaman hesaplama - sürükleme mesafesine göre zaman güncelleme
     const cellWidthMinutes = 60;
-    const minuteOffset = Math.round((offsetX / cellWidth) * cellWidthMinutes);
+    const minuteStep = 15;
+    let minuteOffsetRaw = (offsetX / cellWidth) * cellWidthMinutes;
+    let minuteOffset = Math.round(minuteOffsetRaw / minuteStep) * minuteStep;
 
     // Yeni başlangıç ve bitiş zamanlarını hesapla
     const startMinutes = convertTimeToMinutes(initialStartTime);
@@ -203,13 +186,6 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
     draggedReservation.endTime = convertMinutesToTime(newEndMinutes);
 
     setDraggedReservation({ ...draggedReservation });
-
-    // Masa değişimini loglayalım
-    if (foundTableId && draggedReservation.tableId !== initialTableId) {
-      console.log(
-        `Masa değişiyor: ${initialTableId} -> ${draggedReservation.tableId}`
-      );
-    }
   };
 
   // Sürükleme tamamlandığında
