@@ -112,6 +112,13 @@ function AdminPageComponent() {
   const [currentTimePosition, setCurrentTimePosition] = useState<number | null>(
     null
   );
+  // Kullanıcının son etkileşim zamanını tutacak state
+  const [lastUserInteraction, setLastUserInteraction] = useState<Date>(
+    new Date()
+  );
+  // Manuel kaydırma yapıldığını takip etmek için
+  const [userHasScrolled, setUserHasScrolled] = useState<boolean>(false);
+
   const mainContentRef = useRef<HTMLDivElement>(null);
   const gridContainerRef = useRef<HTMLDivElement>(null);
   const calendarRef = useRef<HTMLDivElement>(null);
@@ -343,6 +350,43 @@ function AdminPageComponent() {
       return;
     }
 
+    // Kırmızı çizgiyi merkeze alan fonksiyon
+    const centerCurrentTimeLine = () => {
+      if (currentTimePosition === null || !gridContainerRef.current) return;
+
+      // Şu anki zaman ve son etkileşim arasındaki fark (milisaniye cinsinden)
+      const now = new Date();
+      const inactiveTime = now.getTime() - lastUserInteraction.getTime();
+
+      // Kullanıcı son 1 dakikadır (60000 ms) hiçbir etkileşimde bulunmadıysa otomatik olarak merkeze git
+      if (inactiveTime > 60000 || !userHasScrolled) {
+        // Viewport genişliği ve scroll hesaplaması
+        const viewportWidth = gridContainerRef.current.clientWidth;
+        const leftPosition = CATEGORY_WIDTH + currentTimePosition;
+
+        // Çizgiyi merkeze getirmek için scroll pozisyonu
+        const scrollPosition = leftPosition - viewportWidth / 2;
+
+        // Yumuşak geçişli scroll
+        gridContainerRef.current.scrollTo({
+          left: Math.max(0, scrollPosition),
+          behavior: "smooth",
+        });
+
+        console.log(
+          "İnaktif süre:",
+          Math.round(inactiveTime / 1000),
+          "saniye. Kırmızı çizgi sayfanın ortasına getirildi."
+        );
+        // Kullanıcı scroll durumunu sıfırla
+        setUserHasScrolled(false);
+      } else {
+        console.log(
+          "Kullanıcı son 1 dakika içinde etkileşimde bulundu, otomatik merkeze alma atlandı."
+        );
+      }
+    };
+
     const updateTimePosition = () => {
       const now = new Date();
       const formattedTime = format(now, "HH:mm");
@@ -352,28 +396,61 @@ function AdminPageComponent() {
       const hourPart = parseInt(formattedTime.split(":")[0]);
       const minutePart = parseInt(formattedTime.split(":")[1]);
 
+      console.log(
+        "Güncel saat:",
+        formattedTime,
+        "Saat kısmı:",
+        hourPart,
+        "Dakika kısmı:",
+        minutePart
+      );
+
       // Geçerli saati bul (7'den başlayarak)
       let hourIndex = -1;
 
-      if (hourPart >= 7 && hourPart <= 24) {
+      // Gece yarısından sonraki saatler için düzeltme (00, 01, 02)
+      if (hourPart >= 0 && hourPart <= 2) {
+        hourIndex = hours.length - (3 - hourPart); // 00:00 için son saat, 01:00 için sondan bir önceki, 02:00 için sondan iki önceki
+        console.log(
+          "Gece yarısından sonraki saat:",
+          hourPart,
+          "Hesaplanan indeks:",
+          hourIndex
+        );
+      }
+      // Normal saat aralığı (7-24)
+      else if (hourPart >= 7 && hourPart <= 23) {
         hourIndex = hourPart - 7;
-      } else if (hourPart >= 1 && hourPart <= 2) {
-        hourIndex = 24 - 7 + hourPart; // 01:00 ve 02:00 için
+        console.log(
+          "Normal saat aralığı:",
+          hourPart,
+          "Hesaplanan indeks:",
+          hourIndex
+        );
       }
 
-      if (hourIndex >= 0) {
+      if (hourIndex >= 0 && hourIndex < hours.length) {
         // Saat ve dakikaya göre pozisyonu hesapla
         const position = hourIndex * cellWidth + (minutePart / 60) * cellWidth;
         setCurrentTimePosition(position);
         console.log(
-          "Zaman pozisyonu güncellendi:",
+          "Zaman pozisyonu hesaplandı:",
           formattedTime,
+          "Saat indeksi:",
+          hourIndex,
+          "Pozisyon:",
           position,
           "px"
         );
+
+        // Kırmızı çizgiyi merkeze al - sadece ilk hesaplamada
+        setTimeout(centerCurrentTimeLine, 100);
       } else {
         setCurrentTimePosition(null);
-        console.log("Geçerli saat aralığı dışında, çizgi gösterilmeyecek");
+        console.log(
+          "Geçerli saat aralığı dışında (03:00-06:59), çizgi gösterilmeyecek. Saat:",
+          hourPart
+        );
       }
     };
 
@@ -384,7 +461,89 @@ function AdminPageComponent() {
     const timer = setInterval(updateTimePosition, 1000);
 
     return () => clearInterval(timer);
-  }, [cellWidth]); // cellWidth değiştiğinde de güncelle
+  }, [
+    cellWidth,
+    hours,
+    currentTimePosition,
+    lastUserInteraction,
+    userHasScrolled,
+  ]);
+
+  // Kullanıcının scroll etkileşimini izleyen yeni useEffect
+  useEffect(() => {
+    // Netlify dağıtımı ve SSG aşamasında atlanacak
+    if (
+      (process.env.NEXT_PUBLIC_NETLIFY_DEPLOYMENT === "true" &&
+        process.env.NEXT_PUBLIC_SKIP_SSG_ADMIN === "true") ||
+      typeof window === "undefined"
+    ) {
+      return;
+    }
+
+    const handleUserScroll = () => {
+      // Kullanıcı scroll yaptığında son etkileşim zamanını güncelle
+      setLastUserInteraction(new Date());
+      // Kullanıcının manuel scroll yaptığını işaretle
+      setUserHasScrolled(true);
+      console.log(
+        "Kullanıcı manuel scroll yaptı, otomatik merkeze alma devre dışı."
+      );
+    };
+
+    // Kullanıcı herhangi bir tıklama veya dokunma yaptığında son etkileşim zamanını güncelle
+    const handleUserInteraction = () => {
+      setLastUserInteraction(new Date());
+    };
+
+    // Scroll olayını dinle
+    const gridContainer = gridContainerRef.current;
+    if (gridContainer) {
+      gridContainer.addEventListener("scroll", handleUserScroll);
+    }
+
+    // Genel kullanıcı etkileşimlerini dinle
+    window.addEventListener("mousedown", handleUserInteraction);
+    window.addEventListener("touchstart", handleUserInteraction);
+    window.addEventListener("keydown", handleUserInteraction);
+
+    // Her 1 dakikada bir, inaktif zaman kontrolü yap ve gerekirse merkeze al
+    const inactivityCheckTimer = setInterval(() => {
+      const now = new Date();
+      const inactiveTime = now.getTime() - lastUserInteraction.getTime();
+
+      // 1 dakikadan fazla süre geçti mi?
+      if (inactiveTime > 60000 && userHasScrolled) {
+        console.log(
+          "1 dakikadan fazla inaktif - otomatik olarak mevcut saate dönülüyor"
+        );
+        // Kırmızı çizgiyi otomatik olarak merkeze al
+        if (currentTimePosition !== null && gridContainerRef.current) {
+          const viewportWidth = gridContainerRef.current.clientWidth;
+          const leftPosition = CATEGORY_WIDTH + currentTimePosition;
+          const scrollPosition = leftPosition - viewportWidth / 2;
+
+          gridContainerRef.current.scrollTo({
+            left: Math.max(0, scrollPosition),
+            behavior: "smooth",
+          });
+
+          // Kullanıcı scroll durumunu sıfırla
+          setUserHasScrolled(false);
+        }
+      }
+    }, 10000); // 10 saniyede bir kontrol et
+
+    return () => {
+      // Event listener temizleme
+      if (gridContainer) {
+        gridContainer.removeEventListener("scroll", handleUserScroll);
+      }
+      window.removeEventListener("mousedown", handleUserInteraction);
+      window.removeEventListener("touchstart", handleUserInteraction);
+      window.removeEventListener("keydown", handleUserInteraction);
+      clearInterval(inactivityCheckTimer);
+    };
+  }, [currentTimePosition, lastUserInteraction, userHasScrolled]);
 
   // Pencere boyutu değiştiğinde içeriği güncelle
   useEffect(() => {
@@ -397,13 +556,32 @@ function AdminPageComponent() {
       return;
     }
 
+    // Kırmızı çizgiyi merkeze alan fonksiyon
+    const centerTimeLineOnResize = () => {
+      if (currentTimePosition === null || !gridContainerRef.current) return;
+
+      // Viewport genişliği ve scroll hesaplaması
+      const viewportWidth = gridContainerRef.current.clientWidth;
+      const leftPosition = CATEGORY_WIDTH + currentTimePosition;
+
+      // Çizgiyi merkeze getirmek için scroll pozisyonu
+      const scrollPosition = leftPosition - viewportWidth / 2;
+
+      // Yumuşak geçişli scroll
+      gridContainerRef.current.scrollTo({
+        left: Math.max(0, scrollPosition),
+        behavior: "smooth",
+      });
+    };
+
     const handleResize = () => {
-      // Burada pencere boyutu değiştiğinde yapılacak işlemler
+      // Pencere boyutu değiştiğinde kırmızı çizgiyi merkeze al
+      centerTimeLineOnResize();
     };
 
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
-  }, []);
+  }, [CATEGORY_WIDTH, currentTimePosition]);
 
   // Toplam misafir sayısını hesapla
   const totalGuestCount = useMemo(() => {
@@ -2394,6 +2572,23 @@ function AdminPageComponent() {
                     </div>
                   ))}
                 </div>
+
+                {/* Mevcut zaman çizgisi - Kırmızı dikey çizgi - Z-indeks artırıldı ve çizgi kalınlaştırıldı */}
+                {currentTimePosition !== null && (
+                  <div
+                    className="absolute top-0 bottom-0 w-[2px] bg-red-600 z-50 pointer-events-none hover:w-[3px] group transition-all duration-300"
+                    style={{
+                      left: `${CATEGORY_WIDTH + currentTimePosition}px`,
+                      height: "100%",
+                      boxShadow: "0 0 5px rgba(239, 68, 68, 0.5)",
+                    }}
+                  >
+                    {/* Saati gösteren bilgi kutusu - sadece hover olduğunda görünür */}
+                    <div className="hidden group-hover:block absolute -top-2 left-1/2 transform -translate-x-1/2 bg-red-600 text-white text-xs font-bold rounded-sm px-2 py-1 whitespace-nowrap z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                      {currentTime}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Kategori isimleri yan tarafta */}
@@ -2556,15 +2751,17 @@ function AdminPageComponent() {
               {/* Güncel saat çizgisi - Ana tablo alanında */}
               {currentTimePosition !== null && (
                 <div
-                  className="absolute border-l-2 border-red-500 z-30 group hover:cursor-pointer transition-all duration-300"
+                  className="absolute border-l-[2px] border-red-600 z-50 group cursor-pointer transition-all duration-300 hover:border-l-[3px]"
                   style={{
                     left: `${CATEGORY_WIDTH + currentTimePosition}px`,
                     top: "0",
                     height: "100%",
                     pointerEvents: "auto",
+                    boxShadow: "0 0 5px rgba(239, 68, 68, 0.5)",
                   }}
                 >
-                  <div className="absolute left-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-800 text-white text-xs px-2 py-1 rounded-md whitespace-nowrap">
+                  {/* Saati gösteren bilgi kutusu - sadece hover olduğunda görünür */}
+                  <div className="absolute left-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-red-600 text-white text-xs px-2 py-1 rounded-md whitespace-nowrap z-50">
                     {currentTime}
                   </div>
                 </div>
