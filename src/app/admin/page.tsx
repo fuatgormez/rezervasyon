@@ -1699,6 +1699,42 @@ function AdminPageComponent() {
       // Filtrelenmiş rezervasyonları güncelle
       setReservations(filteredReservations);
 
+      // Gün değiştiğinde masa seçimlerini temizle
+      clearTableSelection();
+
+      // Gün değiştiğinde garson atamalarını da temizle
+      clearTableStaffAssignments();
+
+      // Sağ paneli kapat
+      closeRightSidebar();
+
+      // Bugün değilse kırmızı çizgiyi gizlemek için mevcut zaman pozisyonunu sıfırla
+      const today = new Date();
+      const selectedDateStr = format(date, "yyyy-MM-dd");
+      const todayStr = format(today, "yyyy-MM-dd");
+
+      // Her koşulda güncel zaman pozisyonunu hesapla, JSX içinde bugüne göre koşullu gösterilecek
+      const currentDate = new Date();
+      const formattedTime = format(currentDate, "HH:mm");
+      setCurrentTime(formattedTime);
+
+      // Geçerli saati bul (7'den başlayarak)
+      const hourPart = parseInt(formattedTime.split(":")[0]);
+      const minutePart = parseInt(formattedTime.split(":")[1]);
+
+      let hourIndex = -1;
+      if (hourPart >= 7 && hourPart <= 24) {
+        hourIndex = hourPart - 7;
+      } else if (hourPart >= 1 && hourPart <= 2) {
+        hourIndex = 24 - 7 + hourPart; // 01:00 ve 02:00 için
+      }
+
+      if (hourIndex >= 0) {
+        // Saat ve dakikaya göre pozisyonu hesapla
+        const position = hourIndex * cellWidth + (minutePart / 60) * cellWidth;
+        setCurrentTimePosition(position);
+      }
+
       // Eğer rezervasyon yoksa toast bildirimi göstermiyoruz
       // Toast kaldırıldı çünkü başka bir yerden zaten bildirim gösteriliyor
     } catch (error) {
@@ -2102,15 +2138,30 @@ function AdminPageComponent() {
   // Şu anki zamanı kullanarak, zaman çizgisinin solunda kalan (geçmiş) rezervasyonları kontrol eden fonksiyon
   const isReservationPast = (startTime: string): boolean => {
     try {
+      // Bugünden farklı bir gün seçilmişse farklı davranış göster
+      const today = new Date();
+      const selectedDateStr = format(selectedDate, "yyyy-MM-dd");
+      const todayStr = format(today, "yyyy-MM-dd");
+
+      // Seçilen tarih bugünden önceyse tüm rezervasyonlar geçmiş olarak kabul edilir
+      if (selectedDateStr < todayStr) {
+        return true;
+      }
+
+      // Seçilen tarih bugünden sonraysa hiçbir rezervasyon geçmiş olarak kabul edilmez
+      if (selectedDateStr > todayStr) {
+        return false;
+      }
+
+      // Aynı gündeyiz, normal kontrollere devam et
       // Eğer startTime saat:dakika:saniye formatında gelirse ":" karakterinden bölelim ve ilk iki bölümü alalım
       const timeParts = startTime.split(":");
       const hourStr = timeParts[0];
       const minuteStr = timeParts[1];
 
       // Şu anki saat ve dakikayı al
-      const now = new Date();
-      const currentHour = now.getHours();
-      const currentMinute = now.getMinutes();
+      const currentHour = today.getHours();
+      const currentMinute = today.getMinutes();
 
       // Rezervasyonun başlangıç saati ve dakikasını al
       const reservationHour = parseInt(hourStr);
@@ -2218,10 +2269,25 @@ function AdminPageComponent() {
   // Belirli bir saat ve zamanın geçmiş (kırmızı çizginin solunda) olup olmadığını kontrol et
   const isTimePast = (hour: string): boolean => {
     try {
+      // Bugünden farklı bir gün seçilmişse farklı davranış göster
+      const today = new Date();
+      const selectedDateStr = format(selectedDate, "yyyy-MM-dd");
+      const todayStr = format(today, "yyyy-MM-dd");
+
+      // Seçilen tarih bugünden önceyse tüm saatler geçmiş olarak kabul edilir
+      if (selectedDateStr < todayStr) {
+        return true;
+      }
+
+      // Seçilen tarih bugünden sonraysa hiçbir saat geçmiş olarak kabul edilmez
+      if (selectedDateStr > todayStr) {
+        return false;
+      }
+
+      // Aynı gündeyiz, normal kontrollere devam et
       // Şu anki saat ve dakikayı al
-      const now = new Date();
-      const currentHour = now.getHours();
-      const currentMinute = now.getMinutes();
+      const currentHour = today.getHours();
+      const currentMinute = today.getMinutes();
 
       // Kontrol edilecek saati ve dakikayı al
       const [hourStr, minuteStr] = hour.split(":");
@@ -2373,6 +2439,12 @@ function AdminPageComponent() {
   // Masa seçimini temizle
   const clearTableSelection = () => {
     setSelectedTables([]);
+  };
+
+  // Masa garson atamalarını temizle
+  const clearTableStaffAssignments = () => {
+    setTableStaffAssignments({});
+    localStorage.removeItem("tableStaffAssignments");
   };
 
   // Masa ID'si ile masa numarası ve kategorisini al
@@ -2635,21 +2707,23 @@ function AdminPageComponent() {
                 </div>
 
                 {/* Mevcut zaman çizgisi - Kırmızı dikey çizgi - Z-indeks artırıldı ve çizgi kalınlaştırıldı */}
-                {currentTimePosition !== null && (
-                  <div
-                    className="absolute top-0 bottom-0 w-[2px] bg-red-600 z-50 pointer-events-none hover:w-[3px] group transition-all duration-300"
-                    style={{
-                      left: `${CATEGORY_WIDTH + currentTimePosition}px`,
-                      height: "100%",
-                      boxShadow: "0 0 5px rgba(239, 68, 68, 0.5)",
-                    }}
-                  >
-                    {/* Saati gösteren bilgi kutusu - sadece hover olduğunda görünür */}
-                    <div className="hidden group-hover:block absolute -top-2 left-1/2 transform -translate-x-1/2 bg-red-600 text-white text-xs font-bold rounded-sm px-2 py-1 whitespace-nowrap z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                      {currentTime}
+                {currentTimePosition !== null &&
+                  format(selectedDate, "yyyy-MM-dd") ===
+                    format(new Date(), "yyyy-MM-dd") && (
+                    <div
+                      className="absolute top-0 bottom-0 w-[2px] bg-red-600 z-50 pointer-events-none hover:w-[3px] group transition-all duration-300"
+                      style={{
+                        left: `${CATEGORY_WIDTH + currentTimePosition}px`,
+                        height: "100%",
+                        boxShadow: "0 0 5px rgba(239, 68, 68, 0.5)",
+                      }}
+                    >
+                      {/* Saati gösteren bilgi kutusu - sadece hover olduğunda görünür */}
+                      <div className="hidden group-hover:block absolute -top-2 left-1/2 transform -translate-x-1/2 bg-red-600 text-white text-xs font-bold rounded-sm px-2 py-1 whitespace-nowrap z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                        {currentTime}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
               </div>
 
               {/* Kategori isimleri yan tarafta */}
@@ -2879,23 +2953,25 @@ function AdminPageComponent() {
               ))}
 
               {/* Güncel saat çizgisi - Ana tablo alanında */}
-              {currentTimePosition !== null && (
-                <div
-                  className="absolute border-l-[2px] border-red-600 z-50 group cursor-pointer transition-all duration-300 hover:border-l-[3px]"
-                  style={{
-                    left: `${CATEGORY_WIDTH + currentTimePosition}px`,
-                    top: "0",
-                    height: "100%",
-                    pointerEvents: "auto",
-                    boxShadow: "0 0 5px rgba(239, 68, 68, 0.5)",
-                  }}
-                >
-                  {/* Saati gösteren bilgi kutusu - sadece hover olduğunda görünür */}
-                  <div className="absolute left-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-red-600 text-white text-xs px-2 py-1 rounded-md whitespace-nowrap z-50">
-                    {currentTime}
+              {currentTimePosition !== null &&
+                format(selectedDate, "yyyy-MM-dd") ===
+                  format(new Date(), "yyyy-MM-dd") && (
+                  <div
+                    className="absolute border-l-[2px] border-red-600 z-50 group cursor-pointer transition-all duration-300 hover:border-l-[3px]"
+                    style={{
+                      left: `${CATEGORY_WIDTH + currentTimePosition}px`,
+                      top: "0",
+                      height: "100%",
+                      pointerEvents: "auto",
+                      boxShadow: "0 0 5px rgba(239, 68, 68, 0.5)",
+                    }}
+                  >
+                    {/* Saati gösteren bilgi kutusu - sadece hover olduğunda görünür */}
+                    <div className="absolute left-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-red-600 text-white text-xs px-2 py-1 rounded-md whitespace-nowrap z-50">
+                      {currentTime}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
             </div>
           </div>
 
