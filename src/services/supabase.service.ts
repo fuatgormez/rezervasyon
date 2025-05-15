@@ -22,14 +22,22 @@ export class SupabaseService {
 
       // Eğer start_time verilmemişse date ve time'dan oluştur
       if (!reservation.start_time && reservation.date && reservation.time) {
-        reservation.start_time = `${reservation.date}T${reservation.time}:00`;
+        // Tarih ve saat bilgisini ISO formatında birleştir - Z eklemeden (yerel saat)
+        const dateTimeStr = `${reservation.date}T${reservation.time}:00`;
+        console.log("Oluşturulan tarih-saat:", dateTimeStr);
+
+        // Doğrudan ISO formatında string olarak ata (Z olmadan)
+        reservation.start_time = dateTimeStr;
       }
 
       // Eğer end_time verilmemişse start_time + 2 saat olarak ayarla
       if (!reservation.end_time && reservation.start_time) {
         const startDate = new Date(reservation.start_time);
-        startDate.setHours(startDate.getHours() + 2);
-        reservation.end_time = startDate.toISOString();
+        const endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000);
+
+        // ISO formatında end_time oluştur (Z olmadan)
+        const localISOString = endDate.toISOString().split("Z")[0];
+        reservation.end_time = localISOString;
       }
 
       // Supabase rezervasyon işlemlerini kullan
@@ -175,7 +183,67 @@ export class SupabaseService {
     try {
       // Eğer start_time yoksa date ve time kullanarak oluştur
       if (!updates.start_time && updates.date && updates.time) {
+        // Tarih ve saat bilgisini direkt string olarak birleştirerek ISO formatında oluştur
+        // 'Z' karakteri eklenmediği için bu yerel saat olarak kabul edilecek
         updates.start_time = `${updates.date}T${updates.time}:00`;
+        console.log("Güncellenen start_time:", updates.start_time);
+      }
+
+      // Eğer end_time verilmemişse ve start_time varsa start_time + 2 saat olarak ayarla
+      if (!updates.end_time && updates.start_time) {
+        let startDate;
+
+        // start_time'ı parse et
+        if (updates.start_time.includes("T")) {
+          const [datePart, timePart] = updates.start_time.split("T");
+          const [year, month, day] = datePart.split("-").map(Number);
+          const [hours, minutes, seconds] = timePart.split(":").map(Number);
+
+          // Ay değeri 0-11 arası, diğerleri olduğu gibi
+          startDate = new Date(
+            year,
+            month - 1,
+            day,
+            hours,
+            minutes,
+            seconds || 0
+          );
+        } else if (updates.start_time.includes(" ")) {
+          // Eğer "yyyy-MM-dd HH:mm:ss" formatındaysa
+          const [datePart, timePart] = updates.start_time.split(" ");
+          const [year, month, day] = datePart.split("-").map(Number);
+          const [hours, minutes, seconds] = timePart.split(":").map(Number);
+
+          startDate = new Date(
+            year,
+            month - 1,
+            day,
+            hours,
+            minutes,
+            seconds || 0
+          );
+        } else {
+          // Sadece saat formatındaysa, bugünün tarihini kullan
+          const [hours, minutes, seconds] = updates.start_time
+            .split(":")
+            .map(Number);
+          startDate = new Date();
+          startDate.setHours(hours, minutes, seconds || 0);
+        }
+
+        // 2 saat ekle
+        startDate.setHours(startDate.getHours() + 2);
+
+        // Yerel saat diliminde saklayacak şekilde string formatında dönüştür (ISO formatı, Z olmadan)
+        const endYear = startDate.getFullYear();
+        const endMonth = String(startDate.getMonth() + 1).padStart(2, "0");
+        const endDay = String(startDate.getDate()).padStart(2, "0");
+        const endHours = String(startDate.getHours()).padStart(2, "0");
+        const endMinutes = String(startDate.getMinutes()).padStart(2, "0");
+        const endSeconds = String(startDate.getSeconds()).padStart(2, "0");
+
+        updates.end_time = `${endYear}-${endMonth}-${endDay}T${endHours}:${endMinutes}:${endSeconds}`;
+        console.log("Güncellenen end_time:", updates.end_time);
       }
 
       // Supabase veri yapısına dönüştür

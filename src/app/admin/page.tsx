@@ -644,9 +644,30 @@ function AdminPageComponent() {
     endTime: string
   ): { left: string; width: string } => {
     try {
+      console.log("Pozisyon hesaplanıyor:", startTime, endTime);
+
+      // Saatleri ve dakikaları ayır - eğer tarih+saat formatında ise sadece saat kısmını al
+      let startTimeStr = startTime;
+      let endTimeStr = endTime;
+
+      // Tarih+saat formatı kontrolü (yyyy-MM-dd HH:mm veya yyyy-MM-ddTHH:mm formatı olabilir)
+      if (startTime.includes(" ")) {
+        startTimeStr = startTime.split(" ")[1]; // "yyyy-MM-dd HH:mm" -> "HH:mm"
+      } else if (startTime.includes("T")) {
+        startTimeStr = startTime.split("T")[1].substring(0, 5); // "yyyy-MM-ddTHH:mm:ss" -> "HH:mm"
+      }
+
+      if (endTime.includes(" ")) {
+        endTimeStr = endTime.split(" ")[1]; // "yyyy-MM-dd HH:mm" -> "HH:mm"
+      } else if (endTime.includes("T")) {
+        endTimeStr = endTime.split("T")[1].substring(0, 5); // "yyyy-MM-ddTHH:mm:ss" -> "HH:mm"
+      }
+
+      console.log("Saat stringleri:", startTimeStr, endTimeStr);
+
       // Saatleri ve dakikaları ayır
-      const [startHourStr, startMinuteStr] = startTime.split(":");
-      const [endHourStr, endMinuteStr] = endTime.split(":");
+      const [startHourStr, startMinuteStr] = startTimeStr.split(":");
+      const [endHourStr, endMinuteStr] = endTimeStr.split(":");
 
       // String değerlerini sayıya çevir
       const startHour = parseInt(startHourStr);
@@ -654,28 +675,36 @@ function AdminPageComponent() {
       const endHour = parseInt(endHourStr);
       const endMinute = parseInt(endMinuteStr);
 
-      // Zaman çizelgesinde hangi indekste olduğunu bul (hours dizisi indeksi)
-      // Görsel grid'de saat 7'den başlar ve 7'den küçük saatler en sonda gösterilir
+      console.log(
+        "Saat değerleri:",
+        startHour,
+        startMinute,
+        endHour,
+        endMinute
+      );
+
+      // Saatlerin grid'deki konumlarını doğrudan hesapla
       let startColumnIndex = -1;
       let endColumnIndex = -1;
 
-      // hours dizisinde başlangıç saatinin indeksini bul
-      for (let i = 0; i < hours.length; i++) {
-        const hourValue = parseInt(hours[i].split(":")[0]);
-        if (hourValue === startHour) {
-          startColumnIndex = i;
-          break;
-        }
+      // Gece yarısını geçen saatler için düzeltme (23, 24, 01, 02 saat için)
+      if (startHour >= 7 && startHour <= 24) {
+        // Normal çalışma saatleri: 7-24 arası
+        startColumnIndex = startHour - 7; // 7 => 0, 8 => 1, ... 24 => 17
+      } else if (startHour >= 1 && startHour <= 2) {
+        // Gece yarısından sonraki saatler: 1-2 arası
+        startColumnIndex = 18 + (startHour - 1); // 1 => 18, 2 => 19
       }
 
-      // hours dizisinde bitiş saatinin indeksini bul
-      for (let i = 0; i < hours.length; i++) {
-        const hourValue = parseInt(hours[i].split(":")[0]);
-        if (hourValue === endHour) {
-          endColumnIndex = i;
-          break;
-        }
+      if (endHour >= 7 && endHour <= 24) {
+        // Normal çalışma saatleri: 7-24 arası
+        endColumnIndex = endHour - 7; // 7 => 0, 8 => 1, ... 24 => 17
+      } else if (endHour >= 1 && endHour <= 2) {
+        // Gece yarısından sonraki saatler: 1-2 arası
+        endColumnIndex = 18 + (endHour - 1); // 1 => 18, 2 => 19
       }
+
+      console.log("Hesaplanan indeksler:", startColumnIndex, endColumnIndex);
 
       // Eğer indeksler bulunamadıysa hata durumu
       if (startColumnIndex === -1 || endColumnIndex === -1) {
@@ -686,13 +715,15 @@ function AdminPageComponent() {
       // Gece yarısını geçen rezervasyonlar için özel durum
       // Örneğin: 23:00 - 01:00
       if (startHour > endHour) {
-        // 1, 2 gibi küçük saatler, dizide en sonda (gece yarısından sonra) yer alır
-        endColumnIndex = hours.length - (24 - endHour);
+        console.log("Gece yarısını geçen rezervasyon tespit edildi");
+        // Endeks düzeltme işlemi zaten yukarıda yapıldı
       }
 
       // Başlangıç soldan pozisyonu
       const startPosition =
         startColumnIndex * cellWidth + (startMinute / 60) * cellWidth;
+
+      console.log("Hesaplanan başlangıç pozisyonu:", startPosition);
 
       // Genişlik hesabı
       let width;
@@ -705,7 +736,7 @@ function AdminPageComponent() {
           (endMinute / 60) * cellWidth -
           (startMinute / 60) * cellWidth;
       } else {
-        // Gece yarısını geçen durumlar
+        // Gece yarısını geçen durumlar için (bu durumda artık girmeyecek çünkü yukarıda düzelttik)
         const columnSpan = hours.length - startColumnIndex + endColumnIndex;
         width =
           columnSpan * cellWidth +
@@ -713,14 +744,20 @@ function AdminPageComponent() {
           (startMinute / 60) * cellWidth;
       }
 
+      console.log("Hesaplanan genişlik:", width);
+
       // Minimum genişlik kontrolü
       const finalWidth = Math.max(width, 80); // En az 80px genişlik
 
-      // Kartlar için kenar boşluğu hesabını burada yapalım
-      return {
+      // Sonuç
+      const result = {
         left: `${startPosition}px`,
         width: `${finalWidth}px`,
       };
+
+      console.log("Sonuç pozisyon:", result);
+
+      return result;
     } catch (error) {
       console.error("Rezervasyon pozisyonu hesaplanamadı:", error);
       return { left: "0px", width: "80px" };
@@ -892,14 +929,72 @@ function AdminPageComponent() {
       return;
     }
 
-    // Bu masa ve saatte işlem yapılıyor mu kontrol et
-    const isTableBeingProcessed = activeForms.some(
-      (form) => form.tableId === tableId && form.startTime === startTimeStr
-    );
+    // Bu masa ve saatte işlem yapılıyor mu kontrol et - farklı günlerdeki aynı saatlere izin veriyoruz
+    // Tarih ekleyerek tam karşılaştırma yapalım
+    const currentDateStr = format(selectedDate, "yyyy-MM-dd");
+    const isTableBeingProcessed = activeForms.some((form) => {
+      if (form.tableId !== tableId) return false;
+
+      // Form ve yeni rezervasyon için tam tarih-saat bilgilerini oluştur
+      const formTimeWithDate =
+        form.startTime.includes(" ") || form.startTime.includes("T")
+          ? form.startTime
+          : `${currentDateStr} ${form.startTime}`;
+
+      const startTimeWithDate =
+        startTimeStr.includes(" ") || startTimeStr.includes("T")
+          ? startTimeStr
+          : `${currentDateStr} ${startTimeStr}`;
+
+      // Tarih kısımlarını ayıkla
+      const formDate = formTimeWithDate.includes(" ")
+        ? formTimeWithDate.split(" ")[0]
+        : formTimeWithDate.split("T")[0];
+
+      const newDate = startTimeWithDate.includes(" ")
+        ? startTimeWithDate.split(" ")[0]
+        : startTimeWithDate.split("T")[0];
+
+      // Saat kısımlarını ayıkla
+      let formTime = "";
+      if (form.startTime.includes(" ")) {
+        formTime = form.startTime.split(" ")[1];
+      } else if (form.startTime.includes("T")) {
+        formTime = form.startTime.split("T")[1].substring(0, 5);
+      } else {
+        formTime = form.startTime;
+      }
+
+      let newTime = "";
+      if (startTimeStr.includes(" ")) {
+        newTime = startTimeStr.split(" ")[1];
+      } else if (startTimeStr.includes("T")) {
+        newTime = startTimeStr.split("T")[1].substring(0, 5);
+      } else {
+        newTime = startTimeStr;
+      }
+
+      console.log(
+        `İşlem kontrolü: Form tarih=${formDate}, Form saat=${formTime}, Yeni tarih=${newDate}, Yeni saat=${newTime}`
+      );
+
+      // İŞLEM KONTROLÜ: Aynı masa ve aynı saat, AYNI TARİHTE ise çakışma vardır
+      // Farklı tarihlerde aynı masa ve saate izin veriyoruz
+      return (
+        form.tableId === tableId && // Aynı masa
+        formDate === newDate && // Aynı tarih (ÖNEMLİ: farklı tarihlerde çakışma olmaz)
+        formTime === newTime // Aynı saat
+      );
+    });
 
     if (isTableBeingProcessed) {
+      console.log(
+        "ÇAKIŞMA TESPİT EDİLDİ: Bu masa ve saat için başka bir işlem devam ediyor"
+      );
       toast.error("Bu masa ve saat için başka bir işlem devam ediyor!");
       return;
+    } else {
+      console.log("ÇAKIŞMA YOK: Bu masa ve saat için işlem yapılabilir");
     }
 
     // Bitiş saatini hesapla (başlangıç + 1 saat)
@@ -916,6 +1011,15 @@ function AdminPageComponent() {
       .padStart(2, "0")}`;
 
     // Çakışma kontrolü
+    console.log(
+      "Çakışma kontrolü yapılıyor:",
+      tableId,
+      startTimeStr,
+      endTimeStr,
+      "Tarih:",
+      currentDateStr
+    );
+
     const conflict = reservations.some((res) => {
       // Aynı masa için ve aynı gün için çakışma kontrolü yap
       if (res.tableId === tableId) {
@@ -925,17 +1029,27 @@ function AdminPageComponent() {
         // Rezervasyon tarihini kontrol et
         const reservationDateStr = res.startTime.includes(" ")
           ? res.startTime.split(" ")[0] // "yyyy-MM-dd HH:mm" -> "yyyy-MM-dd"
+          : res.startTime.includes("T")
+          ? res.startTime.split("T")[0] // "yyyy-MM-ddTHH:mm" -> "yyyy-MM-dd"
           : currentDateStr; // Tarih yoksa şu anki günü kullan
 
-        // Sadece aynı gün için kontrol et
+        console.log(
+          `Rezervasyon tarihi: ${reservationDateStr}, Seçilen tarih: ${currentDateStr}`
+        );
+
+        // Sadece aynı gün için kontrol et - farklı günlerde çakışma olmamalı
         if (reservationDateStr === currentDateStr) {
-          // Zaman çakışma kontrolü
-          return hasTimeOverlap(
+          const hasOverlap = hasTimeOverlap(
             startTimeStr,
             endTimeStr,
             res.startTime,
             res.endTime
           );
+
+          console.log(
+            `Çakışma kontrolü: ${hasOverlap ? "ÇAKIŞMA VAR" : "çakışma yok"}`
+          );
+          return hasOverlap;
         }
       }
       return false;
@@ -975,6 +1089,10 @@ function AdminPageComponent() {
     // Aktif formlar listesine ekle
     setActiveForms((prev) => [...prev, newForm]);
 
+    console.log(
+      `Yeni form oluşturuldu: ID=${newForm.id}, Masa=${tableId}, Tarih=${currentDateStr}, Saat=${startTimeStr}`
+    );
+
     // Rezervasyonu seç
     setSelectedReservation(tempReservation);
 
@@ -996,6 +1114,8 @@ function AdminPageComponent() {
       // Eğer timeStr içinde boşluk varsa, bu tarih + saat formatıdır
       if (timeStr.includes(" ")) {
         return timeStr.split(" ")[1]; // "yyyy-MM-dd HH:mm" -> "HH:mm"
+      } else if (timeStr.includes("T")) {
+        return timeStr.split("T")[1].substring(0, 5); // "yyyy-MM-ddTHH:mm:ss" -> "HH:mm"
       }
       return timeStr; // Zaten saat formatındaysa olduğu gibi bırak
     };
@@ -1012,6 +1132,24 @@ function AdminPageComponent() {
     const timeOnly3 = extractTimeOnly(start2);
     const timeOnly4 = extractTimeOnly(end2);
 
+    // Tarih kısımlarını çıkar (farklı günlerin karşılaştırmasını önlemek için)
+    const date1 = start1.includes(" ")
+      ? start1.split(" ")[0]
+      : start1.includes("T")
+      ? start1.split("T")[0]
+      : null;
+    const date2 = start2.includes(" ")
+      ? start2.split(" ")[0]
+      : start2.includes("T")
+      ? start2.split("T")[0]
+      : null;
+
+    // Farklı günlerde çakışma olmamalı
+    if (date1 && date2 && date1 !== date2) {
+      console.log(`Farklı günler: ${date1} vs ${date2} - Çakışma yok`);
+      return false;
+    }
+
     // Sonra dakikaya çevir
     const start1Min = convertTimeToMinutes(timeOnly1);
     const end1Min = convertTimeToMinutes(timeOnly2);
@@ -1024,6 +1162,8 @@ function AdminPageComponent() {
 
     // Debug log ekleyelim
     console.log("Çakışma kontrolü:", {
+      date1,
+      date2,
       start1: timeOnly1,
       end1: timeOnly2,
       start2: timeOnly3,
@@ -1037,10 +1177,12 @@ function AdminPageComponent() {
     });
 
     // Çakışma kontrolü: iki zaman aralığı çakışıyorsa true döndür
-    return (
+    const hasOverlap =
       (start1Min < adjustedEnd2Min && adjustedEnd1Min > start2Min) ||
-      (start2Min < adjustedEnd1Min && adjustedEnd2Min > start1Min)
-    );
+      (start2Min < adjustedEnd1Min && adjustedEnd2Min > start1Min);
+
+    console.log(`Çakışma sonucu: ${hasOverlap ? "VAR" : "YOK"}`);
+    return hasOverlap;
   };
 
   // Sidebar tıklama durumu
@@ -1069,6 +1211,8 @@ function AdminPageComponent() {
     setSelectedReservation(null);
     setSidebarOpenedByHover(false);
     setSidebarClicked(false);
+
+    console.log("Sağ panel kapatıldı ve form temizlendi");
   };
 
   // sidebar durumlarını izlemek için state ekle
@@ -1308,6 +1452,24 @@ function AdminPageComponent() {
   const updateReservation = (updatedReservation: ReservationType) => {
     try {
       console.log("Rezervasyonu güncelleme başladı:", updatedReservation);
+      console.log(
+        `İşlem türü: ${
+          updatedReservation.id === "temp" ? "YENİ REZERVASYON" : "GÜNCELLEME"
+        }`
+      );
+      console.log(`Aktif tarih: ${format(selectedDate, "yyyy-MM-dd")}`);
+
+      // Debug için daha fazla detay
+      console.log("REZERVASYON DETAYLARI:", {
+        id: updatedReservation.id,
+        masa: updatedReservation.tableId,
+        müşteri: updatedReservation.customerName,
+        başlangıçSaati: updatedReservation.startTime,
+        bitişSaati: updatedReservation.endTime,
+        tarih: updatedReservation.startTime.includes(" ")
+          ? updatedReservation.startTime.split(" ")[0]
+          : "belirsiz",
+      });
 
       // Seçilen masa bilgisini kontrol et
       const selectedTable = tables.find(
@@ -1322,9 +1484,35 @@ function AdminPageComponent() {
       // Yeni rezervasyon mu yoksa güncelleme mi kontrolü
       const isNewReservation = updatedReservation.id === "temp";
 
+      // Seçilen tarihi al (farklı günlerde doğru tarih kullanmak için)
+      const formattedDate = format(selectedDate, "yyyy-MM-dd");
+      console.log(`Rezervasyon için tarih: ${formattedDate}`);
+
+      // Başlangıç ve bitiş saati format düzeltmesi - gece yarısı sorununu önlemek için
+      // Eğer sadece saat formatındaysa, tarih ekleyerek standartlaştırma
+      if (
+        !updatedReservation.startTime.includes(" ") &&
+        !updatedReservation.startTime.includes("T")
+      ) {
+        updatedReservation.startTime = `${formattedDate} ${updatedReservation.startTime}`;
+        console.log(
+          "Düzeltilmiş başlangıç saati:",
+          updatedReservation.startTime
+        );
+      }
+
+      if (
+        !updatedReservation.endTime.includes(" ") &&
+        !updatedReservation.endTime.includes("T")
+      ) {
+        updatedReservation.endTime = `${formattedDate} ${updatedReservation.endTime}`;
+        console.log("Düzeltilmiş bitiş saati:", updatedReservation.endTime);
+      }
+
       if (isNewReservation) {
         // Yeni rezervasyon eklendiğinde
         console.log("Yeni rezervasyon ekleniyor...");
+        console.log(`Seçilen tarih: ${format(selectedDate, "yyyy-MM-dd")}`);
 
         // Müşteri adı kontrolü
         if (!updatedReservation.customerName.trim()) {
@@ -1335,11 +1523,18 @@ function AdminPageComponent() {
         // Yeni ID oluştur
         const newId = `res-${Date.now()}`;
 
-        // Yeni rezervasyon objesi
+        // Yeni rezervasyon objesi - id yeni olmalı
         const newReservation = {
           ...updatedReservation,
           id: newId,
         };
+
+        console.log("Yeni rezervasyon oluşturuldu:", newReservation);
+        console.log(
+          `Oluşturulan rezervasyon tarihi: ${
+            newReservation.startTime.split(" ")[0]
+          }, Seçilen tarih: ${format(selectedDate, "yyyy-MM-dd")}`
+        );
 
         // Çakışma kontrolü
         if (
@@ -1371,14 +1566,25 @@ function AdminPageComponent() {
         // Yeni eklenen rezervasyon ID'sini referansa ata (animasyon için)
         newReservationRef.current = newId;
 
-        // Rezervasyonları güncelle
+        // Tüm rezervasyonları localStorage'dan al
+        const allStoredReservations = JSON.parse(
+          localStorage.getItem("reservations") || "[]"
+        );
+
+        // Yeni rezervasyonu tüm rezervasyonlara ekle
+        const allUpdatedReservations = [
+          ...allStoredReservations,
+          newReservation,
+        ];
+
+        // Ekranda görünen rezervasyonları güncelle (sadece seçilen güne ait olanları)
         const updatedReservations = [...reservations, newReservation];
         setReservations(updatedReservations);
 
-        // localStorage'a kaydet
+        // Tümünü localStorage'a kaydet (tüm günleri içerecek şekilde)
         localStorage.setItem(
           "reservations",
-          JSON.stringify(updatedReservations)
+          JSON.stringify(allUpdatedReservations)
         );
 
         // Başarı mesajı göster ve sidebar'ı kapat
@@ -1538,7 +1744,22 @@ function AdminPageComponent() {
           }
         }
 
-        // Rezervasyonları güncelle
+        // Tüm rezervasyonları localStorage'dan al
+        const allStoredReservations = JSON.parse(
+          localStorage.getItem("reservations") || "[]"
+        );
+
+        // Güncellenmiş tüm rezervasyonları oluştur (mevcut görüntülenenler + localStorage'dakiler)
+        const allUpdatedReservations = allStoredReservations.map(
+          (res: ReservationType) => {
+            if (res.id === updatedReservation.id) {
+              return updatedReservation;
+            }
+            return res;
+          }
+        );
+
+        // Ekranda görünen rezervasyonları güncelle (sadece seçilen güne ait olanları)
         const updatedReservations = reservations.map((res) => {
           if (res.id === updatedReservation.id) {
             return updatedReservation;
@@ -1548,10 +1769,10 @@ function AdminPageComponent() {
 
         setReservations(updatedReservations);
 
-        // localStorage'a kaydet
+        // Tümünü localStorage'a kaydet (tüm günleri içerecek şekilde)
         localStorage.setItem(
           "reservations",
-          JSON.stringify(updatedReservations)
+          JSON.stringify(allUpdatedReservations)
         );
 
         // Başarı mesajı göster ve sidebar'ı kapat
@@ -1574,6 +1795,10 @@ function AdminPageComponent() {
         "Bu rezervasyonu kalıcı olarak silmek istediğinize emin misiniz? Bu işlem geri alınamaz."
       );
 
+      console.log(
+        `Silme işlemi: ${reservationId} ID'li rezervasyon için onay istendi`
+      );
+
       if (!userConfirm) {
         console.log(
           "Rezervasyon silme işlemi kullanıcı tarafından iptal edildi."
@@ -1592,15 +1817,28 @@ function AdminPageComponent() {
         return;
       }
 
-      // Rezervasyonu filtrele
+      // Ekrandaki rezervasyonları güncelle (görünür olanları)
       const updatedReservations = reservations.filter(
         (res) => res.id !== reservationId
       );
 
       setReservations(updatedReservations);
 
-      // localStorage'a kaydet
-      localStorage.setItem("reservations", JSON.stringify(updatedReservations));
+      // Tüm günlerdeki rezervasyonları localStorage'dan al
+      const allStoredReservations = JSON.parse(
+        localStorage.getItem("reservations") || "[]"
+      );
+
+      // localStorage için tüm günlerden ID'si eşleşeni çıkart
+      const allUpdatedReservations = allStoredReservations.filter(
+        (res: ReservationType) => res.id !== reservationId
+      );
+
+      // localStorage'a kaydet (tüm günleri içerecek şekilde)
+      localStorage.setItem(
+        "reservations",
+        JSON.stringify(allUpdatedReservations)
+      );
 
       // Bildirim göster
       toast.success("Rezervasyon başarıyla silindi!");
@@ -1759,6 +1997,7 @@ function AdminPageComponent() {
     setSelectedDate(nextDay);
     // Tarih değişikliğinde rezervasyonları filtrele
     filterReservationsByDate(nextDay);
+    console.log(`Tarih değişti: ${format(nextDay, "yyyy-MM-dd")}`);
   };
 
   const goToPreviousDay = () => {
@@ -1766,6 +2005,7 @@ function AdminPageComponent() {
     setSelectedDate(prevDay);
     // Tarih değişikliğinde rezervasyonları filtrele
     filterReservationsByDate(prevDay);
+    console.log(`Tarih değişti: ${format(prevDay, "yyyy-MM-dd")}`);
   };
 
   const goToToday = () => {
@@ -1781,11 +2021,19 @@ function AdminPageComponent() {
       setIsCalendarOpen(false);
       // Tarih değişikliğinde rezervasyonları filtrele
       filterReservationsByDate(day);
+      console.log(`Seçilen tarih değişti: ${format(day, "yyyy-MM-dd")}`);
+
+      // Tarih değişikliğinde aktif form varsa temizle
+      setActiveForms([]);
     }
   };
 
   // Tarihe göre rezervasyonları filtrele
   const filterReservationsByDate = (date: Date) => {
+    // Seçilen tarihi güncelle
+    setSelectedDate(date);
+
+    // Formatlanmış tarih
     const formattedDate = format(date, "yyyy-MM-dd");
 
     try {
@@ -1794,11 +2042,50 @@ function AdminPageComponent() {
         localStorage.getItem("reservations") || "[]"
       );
 
-      // Seçilen tarihe göre filtreleme yap
+      console.log(
+        `FİLTRELEME İŞLEMİ: ${format(
+          date,
+          "yyyy-MM-dd"
+        )} tarihli rezervasyonlar aranıyor...`
+      );
+
+      // Hata ayıklama için tüm rezervasyonları göster
+      console.log(
+        "Tüm rezervasyonlar:",
+        allReservations.map((r: ReservationType) => ({
+          id: r.id,
+          tarih: r.startTime,
+          masa: r.tableId,
+        }))
+      );
+
+      // Aktif formları temizle - tarih değiştiğinde devam eden formlar silinmeli
+      setActiveForms([]);
+
+      // Seçilen tarihe göre filtreleme yap - farklı formatları dikkate al
       const filteredReservations = allReservations.filter(
         (reservation: ReservationType) => {
-          // Rezervasyon tarihini al (startTime içindeki tarih kısmı)
-          const reservationDate = reservation.startTime?.split(" ")[0]; // "yyyy-MM-dd" formatında olduğunu varsayıyoruz
+          // Rezervasyon tarihini al (startTime farklı formatlarda olabilir)
+          let reservationDate = "";
+
+          if (reservation.startTime?.includes(" ")) {
+            // "yyyy-MM-dd HH:mm" formatı
+            reservationDate = reservation.startTime.split(" ")[0];
+          } else if (reservation.startTime?.includes("T")) {
+            // "yyyy-MM-ddTHH:mm" formatı
+            reservationDate = reservation.startTime.split("T")[0];
+          } else {
+            // Sadece saat formatı (HH:mm) - bu durumda tarih belirtilmemiş,
+            // bu tür rezervasyonları göz ardı et
+            console.log(
+              `Tarihsiz rezervasyon: ${reservation.id} - ${reservation.startTime}`
+            );
+            return false;
+          }
+
+          console.log(
+            `Rezervasyon tarih kontrolü: ${reservation.id} - ${reservationDate} vs ${formattedDate}`
+          );
           return reservationDate === formattedDate;
         }
       );
@@ -2425,6 +2712,8 @@ function AdminPageComponent() {
       const extractTimeOnly = (timeStr: string): string => {
         if (timeStr.includes(" ")) {
           return timeStr.split(" ")[1]; // "yyyy-MM-dd HH:mm" -> "HH:mm"
+        } else if (timeStr.includes("T")) {
+          return timeStr.split("T")[1].substring(0, 5); // "yyyy-MM-ddTHH:mm:ss" -> "HH:mm"
         }
         return timeStr; // Zaten saat formatındaysa olduğu gibi bırak
       };
@@ -2554,6 +2843,17 @@ function AdminPageComponent() {
         console.error("Rezervasyon durumları yüklenirken hata oluştu:", error);
       }
     }
+
+    // Geliştirme için rezervasyon verilerini konsola yazdır
+    const reservationData = localStorage.getItem("reservations");
+    if (reservationData) {
+      try {
+        const parsedData = JSON.parse(reservationData);
+        console.log("MEVCUT REZERVASYONLAR:", parsedData);
+      } catch (e) {
+        console.error("Rezervasyon veri hatası:", e);
+      }
+    }
   }, []);
 
   // Belirli bir saat ve zamanın geçmiş (kırmızı çizginin solunda) olup olmadığını kontrol et
@@ -2580,7 +2880,18 @@ function AdminPageComponent() {
       const currentMinute = today.getMinutes();
 
       // Kontrol edilecek saati ve dakikayı al
-      const [hourStr, minuteStr] = hour.split(":");
+      // Önce formatı kontrol et (T içeriyor mu diye)
+      let hourStr, minuteStr;
+
+      if (hour.includes("T")) {
+        // ISO string formatı (yyyy-MM-ddTHH:mm) ise
+        const timePart = hour.split("T")[1];
+        [hourStr, minuteStr] = timePart.substring(0, 5).split(":");
+      } else {
+        // Normal saat formatı (HH:mm) ise
+        [hourStr, minuteStr] = hour.split(":");
+      }
+
       const checkHour = parseInt(hourStr);
       const checkMinute = parseInt(minuteStr) || 0; // Eğer dakika yoksa 0 olarak al
 

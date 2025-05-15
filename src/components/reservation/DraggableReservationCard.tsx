@@ -122,10 +122,36 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
 
   // Saati dakikaya çevirme
   const convertTimeToMinutes = (time: string): number => {
-    const [hoursStr, minutesStr] = time.split(":");
-    const hours = parseInt(hoursStr, 10);
-    const minutes = parseInt(minutesStr, 10);
-    return hours * 60 + minutes;
+    try {
+      // Eğer tarih+saat formatı ise (2025-05-15 23:10 veya 2025-05-15T23:10) sadece saat kısmını al
+      let timeOnly = time;
+
+      // Tarih kısmını temizle - T ile ayrılmış format
+      if (time.includes("T")) {
+        timeOnly = time.split("T")[1].substring(0, 5);
+      }
+      // Tarih kısmını temizle - boşluk ile ayrılmış format
+      else if (time.includes(" ")) {
+        timeOnly = time.split(" ")[1].substring(0, 5);
+      }
+
+      console.log(`Zaman dönüşümü: '${time}' -> '${timeOnly}'`);
+
+      const [hoursStr, minutesStr] = timeOnly.split(":");
+      const hours = parseInt(hoursStr, 10);
+      const minutes = parseInt(minutesStr, 10);
+
+      // Geçersiz değerleri kontrol et
+      if (isNaN(hours) || isNaN(minutes)) {
+        console.error("Geçersiz saat değeri:", timeOnly);
+        return 0; // Varsayılan değer
+      }
+
+      return hours * 60 + minutes;
+    } catch (error) {
+      console.error("Zaman dönüşümü hatası:", error, "Orijinal değer:", time);
+      return 0; // Hata durumunda varsayılan değer
+    }
   };
 
   // Sürüklemeye başladığında
@@ -206,18 +232,45 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
     let minuteOffset = Math.round(minuteOffsetRaw / minuteStep) * minuteStep;
 
     // Yeni başlangıç ve bitiş zamanlarını hesapla
-    const startMinutes = convertTimeToMinutes(initialStartTime);
-    const endMinutes = convertTimeToMinutes(initialEndTime);
-    const duration = endMinutes - startMinutes;
+    try {
+      const startMinutes = convertTimeToMinutes(initialStartTime);
+      const endMinutes = convertTimeToMinutes(initialEndTime);
+      const duration = endMinutes - startMinutes;
 
-    const newStartMinutes = startMinutes + minuteOffset;
-    const newEndMinutes = newStartMinutes + duration;
+      const newStartMinutes = startMinutes + minuteOffset;
+      const newEndMinutes = newStartMinutes + duration;
 
-    // Yeni zamanları ayarla
-    draggedReservation.startTime = convertMinutesToTime(newStartMinutes);
-    draggedReservation.endTime = convertMinutesToTime(newEndMinutes);
+      // Yeni zamanları ayarla
+      // Eğer orijinal zaman ISO 8601 veya benzer formattaysa (tarih kısmı varsa)
+      // yeni zamanı oluştururken sadece zaman kısmını değiştir, tarih kısmını koru
+      let newStartTime = convertMinutesToTime(newStartMinutes);
+      let newEndTime = convertMinutesToTime(newEndMinutes);
 
-    setDraggedReservation({ ...draggedReservation });
+      // Orijinal formatta tarih kısmı varsa, koru
+      if (initialStartTime.includes("T")) {
+        const datePart = initialStartTime.split("T")[0];
+        newStartTime = `${datePart}T${newStartTime}`;
+
+        const endDatePart = initialEndTime.split("T")[0];
+        newEndTime = `${endDatePart}T${newEndTime}`;
+      } else if (initialStartTime.includes(" ")) {
+        const datePart = initialStartTime.split(" ")[0];
+        newStartTime = `${datePart} ${newStartTime}`;
+
+        const endDatePart = initialEndTime.split(" ")[0];
+        newEndTime = `${endDatePart} ${newEndTime}`;
+      }
+
+      console.log(`Sürükleme - Yeni zamanlar: ${newStartTime} - ${newEndTime}`);
+
+      draggedReservation.startTime = newStartTime;
+      draggedReservation.endTime = newEndTime;
+
+      setDraggedReservation({ ...draggedReservation });
+    } catch (error) {
+      console.error("Zaman dönüşümü hatası:", error);
+      toast.error("Zaman hesaplama hatası oluştu!");
+    }
   };
 
   // Sürükleme tamamlandığında
