@@ -2098,6 +2098,95 @@ function AdminPageComponent() {
     };
   }, [tables]);
 
+  // Şu anki zamanı kullanarak, zaman çizgisinin solunda kalan (geçmiş) rezervasyonları kontrol eden fonksiyon
+  const isReservationPast = (startTime: string): boolean => {
+    // Şu anki saat ve dakikayı al
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+
+    // Rezervasyonun başlangıç saati ve dakikasını al
+    const [hourStr, minuteStr] = startTime.split(":");
+    const reservationHour = parseInt(hourStr);
+    const reservationMinute = parseInt(minuteStr);
+
+    // Şu anki zamanı dakika olarak hesapla (saat * 60 + dakika)
+    const currentTimeInMinutes = currentHour * 60 + currentMinute;
+
+    // Rezervasyonun başlangıç zamanını dakika olarak hesapla
+    const reservationTimeInMinutes = reservationHour * 60 + reservationMinute;
+
+    // Eğer şu anki zaman, rezervasyonun başlangıç zamanından büyükse, rezervasyon geçmiştir
+    return currentTimeInMinutes > reservationTimeInMinutes;
+  };
+
+  // Rezervasyon durumlarını saklamak için state
+  const [reservationStatuses, setReservationStatuses] = useState<
+    Record<string, "arrived" | "departed" | null>
+  >({});
+
+  // Rezervasyon kartı rengini belirle
+  const getReservationColor = (reservation: ReservationType): string => {
+    // Rezervasyon durumlarına göre özel renklendirme
+    if (reservationStatuses[reservation.id] === "arrived") {
+      return "#ec4899"; // pink-500
+    } else if (reservationStatuses[reservation.id] === "departed") {
+      return "#111827"; // gray-900
+    }
+
+    // Geçmiş rezervasyonlar için siyah renk kullan
+    if (isReservationPast(reservation.startTime)) {
+      return "#111827"; // gray-900
+    }
+
+    // Rezervasyon rengini kullan (eğer varsa)
+    if (reservation.color) {
+      return reservation.color;
+    }
+
+    // Varsayılan kategori renkleri
+    const category = tableCategories.find(
+      (cat) =>
+        tables.find((table) => table.id === reservation.tableId)?.categoryId ===
+        cat.id
+    );
+
+    return category ? category.color : "#4B5563"; // Varsayılan gri renk
+  };
+
+  // Rezervasyon durumunu değiştiren fonksiyon
+  const handleReservationStatusChange = (
+    reservationId: string,
+    status: "arrived" | "departed" | null
+  ) => {
+    setReservationStatuses((prev) => ({
+      ...prev,
+      [reservationId]: status,
+    }));
+
+    // Değişiklikleri localStorage'a kaydet
+    const updatedStatuses = {
+      ...reservationStatuses,
+      [reservationId]: status,
+    };
+    localStorage.setItem(
+      "reservationStatuses",
+      JSON.stringify(updatedStatuses)
+    );
+  };
+
+  // Rezervasyon durumlarını localStorage'dan yükle
+  useEffect(() => {
+    const savedStatuses = localStorage.getItem("reservationStatuses");
+    if (savedStatuses) {
+      try {
+        setReservationStatuses(JSON.parse(savedStatuses));
+      } catch (error) {
+        console.error("Rezervasyon durumları yüklenirken hata oluştu:", error);
+      }
+    }
+  }, []);
+
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-gray-50 text-gray-800">
       {/* Aktif rezervasyon bildirimleri */}
@@ -2490,6 +2579,11 @@ function AdminPageComponent() {
                                   onReservationLeave={handleReservationLeave}
                                   onReservationUpdate={updateReservation}
                                   hasTableConflict={hasTableConflict}
+                                  reservationColor={getReservationColor(
+                                    reservation
+                                  )}
+                                  reservationStatuses={reservationStatuses}
+                                  isReservationPast={isReservationPast}
                                 />
                               );
                             })}
@@ -2690,6 +2784,42 @@ function AdminPageComponent() {
                   />
                 </svg>
               </button>
+            </div>
+
+            {/* Müşteri durumu butonları */}
+            <div className="px-4 py-3 border-b border-gray-200">
+              <div className="flex gap-2">
+                <button
+                  onClick={() =>
+                    handleReservationStatusChange(
+                      selectedReservation.id,
+                      "arrived"
+                    )
+                  }
+                  className={`flex-1 py-2 px-3 rounded-md ${
+                    reservationStatuses[selectedReservation.id] === "arrived"
+                      ? "bg-pink-600 text-white"
+                      : "bg-gray-100 text-gray-700 hover:bg-pink-500 hover:text-white"
+                  } transition-colors`}
+                >
+                  Müşteri Geldi
+                </button>
+                <button
+                  onClick={() =>
+                    handleReservationStatusChange(
+                      selectedReservation.id,
+                      "departed"
+                    )
+                  }
+                  className={`flex-1 py-2 px-3 rounded-md ${
+                    reservationStatuses[selectedReservation.id] === "departed"
+                      ? "bg-gray-900 text-white"
+                      : "bg-gray-100 text-gray-700 hover:bg-gray-900 hover:text-white"
+                  } transition-colors`}
+                >
+                  Müşteri Gitti
+                </button>
+              </div>
             </div>
 
             <div className="p-4 space-y-4 flex-1">

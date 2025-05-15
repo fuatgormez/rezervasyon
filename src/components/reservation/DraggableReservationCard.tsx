@@ -33,6 +33,9 @@ interface DraggableReservationCardProps {
     endTime: string,
     excludeReservationId?: string
   ) => boolean;
+  reservationColor?: string;
+  reservationStatuses?: Record<string, "arrived" | "departed" | null>;
+  isReservationPast?: (startTime: string) => boolean;
 }
 
 const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
@@ -47,6 +50,9 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
   onReservationLeave,
   onReservationUpdate,
   hasTableConflict,
+  reservationColor,
+  reservationStatuses,
+  isReservationPast,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [draggedReservation, setDraggedReservation] =
@@ -332,6 +338,18 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
     lastStep,
   ]);
 
+  // Kartın stil ve renklerini hesapla
+  const getCardStyle = () => {
+    // Eğer renk bilgisi geldiyse direkt onu kullan
+    const bgColor = reservationColor || reservation.color || categoryColor;
+
+    return {
+      backgroundColor: bgColor,
+      borderLeft: `4px solid ${categoryBorderColor}`,
+      color: "#FFFFFF", // Yazı rengini her zaman beyaz yap
+    };
+  };
+
   return (
     <Draggable
       defaultClassName="reservation-draggable"
@@ -353,8 +371,7 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
           width: resizeDir ? `${widthPx}px` : position.width,
           top: "1px",
           height: `calc(${cellHeight}px - 2px)`,
-          backgroundColor: reservation.color || categoryColor,
-          borderLeft: `4px solid ${categoryBorderColor}`,
+          ...getCardStyle(),
           minWidth: "80px",
           opacity: isDragging ? 0.85 : 1,
         }}
@@ -397,17 +414,17 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
           {cellHeight < 50 ? (
             // Yükseklik 50px'den küçükse yan yana gösterim
             <div className="flex items-center justify-between">
-              <div className="font-semibold whitespace-nowrap overflow-hidden text-ellipsis">
+              <div className="font-semibold whitespace-nowrap overflow-hidden text-ellipsis text-white">
                 {reservation.customerName
                   .split(" ")
                   .map((word) => word.charAt(0).toUpperCase())
                   .join("")}
               </div>
-              <div className="text-white text-opacity-95 text-[11px] flex items-center ml-2">
+              <div className="text-white text-[11px] flex items-center ml-2">
                 <span className="mr-1">
                   {draggedReservation?.startTime || reservation.startTime}
                 </span>
-                <span className="bg-white bg-opacity-30 px-1 rounded text-[10px]">
+                <span className="bg-white bg-opacity-30 px-1 rounded text-[10px] text-white">
                   {reservation.guestCount}
                 </span>
               </div>
@@ -415,15 +432,15 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
           ) : (
             // Normal gösterim (50px ve üzeri)
             <>
-              <div className="font-semibold whitespace-nowrap overflow-hidden text-ellipsis">
+              <div className="font-semibold whitespace-nowrap overflow-hidden text-ellipsis text-white">
                 {reservation.customerName}
               </div>
-              <div className="text-white text-opacity-95 text-[11px] flex items-center mt-1">
+              <div className="text-white text-[11px] flex items-center mt-1">
                 <span className="mr-1">
                   {draggedReservation?.startTime || reservation.startTime}-
                   {draggedReservation?.endTime || reservation.endTime}
                 </span>
-                <span className="bg-white bg-opacity-30 px-1 rounded text-[10px]">
+                <span className="bg-white bg-opacity-30 px-1 rounded text-[10px] text-white">
                   {reservation.guestCount} kişi
                 </span>
               </div>
