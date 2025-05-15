@@ -2329,6 +2329,9 @@ function AdminPageComponent() {
     toast.success(
       `${selectedTables.length} masa için ${staffIds.length} garson atandı!`
     );
+
+    // Masa seçimini temizle
+    clearTableSelection();
   };
 
   // Modal açma fonksiyonu
