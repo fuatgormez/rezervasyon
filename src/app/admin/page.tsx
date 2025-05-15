@@ -16,6 +16,7 @@ import { Resizable, ResizeCallbackData } from "react-resizable";
 import "react-resizable/css/styles.css";
 import DraggableReservationCard from "@/components/reservation/DraggableReservationCard";
 import { supabase } from "@/lib/supabase/client";
+import StaffAssignmentForm from "@/components/StaffAssignmentForm";
 
 // Bu componenti sadece tarayıcıda çalıştırılacak şekilde dinamik olarak import ediyoruz
 // SSG sırasında çalıştırılmaz
@@ -2284,6 +2285,126 @@ function AdminPageComponent() {
     };
   }, []);
 
+  // Masa başına atanmış garsonları tutan state
+  const [tableStaffAssignments, setTableStaffAssignments] = useState<
+    Record<string, string[]>
+  >({});
+
+  // Şu anda seçili olan masaları tutan state
+  const [selectedTables, setSelectedTables] = useState<string[]>([]);
+
+  // Garson atama modalının açık olup olmadığını belirten state
+  const [isStaffAssignmentModalOpen, setIsStaffAssignmentModalOpen] =
+    useState(false);
+
+  // Seçilen personel state'i (şu anda atanacak olan garsonlar)
+  const [currentSelectedStaff, setCurrentSelectedStaff] = useState<string[]>(
+    []
+  );
+
+  // Masalara garson ataması yap
+  const assignStaffToTables = (staffIds: string[]) => {
+    console.log("Atanan garsonlar:", staffIds);
+
+    const updatedAssignments = { ...tableStaffAssignments };
+
+    // Seçilen her masa için atama yap
+    selectedTables.forEach((tableId) => {
+      updatedAssignments[tableId] = [...staffIds]; // Kopyasını oluştur
+    });
+
+    // State'i güncelle
+    setTableStaffAssignments(updatedAssignments);
+
+    // Yerel depolamaya kaydet
+    localStorage.setItem(
+      "tableStaffAssignments",
+      JSON.stringify(updatedAssignments)
+    );
+
+    // Modal'ı kapat
+    closeStaffAssignmentModal();
+
+    // Başarı mesajı göster
+    toast.success(
+      `${selectedTables.length} masa için ${staffIds.length} garson atandı!`
+    );
+  };
+
+  // Modal açma fonksiyonu
+  const openStaffAssignmentModal = () => {
+    // Eğer sadece bir masa seçiliyse, o masaya atanmış garsonları başlangıç ​​değeri olarak ayarla
+    if (selectedTables.length === 1) {
+      const tableId = selectedTables[0];
+      const assignedStaff = tableStaffAssignments[tableId] || [];
+      console.log("Mevcut atanmış garsonlar:", assignedStaff);
+      setCurrentSelectedStaff(assignedStaff);
+    } else {
+      // Birden fazla masa seçiliyse, boş array ile başla
+      setCurrentSelectedStaff([]);
+    }
+
+    // Modalı aç
+    setIsStaffAssignmentModalOpen(true);
+  };
+
+  // Modal kapatma fonksiyonu
+  const closeStaffAssignmentModal = () => {
+    setIsStaffAssignmentModalOpen(false);
+  };
+
+  // Masanın seçili olup olmadığını kontrol et
+  const isTableSelected = (tableId: string) => {
+    return selectedTables.includes(tableId);
+  };
+
+  // Masayı seç veya seçimi kaldır
+  const toggleTableSelection = (tableId: string) => {
+    if (isTableSelected(tableId)) {
+      setSelectedTables(selectedTables.filter((id) => id !== tableId));
+    } else {
+      setSelectedTables([...selectedTables, tableId]);
+    }
+  };
+
+  // Masa seçimini temizle
+  const clearTableSelection = () => {
+    setSelectedTables([]);
+  };
+
+  // Masa ID'si ile masa numarası ve kategorisini al
+  const getTableInfo = (tableId: string) => {
+    const table = tables.find((t) => t.id === tableId);
+    if (!table) return { number: "?", category: "?" };
+
+    const category = tableCategories.find((c) => c.id === table.categoryId);
+    return {
+      number: table.number,
+      category: category?.name || "?",
+    };
+  };
+
+  // Masaya atanmış garsonların isimlerini döndür
+  const getAssignedStaffNames = (tableId: string) => {
+    const staffIds = tableStaffAssignments[tableId] || [];
+    return staffIds.map((id) => {
+      const staffMember = staff.find((s) => s.id === id);
+      return staffMember ? staffMember.name : "?";
+    });
+  };
+
+  // Yerel depolamadan masa-garson atamalarını yükle
+  useEffect(() => {
+    try {
+      const savedAssignments = localStorage.getItem("tableStaffAssignments");
+      if (savedAssignments) {
+        setTableStaffAssignments(JSON.parse(savedAssignments));
+      }
+    } catch (error) {
+      console.error("Masa-garson atamaları yüklenirken hata:", error);
+    }
+  }, []);
+
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-gray-50 text-gray-800">
       {/* Aktif rezervasyon bildirimleri */}
@@ -2570,25 +2691,70 @@ function AdminPageComponent() {
                       >
                         {/* Masa bilgisi sol tarafta - sticky yapıyoruz */}
                         <div
-                          className="flex-shrink-0 flex items-center px-4 border-r border-gray-200 sticky left-0 z-10"
+                          className={`flex-shrink-0 flex items-center px-4 border-r border-gray-200 sticky left-0 z-10 ${
+                            isTableSelected(table.id) ? "bg-blue-50" : ""
+                          }`}
                           style={{
                             width: `${CATEGORY_WIDTH}px`,
                             height: `${cellHeight}px`,
-                            backgroundColor:
-                              category.backgroundColor || "#f9fafb",
+                            backgroundColor: isTableSelected(table.id)
+                              ? "rgba(219, 234, 254, 0.8)"
+                              : category.backgroundColor || "#f9fafb",
                           }}
+                          onClick={() => toggleTableSelection(table.id)}
                         >
-                          <div
-                            className="w-2 h-2 rounded-full mr-2"
-                            style={{ backgroundColor: category.borderColor }}
-                          ></div>
-                          <span className="text-sm font-medium mr-2">
-                            {table.number}
-                          </span>
-                          <span className="text-xs text-gray-500 flex items-center">
-                            <FiUsers className="mr-1" />
-                            {table.capacity}
-                          </span>
+                          <div className="flex items-center w-full">
+                            <div className="flex items-center flex-1">
+                              <div
+                                className={`w-4 h-4 rounded mr-2 flex items-center justify-center ${
+                                  isTableSelected(table.id)
+                                    ? "bg-blue-500 text-white"
+                                    : "border border-gray-300"
+                                }`}
+                              >
+                                {isTableSelected(table.id) && (
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    className="h-3 w-3"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M5 13l4 4L19 7"
+                                    />
+                                  </svg>
+                                )}
+                              </div>
+                              <div className="flex flex-col">
+                                <div className="flex items-center">
+                                  <div
+                                    className="w-2 h-2 rounded-full mr-2"
+                                    style={{
+                                      backgroundColor: category.borderColor,
+                                    }}
+                                  ></div>
+                                  <span className="text-sm font-medium mr-2">
+                                    {table.number}
+                                  </span>
+                                  <span className="text-xs text-gray-500 flex items-center">
+                                    <FiUsers className="mr-1" />
+                                    {table.capacity}
+                                  </span>
+                                </div>
+
+                                {/* Atanmış garsonlar */}
+                                {getAssignedStaffNames(table.id).length > 0 && (
+                                  <div className="text-xs text-gray-600 mt-1 italic">
+                                    {getAssignedStaffNames(table.id).join(", ")}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
                         </div>
 
                         {/* Saat hücreleri */}
@@ -3705,6 +3871,94 @@ function AdminPageComponent() {
       `}</style>
 
       {/* Tooltip ile ilgili hiçbir şey yok artık */}
+
+      {/* Garson Atama Modal */}
+      {isStaffAssignmentModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div
+            className="bg-white rounded-lg shadow-xl w-96"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center p-4 border-b border-gray-200">
+              <h2 className="text-lg font-semibold">Garson Ataması</h2>
+              <button
+                onClick={closeStaffAssignmentModal}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-6 w-6"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-4">
+              <div className="mb-4">
+                <div className="font-medium text-gray-700 mb-2">
+                  Seçilen Masalar:
+                </div>
+                <div className="text-sm bg-gray-50 p-2 rounded max-h-20 overflow-y-auto">
+                  {selectedTables.length > 0 ? (
+                    <ul className="list-disc pl-5">
+                      {selectedTables.map((tableId) => {
+                        const { number, category } = getTableInfo(tableId);
+                        return (
+                          <li key={tableId}>
+                            Masa {number} ({category})
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : (
+                    <div className="text-gray-500 italic">
+                      Hiç masa seçilmedi
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <StaffAssignmentForm
+                staff={staff}
+                selectedTables={selectedTables}
+                onAssign={assignStaffToTables}
+                onCancel={closeStaffAssignmentModal}
+                initialSelectedStaff={currentSelectedStaff}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Masa Seçim Kontrol Paneli - En az bir masa seçildiğinde göster */}
+      {selectedTables.length > 0 && (
+        <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-white rounded-lg shadow-xl border border-gray-200 z-40 flex items-center px-3 py-2 space-x-2">
+          <span className="text-sm font-medium">
+            {selectedTables.length} masa seçildi
+          </span>
+          <button
+            onClick={openStaffAssignmentModal}
+            className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+          >
+            Garson Ata
+          </button>
+          <button
+            onClick={clearTableSelection}
+            className="px-3 py-1.5 bg-gray-200 text-gray-700 text-sm rounded hover:bg-gray-300"
+          >
+            Seçimi Temizle
+          </button>
+        </div>
+      )}
     </div>
   );
 }
