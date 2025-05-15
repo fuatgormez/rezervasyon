@@ -916,11 +916,30 @@ function AdminPageComponent() {
       .padStart(2, "0")}`;
 
     // Çakışma kontrolü
-    const conflict = reservations.some(
-      (res) =>
-        res.tableId === tableId &&
-        hasTimeOverlap(startTimeStr, endTimeStr, res.startTime, res.endTime)
-    );
+    const conflict = reservations.some((res) => {
+      // Aynı masa için ve aynı gün için çakışma kontrolü yap
+      if (res.tableId === tableId) {
+        // Seçilen günün tarih formatı
+        const currentDateStr = format(selectedDate, "yyyy-MM-dd");
+
+        // Rezervasyon tarihini kontrol et
+        const reservationDateStr = res.startTime.includes(" ")
+          ? res.startTime.split(" ")[0] // "yyyy-MM-dd HH:mm" -> "yyyy-MM-dd"
+          : currentDateStr; // Tarih yoksa şu anki günü kullan
+
+        // Sadece aynı gün için kontrol et
+        if (reservationDateStr === currentDateStr) {
+          // Zaman çakışma kontrolü
+          return hasTimeOverlap(
+            startTimeStr,
+            endTimeStr,
+            res.startTime,
+            res.endTime
+          );
+        }
+      }
+      return false;
+    });
 
     if (conflict) {
       toast.error("Bu masa ve saatte zaten bir rezervasyon var!");
@@ -972,20 +991,50 @@ function AdminPageComponent() {
     start2: string,
     end2: string
   ): boolean => {
+    // Sadece saat kısmını alıyoruz
+    const extractTimeOnly = (timeStr: string): string => {
+      // Eğer timeStr içinde boşluk varsa, bu tarih + saat formatıdır
+      if (timeStr.includes(" ")) {
+        return timeStr.split(" ")[1]; // "yyyy-MM-dd HH:mm" -> "HH:mm"
+      }
+      return timeStr; // Zaten saat formatındaysa olduğu gibi bırak
+    };
+
     // Saatleri dakikaya çevir
     const convertTimeToMinutes = (time: string): number => {
       const [hours, minutes] = time.split(":").map(Number);
       return hours * 60 + minutes;
     };
 
-    const start1Min = convertTimeToMinutes(start1);
-    const end1Min = convertTimeToMinutes(end1);
-    const start2Min = convertTimeToMinutes(start2);
-    const end2Min = convertTimeToMinutes(end2);
+    // Önce saat kısımlarını çıkar
+    const timeOnly1 = extractTimeOnly(start1);
+    const timeOnly2 = extractTimeOnly(end1);
+    const timeOnly3 = extractTimeOnly(start2);
+    const timeOnly4 = extractTimeOnly(end2);
+
+    // Sonra dakikaya çevir
+    const start1Min = convertTimeToMinutes(timeOnly1);
+    const end1Min = convertTimeToMinutes(timeOnly2);
+    const start2Min = convertTimeToMinutes(timeOnly3);
+    const end2Min = convertTimeToMinutes(timeOnly4);
 
     // Gece yarısını geçen rezervasyonlar için düzeltme
     const adjustedEnd1Min = end1Min <= start1Min ? end1Min + 24 * 60 : end1Min;
     const adjustedEnd2Min = end2Min <= start2Min ? end2Min + 24 * 60 : end2Min;
+
+    // Debug log ekleyelim
+    console.log("Çakışma kontrolü:", {
+      start1: timeOnly1,
+      end1: timeOnly2,
+      start2: timeOnly3,
+      end2: timeOnly4,
+      start1Min,
+      end1Min,
+      start2Min,
+      end2Min,
+      adjustedEnd1Min,
+      adjustedEnd2Min,
+    });
 
     // Çakışma kontrolü: iki zaman aralığı çakışıyorsa true döndür
     return (
@@ -1210,29 +1259,48 @@ function AdminPageComponent() {
     endTime: string,
     excludeReservationId?: string
   ): boolean => {
+    // Aynı masa için rezervasyonları filtrele (belirtilen rezervasyon hariç)
     const reservationsForTable = reservations.filter(
       (r) =>
         r.tableId === tableId &&
         (excludeReservationId ? r.id !== excludeReservationId : true)
     );
 
-    // Başlangıç ve bitiş zamanlarını karşılaştır
-    const newStartTime = new Date(startTime).getTime();
-    const newEndTime = new Date(endTime).getTime();
+    if (reservationsForTable.length === 0) {
+      return false; // Masada hiç rezervasyon yoksa, çakışma da yok
+    }
 
-    // Herhangi bir çakışma var mı kontrol et
+    // Kontrol edilen rezervasyonun tarihi
+    const currentDateStr = format(selectedDate, "yyyy-MM-dd");
+
+    // Başlangıç ve bitiş zamanlarını formatla (sadece saat bilgisi varsa tarih ekle)
+    const formattedStartTime = startTime.includes(" ")
+      ? startTime
+      : `${currentDateStr} ${startTime}`;
+
+    const formattedEndTime = endTime.includes(" ")
+      ? endTime
+      : `${currentDateStr} ${endTime}`;
+
+    // Çakışma kontrolü
     return reservationsForTable.some((r) => {
-      const existingStartTime = new Date(r.startTime).getTime();
-      const existingEndTime = new Date(r.endTime).getTime();
+      // Rezervasyonun tarihini kontrol et
+      const reservationDateStr = r.startTime.includes(" ")
+        ? r.startTime.split(" ")[0]
+        : currentDateStr;
 
-      // Çakışma kontrolü
-      // Eğer yeni rezervasyon başlangıcı, mevcut rezervasyonun bitiş zamanından önce
-      // VE yeni rezervasyon bitişi, mevcut rezervasyonun başlangıç zamanından sonra ise
-      // bu bir çakışma demektir.
-      return (
-        (newStartTime < existingEndTime && newEndTime > existingStartTime) ||
-        (existingStartTime < newEndTime && existingEndTime > newStartTime)
-      );
+      // Sadece aynı gün için kontrol et
+      if (reservationDateStr === currentDateStr) {
+        // Bu durumda hasTimeOverlap fonksiyonunu kullanabiliriz
+        return hasTimeOverlap(
+          formattedStartTime,
+          formattedEndTime,
+          r.startTime,
+          r.endTime
+        );
+      }
+
+      return false;
     });
   };
 
@@ -1820,6 +1888,10 @@ function AdminPageComponent() {
   const handleDrag = (e: any, data: { x: number; y: number }) => {
     if (!draggedReservation) return;
 
+    // Bugün değilse kırmızı çizgi kontrolü yapmaya gerek yok
+    const isToday =
+      format(selectedDate, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd");
+
     // Mevcut pozisyonu güncelle
     const offsetX = data.x;
     const offsetY = data.y;
@@ -1836,8 +1908,20 @@ function AdminPageComponent() {
         className: el.className,
         dataTableId: el.getAttribute("data-table-id"),
         dataHour: el.getAttribute("data-hour"),
+        dataPastHour: el.getAttribute("data-past-hour"),
       }))
     );
+
+    // Geçmiş zaman hücresine taşıma yapılmasını engelle
+    const targetIsPastHour = elementsAtPoint.some((el) => {
+      // Eğer üzerinde bulunduğumuz element geçmiş saat hücresi ise
+      return el.getAttribute("data-past-hour") === "true";
+    });
+
+    if (targetIsPastHour) {
+      // Geçmiş saate taşınamaz, işlemi engelle
+      return;
+    }
 
     // Masa ID'sini bulmaya çalışalım
     let foundTableId = false;
@@ -1902,8 +1986,33 @@ function AdminPageComponent() {
     const endMinutes = convertTimeToMinutes(initialEndTime);
     const duration = endMinutes - startMinutes;
 
-    const newStartMinutes = startMinutes + minuteOffset;
-    const newEndMinutes = newStartMinutes + duration;
+    let newStartMinutes = startMinutes + minuteOffset;
+    let newEndMinutes = newStartMinutes + duration;
+
+    // Eğer bugün ise ve kırmızı çizgiyi geçmeye çalışıyorsa kontrol et
+    if (isToday && currentTimePosition !== null) {
+      // Şu anki zaman (mevcut dakika olarak)
+      const now = new Date();
+      const currentHour = now.getHours();
+      const currentMinute = now.getMinutes();
+      const currentTotalMinutes = currentHour * 60 + currentMinute;
+
+      // Eğer yeni başlangıç zamanı mevcut zamanın gerisindeyse
+      if (newStartMinutes < currentTotalMinutes) {
+        // Şu anki zaman dakikasına otomatik ayarla
+        newStartMinutes = currentTotalMinutes;
+        newEndMinutes = newStartMinutes + duration;
+
+        // Kullanıcıya bilgi ver
+        toast.success(
+          "Geçmiş saatlere taşınamaz. Rezervasyon şu anki saate ayarlandı.",
+          {
+            id: "past-time-drag",
+            duration: 1500,
+          }
+        );
+      }
+    }
 
     // Yeni zamanları ayarla
     draggedReservation.startTime = convertMinutesToTime(newStartMinutes);
@@ -1925,6 +2034,36 @@ function AdminPageComponent() {
   const handleDragStop = (e: any, ui: { x: number; y: number }) => {
     if (!draggedReservation) {
       setIsDragging(false);
+      return;
+    }
+
+    // Bugün değilse kırmızı çizgi kontrolü yapmaya gerek yok
+    const isToday =
+      format(selectedDate, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd");
+
+    // Şu anki zaman (mevcut dakika olarak hesaplanıyor)
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+    const currentTotalMinutes = currentHour * 60 + currentMinute;
+
+    // Başlangıç zamanı dakika olarak
+    const startMinutes = convertTimeToMinutes(draggedReservation.startTime);
+
+    // Eğer bugün ise ve başlangıç zamanı şu anki zamandan önceyse (geçmiş bir saat), orijinal değerlere geri dön
+    if (isToday && startMinutes < currentTotalMinutes) {
+      toast.error(
+        "Geçmiş saat için rezervasyon düzenlenemez. Orijinal konuma geri dönülüyor."
+      );
+
+      // Orijinal değerlere geri dön
+      draggedReservation.tableId = initialTableId;
+      draggedReservation.startTime = initialStartTime;
+      draggedReservation.endTime = initialEndTime;
+
+      setDraggedReservation({ ...draggedReservation });
+      setIsDragging(false);
+      setDraggedReservation(null);
       return;
     }
 
@@ -2044,6 +2183,10 @@ function AdminPageComponent() {
   ) => {
     if (!draggedReservation) return;
 
+    // Bugün değilse kırmızı çizgi kontrolü yapmaya gerek yok
+    const isToday =
+      format(selectedDate, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd");
+
     const { size } = data;
     const cellWidthMinutes = 60;
 
@@ -2090,8 +2233,32 @@ function AdminPageComponent() {
 
       // Başlangıç zamanını güncelle
       const startMinutes = convertTimeToMinutes(initialStartTime);
-      const newStartMinutes = startMinutes + minutesDiff;
+      let newStartMinutes = startMinutes + minutesDiff;
       const endMinutes = convertTimeToMinutes(draggedReservation.endTime);
+
+      // Eğer bugün ise ve kırmızı çizgiyi geçmeye çalışıyorsa kontrol et
+      if (isToday && currentTimePosition !== null) {
+        // Şu anki zaman (mevcut dakika olarak)
+        const now = new Date();
+        const currentHour = now.getHours();
+        const currentMinute = now.getMinutes();
+        const currentTotalMinutes = currentHour * 60 + currentMinute;
+
+        // Eğer yeni başlangıç zamanı mevcut zamanın gerisindeyse
+        if (newStartMinutes < currentTotalMinutes) {
+          // Şu anki zaman dakikasına otomatik ayarla
+          newStartMinutes = currentTotalMinutes;
+
+          // Kullanıcıya bilgi ver
+          toast.success(
+            "Geçmiş saatlere rezervasyon genişletilemez. Başlangıç şu anki saate ayarlandı.",
+            {
+              id: "past-time-resize",
+              duration: 1500,
+            }
+          );
+        }
+      }
 
       // Minimum süre kontrolü (15 dakika)
       if (endMinutes - newStartMinutes >= 15) {
@@ -2112,6 +2279,36 @@ function AdminPageComponent() {
     if (!draggedReservation) {
       setIsResizing(false);
       setResizeDirection(null);
+      return;
+    }
+
+    // Bugün değilse kırmızı çizgi kontrolü yapmaya gerek yok
+    const isToday =
+      format(selectedDate, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd");
+
+    // Şu anki zaman (mevcut dakika olarak hesaplanıyor)
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+    const currentTotalMinutes = currentHour * 60 + currentMinute;
+
+    // Başlangıç zamanı dakika olarak
+    const startMinutes = convertTimeToMinutes(draggedReservation.startTime);
+
+    // Eğer bugün ise ve başlangıç zamanı şu anki zamandan önceyse (geçmiş bir saat), orijinal değerlere geri dön
+    if (isToday && startMinutes < currentTotalMinutes) {
+      toast.error(
+        "Geçmiş saat için rezervasyon düzenlenemez. Orijinal konuma geri dönülüyor."
+      );
+
+      // Orijinal değerlere geri dön
+      draggedReservation.startTime = initialStartTime;
+      draggedReservation.endTime = initialEndTime;
+
+      setDraggedReservation({ ...draggedReservation });
+      setIsResizing(false);
+      setResizeDirection(null);
+      setDraggedReservation(null);
       return;
     }
 
@@ -2180,7 +2377,10 @@ function AdminPageComponent() {
   }, [tables]);
 
   // Şu anki zamanı kullanarak, zaman çizgisinin solunda kalan (geçmiş) rezervasyonları kontrol eden fonksiyon
-  const isReservationPast = (startTime: string): boolean => {
+  // Fonksiyon overloads - hem string hem de ReservationType parametreleri için
+  function isReservationPast(startTime: string): boolean;
+  function isReservationPast(reservation: ReservationType): boolean;
+  function isReservationPast(param: string | ReservationType): boolean {
     try {
       // Bugünden farklı bir gün seçilmişse farklı davranış göster
       const today = new Date();
@@ -2197,46 +2397,92 @@ function AdminPageComponent() {
         return false;
       }
 
-      // Aynı gündeyiz, normal kontrollere devam et
-      // Eğer startTime saat:dakika:saniye formatında gelirse ":" karakterinden bölelim ve ilk iki bölümü alalım
-      const timeParts = startTime.split(":");
-      const hourStr = timeParts[0];
-      const minuteStr = timeParts[1];
+      // Aynı gündeyiz, kontrole devam et
+
+      // Başlangıç ve bitiş zamanını al (string veya ReservationType olabilir)
+      let startTimeStr: string;
+      let endTimeStr: string;
+
+      if (typeof param === "string") {
+        // Eğer parametre bir string ise, bu başlangıç zamanıdır
+        startTimeStr = param;
+
+        // Varsayılan olarak 1 saat sonrasını bitiş saati olarak kabul et
+        const startHour = parseInt(startTimeStr.split(":")[0]);
+        const startMinute = parseInt(startTimeStr.split(":")[1] || "0");
+        let endHour = startHour + 1;
+        if (endHour >= 24) endHour -= 24;
+        endTimeStr = `${endHour.toString().padStart(2, "0")}:${startMinute
+          .toString()
+          .padStart(2, "0")}`;
+      } else {
+        // Eğer parametre bir ReservationType nesnesi ise, hem başlangıç hem bitiş zamanını kullan
+        startTimeStr = param.startTime;
+        endTimeStr = param.endTime;
+      }
+
+      // Tarih bilgisini çıkar, sadece saat kısmını al
+      const extractTimeOnly = (timeStr: string): string => {
+        if (timeStr.includes(" ")) {
+          return timeStr.split(" ")[1]; // "yyyy-MM-dd HH:mm" -> "HH:mm"
+        }
+        return timeStr; // Zaten saat formatındaysa olduğu gibi bırak
+      };
+
+      const timeOnlyStart = extractTimeOnly(startTimeStr);
+      const timeOnlyEnd = extractTimeOnly(endTimeStr);
 
       // Şu anki saat ve dakikayı al
       const currentHour = today.getHours();
       const currentMinute = today.getMinutes();
 
-      // Rezervasyonun başlangıç saati ve dakikasını al
-      const reservationHour = parseInt(hourStr);
-      const reservationMinute = parseInt(minuteStr);
+      // Saatleri dakikaya çevir
+      const convertToMinutes = (time: string): number => {
+        const [hours, minutes] = time.split(":").map(Number);
+        return hours * 60 + minutes;
+      };
 
-      // Şu anki zamanı dakika olarak hesapla (saat * 60 + dakika)
-      const currentTimeInMinutes = currentHour * 60 + currentMinute;
+      // Rezervasyon zamanlarını dakika cinsinden hesapla
+      const startMinutes = convertToMinutes(timeOnlyStart);
+      const endMinutes = convertToMinutes(timeOnlyEnd);
+      const currentMinutes = currentHour * 60 + currentMinute;
 
-      // Rezervasyonun başlangıç zamanını dakika olarak hesapla
-      const reservationTimeInMinutes = reservationHour * 60 + reservationMinute;
+      // Gece yarısı düzeltmeleri
+      let adjustedStartMinutes = startMinutes;
+      let adjustedEndMinutes = endMinutes;
+      let adjustedCurrentMinutes = currentMinutes;
 
-      // Özel durum: Gece yarısı çevresindeki saatler için düzeltme
-      // 00:00-06:59 saatleri için düzeltme yapalım
-      let adjustedCurrentTime = currentTimeInMinutes;
-      let adjustedReservationTime = reservationTimeInMinutes;
+      // Gece yarısı sonrası saat kontrolü (00:00-06:59)
+      if (startMinutes < 7 * 60) adjustedStartMinutes += 24 * 60;
+      if (endMinutes < 7 * 60) adjustedEndMinutes += 24 * 60;
+      if (currentMinutes < 7 * 60) adjustedCurrentMinutes += 24 * 60;
 
-      if (reservationHour >= 0 && reservationHour < 7) {
-        adjustedReservationTime += 24 * 60; // 24 saat ekle
+      // Eğer bitiş saati başlangıç saatinden küçükse (gece yarısını geçen durumlar)
+      if (endMinutes < startMinutes) {
+        adjustedEndMinutes += 24 * 60;
       }
 
-      if (currentHour >= 0 && currentHour < 7) {
-        adjustedCurrentTime += 24 * 60; // 24 saat ekle
-      }
+      // Debug bilgisi
+      console.log("Rezervasyon geçmiş kontrolü:", {
+        start: timeOnlyStart,
+        end: timeOnlyEnd,
+        current: `${currentHour}:${currentMinute}`,
+        startMin: startMinutes,
+        endMin: endMinutes,
+        currentMin: currentMinutes,
+        adjustedStartMin: adjustedStartMinutes,
+        adjustedEndMin: adjustedEndMinutes,
+        adjustedCurrentMin: adjustedCurrentMinutes,
+      });
 
-      // Eğer şu anki zaman, rezervasyonun başlangıç zamanından büyükse, rezervasyon geçmiştir
-      return adjustedCurrentTime > adjustedReservationTime;
+      // Rezervasyon tamamen geçmişte kalmış mı kontrol et
+      // Yani şu anki zaman, rezervasyonun bitiş zamanından sonra mı?
+      return adjustedCurrentMinutes >= adjustedEndMinutes;
     } catch (error) {
       console.error("isReservationPast hata:", error);
       return false; // Hata olduğunda false döndür
     }
-  };
+  }
 
   // Rezervasyon durumlarını saklamak için state
   const [reservationStatuses, setReservationStatuses] = useState<
@@ -2247,7 +2493,7 @@ function AdminPageComponent() {
   const getReservationColor = (reservation: ReservationType): string => {
     try {
       // Geçmiş rezervasyonlar için siyah renk kullan (ÖNCE KONTROL ET)
-      if (isReservationPast(reservation.startTime)) {
+      if (isReservationPast(reservation)) {
         return "#111827"; // gray-900
       }
 
@@ -3242,7 +3488,7 @@ function AdminPageComponent() {
               <div className="flex items-center">
                 <h2 className="text-lg font-semibold">Rezervasyon Detayları</h2>
                 {isReservationPast &&
-                  isReservationPast(selectedReservation.startTime) && (
+                  isReservationPast(selectedReservation) && (
                     <span className="ml-2 text-xs font-medium bg-red-600 text-white px-2 py-1 rounded-full">
                       Geçmiş
                     </span>
@@ -3284,15 +3530,11 @@ function AdminPageComponent() {
                       ? "bg-pink-600 text-white"
                       : "bg-gray-100 text-gray-700 hover:bg-pink-500 hover:text-white"
                   } transition-colors ${
-                    isReservationPast &&
-                    isReservationPast(selectedReservation.startTime)
+                    isReservationPast(selectedReservation)
                       ? "opacity-50 cursor-not-allowed"
                       : ""
                   }`}
-                  disabled={
-                    isReservationPast &&
-                    isReservationPast(selectedReservation.startTime)
-                  }
+                  disabled={isReservationPast(selectedReservation)}
                 >
                   Müşteri Geldi
                 </button>
@@ -3308,15 +3550,11 @@ function AdminPageComponent() {
                       ? "bg-gray-900 text-white"
                       : "bg-gray-100 text-gray-700 hover:bg-gray-900 hover:text-white"
                   } transition-colors ${
-                    isReservationPast &&
-                    isReservationPast(selectedReservation.startTime)
+                    isReservationPast(selectedReservation)
                       ? "opacity-50 cursor-not-allowed"
                       : ""
                   }`}
-                  disabled={
-                    isReservationPast &&
-                    isReservationPast(selectedReservation.startTime)
-                  }
+                  disabled={isReservationPast(selectedReservation)}
                 >
                   Müşteri Gitti
                 </button>
@@ -3342,15 +3580,11 @@ function AdminPageComponent() {
                         })
                       }
                       className={`w-full p-2 border border-gray-300 rounded mt-1 ${
-                        isReservationPast &&
-                        isReservationPast(selectedReservation.startTime)
+                        isReservationPast(selectedReservation)
                           ? "bg-gray-100 cursor-not-allowed"
                           : ""
                       }`}
-                      disabled={
-                        isReservationPast &&
-                        isReservationPast(selectedReservation.startTime)
-                      }
+                      disabled={isReservationPast(selectedReservation)}
                     />
                   </div>
                   <div>
@@ -3368,15 +3602,11 @@ function AdminPageComponent() {
                         })
                       }
                       className={`w-full p-2 border border-gray-300 rounded mt-1 ${
-                        isReservationPast &&
-                        isReservationPast(selectedReservation.startTime)
+                        isReservationPast(selectedReservation)
                           ? "bg-gray-100 cursor-not-allowed"
                           : ""
                       }`}
-                      disabled={
-                        isReservationPast &&
-                        isReservationPast(selectedReservation.startTime)
-                      }
+                      disabled={isReservationPast(selectedReservation)}
                     />
                   </div>
                 </div>
@@ -3483,15 +3713,11 @@ function AdminPageComponent() {
                         }
                       }}
                       className={`w-full p-2 border border-gray-300 rounded ${
-                        isReservationPast &&
-                        isReservationPast(selectedReservation.startTime)
+                        isReservationPast(selectedReservation)
                           ? "bg-gray-100 cursor-not-allowed"
                           : ""
                       }`}
-                      disabled={
-                        isReservationPast &&
-                        isReservationPast(selectedReservation.startTime)
-                      }
+                      disabled={isReservationPast(selectedReservation)}
                     >
                       {tableCategories.map((category) => (
                         <optgroup key={category.id} label={category.name}>
@@ -3507,10 +3733,7 @@ function AdminPageComponent() {
                     </select>
 
                     {/* Hızlı masa değiştirme butonları - geçmiş rezervasyonlar için gizle */}
-                    {!(
-                      isReservationPast &&
-                      isReservationPast(selectedReservation.startTime)
-                    ) && (
+                    {!isReservationPast(selectedReservation) && (
                       <div className="grid grid-cols-3 gap-2 mt-2">
                         {tableCategories.map((category) => {
                           // Her kategoriden kapasiteye göre masaları göster
@@ -3641,15 +3864,11 @@ function AdminPageComponent() {
                           });
                         }}
                         className={`w-full p-2 border border-gray-300 rounded mt-1 ${
-                          isReservationPast &&
-                          isReservationPast(selectedReservation.startTime)
+                          isReservationPast(selectedReservation)
                             ? "bg-gray-100 cursor-not-allowed"
                             : ""
                         }`}
-                        disabled={
-                          isReservationPast &&
-                          isReservationPast(selectedReservation.startTime)
-                        }
+                        disabled={isReservationPast(selectedReservation)}
                       />
                     </div>
                     <div>
@@ -3666,15 +3885,11 @@ function AdminPageComponent() {
                           })
                         }
                         className={`w-full p-2 border border-gray-300 rounded mt-1 ${
-                          isReservationPast &&
-                          isReservationPast(selectedReservation.startTime)
+                          isReservationPast(selectedReservation)
                             ? "bg-gray-100 cursor-not-allowed"
                             : ""
                         }`}
-                        disabled={
-                          isReservationPast &&
-                          isReservationPast(selectedReservation.startTime)
-                        }
+                        disabled={isReservationPast(selectedReservation)}
                       />
                     </div>
                   </div>
@@ -3694,15 +3909,11 @@ function AdminPageComponent() {
                         })
                       }
                       className={`w-full p-2 border border-gray-300 rounded mt-1 ${
-                        isReservationPast &&
-                        isReservationPast(selectedReservation.startTime)
+                        isReservationPast(selectedReservation)
                           ? "bg-gray-100 cursor-not-allowed"
                           : ""
                       }`}
-                      disabled={
-                        isReservationPast &&
-                        isReservationPast(selectedReservation.startTime)
-                      }
+                      disabled={isReservationPast(selectedReservation)}
                     >
                       <option value="confirmed">Onaylandı</option>
                       <option value="pending">Beklemede</option>
@@ -3722,16 +3933,12 @@ function AdminPageComponent() {
                         })
                       }
                       className={`w-full p-2 border border-gray-300 rounded mt-1 h-20 ${
-                        isReservationPast &&
-                        isReservationPast(selectedReservation.startTime)
+                        isReservationPast(selectedReservation)
                           ? "bg-gray-100 cursor-not-allowed"
                           : ""
                       }`}
                       placeholder="Özel istekler, notlar..."
-                      disabled={
-                        isReservationPast &&
-                        isReservationPast(selectedReservation.startTime)
-                      }
+                      disabled={isReservationPast(selectedReservation)}
                     ></textarea>
                   </div>
                 </div>
@@ -3743,8 +3950,7 @@ function AdminPageComponent() {
                 <div className="space-y-3">
                   <div
                     className={`max-h-40 overflow-y-auto border border-gray-300 rounded p-2 ${
-                      isReservationPast &&
-                      isReservationPast(selectedReservation.startTime)
+                      isReservationPast(selectedReservation)
                         ? "bg-gray-100"
                         : ""
                     }`}
@@ -3774,10 +3980,7 @@ function AdminPageComponent() {
                             });
                           }}
                           className="h-4 w-4 text-blue-600"
-                          disabled={
-                            isReservationPast &&
-                            isReservationPast(selectedReservation.startTime)
-                          }
+                          disabled={isReservationPast(selectedReservation)}
                         />
                         <label htmlFor={`staff-${s.id}`} className="text-sm">
                           {s.name}{" "}
@@ -3796,8 +3999,7 @@ function AdminPageComponent() {
                 <h3 className="text-md font-medium mb-2">Rezervasyon Rengi</h3>
                 <div
                   className={`flex space-x-2 ${
-                    isReservationPast &&
-                    isReservationPast(selectedReservation.startTime)
+                    isReservationPast(selectedReservation)
                       ? "opacity-50 pointer-events-none"
                       : ""
                   }`}
@@ -3813,10 +4015,7 @@ function AdminPageComponent() {
                     <div
                       key={color}
                       onClick={() => {
-                        if (
-                          isReservationPast &&
-                          isReservationPast(selectedReservation.startTime)
-                        ) {
+                        if (isReservationPast(selectedReservation)) {
                           return; // Geçmiş rezervasyonlar için renk değiştirmeyi engelle
                         }
                         setSelectedReservation({
@@ -3838,8 +4037,7 @@ function AdminPageComponent() {
 
             <div className="p-4 border-t border-gray-200">
               {/* Geçmiş rezervasyonlar için bilgi mesajı */}
-              {isReservationPast &&
-              isReservationPast(selectedReservation.startTime) ? (
+              {isReservationPast(selectedReservation) ? (
                 <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-3 rounded-md mb-3">
                   <div className="flex items-start">
                     <svg
@@ -3911,35 +4109,31 @@ function AdminPageComponent() {
               )}
 
               {/* Geçmiş rezervasyonlar için kapat butonu */}
-              {isReservationPast &&
-                isReservationPast(selectedReservation.startTime) && (
-                  <button
-                    onClick={closeRightSidebar}
-                    className="w-full bg-gray-200 text-gray-700 py-2 px-4 rounded hover:bg-gray-300 flex justify-center items-center space-x-1"
+              {isReservationPast(selectedReservation) && (
+                <button
+                  onClick={closeRightSidebar}
+                  className="w-full bg-gray-200 text-gray-700 py-2 px-4 rounded hover:bg-gray-300 flex justify-center items-center space-x-1"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
                   >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      className="h-4 w-4"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M6 18L18 6M6 6l12 12"
-                      />
-                    </svg>
-                    <span>Kapat</span>
-                  </button>
-                )}
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                  <span>Kapat</span>
+                </button>
+              )}
 
               {/* Tehlikeli İşlemler - sadece geçmiş olmayan rezervasyonlar için */}
-              {!(
-                isReservationPast &&
-                isReservationPast(selectedReservation.startTime)
-              ) && (
+              {!isReservationPast(selectedReservation) && (
                 <div className="border-t border-gray-200 pt-3 space-y-2">
                   <button
                     onClick={() => {
