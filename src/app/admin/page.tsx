@@ -840,7 +840,12 @@ function AdminPageComponent() {
   };
 
   // Boş bir hücreye tıklandığında yeni rezervasyon oluşturma işlemi başlatır
-  const handleEmptyCellClick = (tableId: string, hour: string) => {
+  const handleEmptyCellClick = (
+    tableId: string,
+    hour: string,
+    clientX?: number,
+    cellRect?: DOMRect
+  ) => {
     // Saati ve masayı debug için logla
     console.log(`Boş hücreye tıklama - Masa: ${tableId}, Saat: ${hour}`);
 
@@ -857,9 +862,39 @@ function AdminPageComponent() {
       return;
     }
 
+    // Kırmızı çizgiyle kesişimi kontrol et ve başlangıç saatini belirle
+    let startTimeStr = hour;
+
+    // Kırmızı çizginin bulunduğu hücreyi kontrol et ve tıklama pozisyonunu hesapla
+    const intersection = getCellRedLineIntersection(hour);
+
+    // Eğer kırmızı çizgi bu hücrede ve tıklama pozisyonu ve cellRect bilgileri sağlanmışsa
+    if (
+      intersection.intersects &&
+      clientX &&
+      cellRect &&
+      intersection.position
+    ) {
+      // Hücrenin sol kenarından itibaren tıklama pozisyonunu hesapla (0-1 arası)
+      const clickPositionRatio = (clientX - cellRect.left) / cellRect.width;
+
+      // Eğer kırmızı çizginin soluna tıklandıysa geçmiş saat için rezervasyon yapılmasına izin verme
+      if (clickPositionRatio <= intersection.position) {
+        toast.error("Geçmiş saat için rezervasyon yapamazsınız!");
+        return;
+      }
+
+      // Kırmızı çizginin sağına tıklanmışsa, şu anki saatten başlayan rezervasyon oluştur
+      startTimeStr = getCurrentTimeString();
+    } else if (isTimePast(hour)) {
+      // Kırmızı çizgi hücrede değil ama saat geçmişse rezervasyon yapma
+      toast.error("Geçmiş saat için rezervasyon yapamazsınız!");
+      return;
+    }
+
     // Bu masa ve saatte işlem yapılıyor mu kontrol et
     const isTableBeingProcessed = activeForms.some(
-      (form) => form.tableId === tableId && form.startTime === hour
+      (form) => form.tableId === tableId && form.startTime === startTimeStr
     );
 
     if (isTableBeingProcessed) {
@@ -867,15 +902,24 @@ function AdminPageComponent() {
       return;
     }
 
-    // Çakışma kontrolü
-    const hourParts = hour.split(":");
-    const startHour = parseInt(hourParts[0]);
-    const endTimeStr = `${startHour + 1}:00`;
+    // Bitiş saatini hesapla (başlangıç + 1 saat)
+    const startHourMinute = startTimeStr.split(":");
+    const startHour = parseInt(startHourMinute[0]);
+    const startMinute = parseInt(startHourMinute[1]);
 
+    // Dakikaları da dikkate alarak 1 saat sonrası için bitiş zamanını hesapla
+    let endHour = startHour + 1;
+    if (endHour >= 24) endHour -= 24; // 24 saati geçerse sıfırla
+
+    const endTimeStr = `${endHour.toString().padStart(2, "0")}:${startMinute
+      .toString()
+      .padStart(2, "0")}`;
+
+    // Çakışma kontrolü
     const conflict = reservations.some(
       (res) =>
         res.tableId === tableId &&
-        hasTimeOverlap(hour, endTimeStr, res.startTime, res.endTime)
+        hasTimeOverlap(startTimeStr, endTimeStr, res.startTime, res.endTime)
     );
 
     if (conflict) {
@@ -889,7 +933,7 @@ function AdminPageComponent() {
       tableId: tableId,
       customerName: "",
       guestCount: 2, // Varsayılan 2 kişi
-      startTime: hour,
+      startTime: startTimeStr,
       endTime: endTimeStr, // 1 saat süre varsayılan
       status: "pending",
     };
@@ -898,7 +942,7 @@ function AdminPageComponent() {
     const newForm = {
       id: `form-${Date.now()}`,
       tableId,
-      startTime: hour,
+      startTime: startTimeStr,
       endTime: endTimeStr,
       customerName: "Yeni Müşteri",
       guestCount: 2,
@@ -2480,6 +2524,43 @@ function AdminPageComponent() {
     }
   }, []);
 
+  // Mevcut saati dakika olarak (HH:MM formatında) döndüren fonksiyon
+  const getCurrentTimeString = (): string => {
+    const now = new Date();
+    const hours = String(now.getHours()).padStart(2, "0");
+    const minutes = String(now.getMinutes()).padStart(2, "0");
+    return `${hours}:${minutes}`;
+  };
+
+  // Belirli bir hücrenin kırmızı çizgi ile kesişip kesişmediğini ve nerede kesiştiğini belirleyen fonksiyon
+  const getCellRedLineIntersection = (
+    hour: string
+  ): { intersects: boolean; position: number | null } => {
+    // Sadece bugün için geçerli
+    if (
+      format(selectedDate, "yyyy-MM-dd") !== format(new Date(), "yyyy-MM-dd")
+    ) {
+      return { intersects: false, position: null };
+    }
+
+    // Hücrenin başlangıç saati
+    const cellHour = parseInt(hour.split(":")[0]);
+
+    // Mevcut saat
+    const currentTimeArr = currentTime.split(":");
+    const currentHour = parseInt(currentTimeArr[0]);
+    const currentMinute = parseInt(currentTimeArr[1]);
+
+    // Aynı saatte miyiz?
+    if (cellHour === currentHour) {
+      // Kırmızı çizgi bu hücrede, dakika kısmına göre pozisyonu hesapla (0-1 arası değer)
+      const position = currentMinute / 60;
+      return { intersects: true, position };
+    }
+
+    return { intersects: false, position: null };
+  };
+
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-gray-50 text-gray-800">
       {/* Aktif rezervasyon bildirimleri */}
@@ -2840,11 +2921,15 @@ function AdminPageComponent() {
                             // Saatin geçmiş olup olmadığını kontrol et
                             const isPastHour = isTimePast(hour);
 
+                            // Bu hücrenin kırmızı çizgi ile kesişimini kontrol et
+                            const intersection =
+                              getCellRedLineIntersection(hour);
+
                             return (
                               <div
                                 key={`${table.id}-${hour}`}
                                 className={`border-r border-gray-200 relative ${
-                                  isPastHour
+                                  isPastHour && !intersection.intersects
                                     ? "bg-gray-100 cursor-not-allowed"
                                     : "cursor-pointer hover:bg-blue-50"
                                 } table-row`}
@@ -2854,15 +2939,30 @@ function AdminPageComponent() {
                                   backgroundColor:
                                     hour === currentTime.substring(0, 5)
                                       ? "rgba(255, 255, 255, 0.5)"
-                                      : isPastHour
+                                      : isPastHour && !intersection.intersects
                                       ? "rgba(243, 244, 246, 0.7)"
                                       : "white",
+                                  position: "relative",
+                                  overflow: "hidden",
                                 }}
                                 data-hour={hour}
                                 data-table={table.number}
                                 data-table-id={table.id}
                                 data-past-hour={isPastHour.toString()}
                                 onClick={(e) => {
+                                  // Eğer hücre kırmızı çizgi tarafından bölünüyorsa özel işlem
+                                  if (intersection.intersects) {
+                                    const rect =
+                                      e.currentTarget.getBoundingClientRect();
+                                    handleEmptyCellClick(
+                                      table.id,
+                                      hour,
+                                      e.clientX,
+                                      rect
+                                    );
+                                    return;
+                                  }
+
                                   // Geçmiş saatler için işlem yapma
                                   if (isPastHour) {
                                     return;
@@ -2884,7 +2984,21 @@ function AdminPageComponent() {
                                     toast.error("Hücre bilgileri alınamadı!");
                                   }
                                 }}
-                              ></div>
+                              >
+                                {/* Kırmızı çizgi tarafından kesilen hücrelerde sol tarafı pasif olarak göster */}
+                                {intersection.intersects &&
+                                  intersection.position !== null && (
+                                    <div
+                                      className="absolute top-0 left-0 h-full bg-gray-100 pointer-events-none"
+                                      style={{
+                                        width: `${
+                                          intersection.position * 100
+                                        }%`,
+                                        borderRight: "1px dashed #ef4444",
+                                      }}
+                                    />
+                                  )}
+                              </div>
                             );
                           })}
                         </div>
