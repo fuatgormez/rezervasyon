@@ -2100,24 +2100,46 @@ function AdminPageComponent() {
 
   // Şu anki zamanı kullanarak, zaman çizgisinin solunda kalan (geçmiş) rezervasyonları kontrol eden fonksiyon
   const isReservationPast = (startTime: string): boolean => {
-    // Şu anki saat ve dakikayı al
-    const now = new Date();
-    const currentHour = now.getHours();
-    const currentMinute = now.getMinutes();
+    try {
+      // Eğer startTime saat:dakika:saniye formatında gelirse ":" karakterinden bölelim ve ilk iki bölümü alalım
+      const timeParts = startTime.split(":");
+      const hourStr = timeParts[0];
+      const minuteStr = timeParts[1];
 
-    // Rezervasyonun başlangıç saati ve dakikasını al
-    const [hourStr, minuteStr] = startTime.split(":");
-    const reservationHour = parseInt(hourStr);
-    const reservationMinute = parseInt(minuteStr);
+      // Şu anki saat ve dakikayı al
+      const now = new Date();
+      const currentHour = now.getHours();
+      const currentMinute = now.getMinutes();
 
-    // Şu anki zamanı dakika olarak hesapla (saat * 60 + dakika)
-    const currentTimeInMinutes = currentHour * 60 + currentMinute;
+      // Rezervasyonun başlangıç saati ve dakikasını al
+      const reservationHour = parseInt(hourStr);
+      const reservationMinute = parseInt(minuteStr);
 
-    // Rezervasyonun başlangıç zamanını dakika olarak hesapla
-    const reservationTimeInMinutes = reservationHour * 60 + reservationMinute;
+      // Şu anki zamanı dakika olarak hesapla (saat * 60 + dakika)
+      const currentTimeInMinutes = currentHour * 60 + currentMinute;
 
-    // Eğer şu anki zaman, rezervasyonun başlangıç zamanından büyükse, rezervasyon geçmiştir
-    return currentTimeInMinutes > reservationTimeInMinutes;
+      // Rezervasyonun başlangıç zamanını dakika olarak hesapla
+      const reservationTimeInMinutes = reservationHour * 60 + reservationMinute;
+
+      // Özel durum: Gece yarısı çevresindeki saatler için düzeltme
+      // 00:00-06:59 saatleri için düzeltme yapalım
+      let adjustedCurrentTime = currentTimeInMinutes;
+      let adjustedReservationTime = reservationTimeInMinutes;
+
+      if (reservationHour >= 0 && reservationHour < 7) {
+        adjustedReservationTime += 24 * 60; // 24 saat ekle
+      }
+
+      if (currentHour >= 0 && currentHour < 7) {
+        adjustedCurrentTime += 24 * 60; // 24 saat ekle
+      }
+
+      // Eğer şu anki zaman, rezervasyonun başlangıç zamanından büyükse, rezervasyon geçmiştir
+      return adjustedCurrentTime > adjustedReservationTime;
+    } catch (error) {
+      console.error("isReservationPast hata:", error);
+      return false; // Hata olduğunda false döndür
+    }
   };
 
   // Rezervasyon durumlarını saklamak için state
@@ -2127,31 +2149,36 @@ function AdminPageComponent() {
 
   // Rezervasyon kartı rengini belirle
   const getReservationColor = (reservation: ReservationType): string => {
-    // Rezervasyon durumlarına göre özel renklendirme
-    if (reservationStatuses[reservation.id] === "arrived") {
-      return "#ec4899"; // pink-500
-    } else if (reservationStatuses[reservation.id] === "departed") {
-      return "#111827"; // gray-900
+    try {
+      // Geçmiş rezervasyonlar için siyah renk kullan (ÖNCE KONTROL ET)
+      if (isReservationPast(reservation.startTime)) {
+        return "#111827"; // gray-900
+      }
+
+      // Rezervasyon durumlarına göre özel renklendirme
+      if (reservationStatuses[reservation.id] === "arrived") {
+        return "#ec4899"; // pink-500
+      } else if (reservationStatuses[reservation.id] === "departed") {
+        return "#111827"; // gray-900
+      }
+
+      // Rezervasyon rengini kullan (eğer varsa)
+      if (reservation.color) {
+        return reservation.color;
+      }
+
+      // Varsayılan kategori renkleri
+      const category = tableCategories.find(
+        (cat) =>
+          tables.find((table) => table.id === reservation.tableId)
+            ?.categoryId === cat.id
+      );
+
+      return category ? category.color : "#4B5563"; // Varsayılan gri renk
+    } catch (error) {
+      console.error("getReservationColor hata:", error);
+      return "#4B5563"; // Hata durumunda varsayılan renk
     }
-
-    // Geçmiş rezervasyonlar için siyah renk kullan
-    if (isReservationPast(reservation.startTime)) {
-      return "#111827"; // gray-900
-    }
-
-    // Rezervasyon rengini kullan (eğer varsa)
-    if (reservation.color) {
-      return reservation.color;
-    }
-
-    // Varsayılan kategori renkleri
-    const category = tableCategories.find(
-      (cat) =>
-        tables.find((table) => table.id === reservation.tableId)?.categoryId ===
-        cat.id
-    );
-
-    return category ? category.color : "#4B5563"; // Varsayılan gri renk
   };
 
   // Rezervasyon durumunu değiştiren fonksiyon
@@ -2185,6 +2212,76 @@ function AdminPageComponent() {
         console.error("Rezervasyon durumları yüklenirken hata oluştu:", error);
       }
     }
+  }, []);
+
+  // Belirli bir saat ve zamanın geçmiş (kırmızı çizginin solunda) olup olmadığını kontrol et
+  const isTimePast = (hour: string): boolean => {
+    try {
+      // Şu anki saat ve dakikayı al
+      const now = new Date();
+      const currentHour = now.getHours();
+      const currentMinute = now.getMinutes();
+
+      // Kontrol edilecek saati ve dakikayı al
+      const [hourStr, minuteStr] = hour.split(":");
+      const checkHour = parseInt(hourStr);
+      const checkMinute = parseInt(minuteStr) || 0; // Eğer dakika yoksa 0 olarak al
+
+      // Şu anki zamanı dakika olarak hesapla (saat * 60 + dakika)
+      const currentTimeInMinutes = currentHour * 60 + currentMinute;
+
+      // Kontrol edilecek zamanı dakika olarak hesapla
+      const checkTimeInMinutes = checkHour * 60 + checkMinute;
+
+      // Gece yarısı çevresindeki saatler için düzeltme
+      let adjustedCurrentTime = currentTimeInMinutes;
+      let adjustedCheckTime = checkTimeInMinutes;
+
+      // Gece yarısından sonraki saatler için (00:00-06:59)
+      if (checkHour >= 0 && checkHour < 7) {
+        adjustedCheckTime += 24 * 60; // 24 saat ekle
+      }
+
+      if (currentHour >= 0 && currentHour < 7) {
+        adjustedCurrentTime += 24 * 60; // 24 saat ekle
+      }
+
+      // Şu anki zaman, kontrol edilecek zamandan büyükse, bu saat geçmiştir
+      return adjustedCurrentTime > adjustedCheckTime;
+    } catch (error) {
+      console.error("isTimePast hata:", error);
+      return false; // Hata olduğunda false döndür
+    }
+  };
+
+  // Ayrı bir state ile bileşenin güncellenmesini zorla
+  const [forceUpdate, setForceUpdate] = useState(0);
+
+  useEffect(() => {
+    // Başlangıçta saati ayarla
+    const now = new Date();
+    const hours = String(now.getHours()).padStart(2, "0");
+    const minutes = String(now.getMinutes()).padStart(2, "0");
+    setCurrentTime(`${hours}:${minutes}:00`);
+
+    // Her saniye saati güncelle
+    const interval = setInterval(() => {
+      const now = new Date();
+      const hours = String(now.getHours()).padStart(2, "0");
+      const minutes = String(now.getMinutes()).padStart(2, "0");
+      setCurrentTime(`${hours}:${minutes}:00`);
+
+      // Her dakika değiştiğinde sayfayı yenile (her 59 saniyede bir yenileme için gerekli)
+      const seconds = now.getSeconds();
+      if (seconds === 59) {
+        // Timeline'da yansıtmak için forceUpdate yapılabilir
+        setForceUpdate((prev) => prev + 1);
+      }
+    }, 1000);
+
+    return () => {
+      clearInterval(interval);
+    };
   }, []);
 
   return (
@@ -2496,38 +2593,57 @@ function AdminPageComponent() {
 
                         {/* Saat hücreleri */}
                         <div className="flex flex-1 relative">
-                          {hours.map((hour) => (
-                            <div
-                              key={`${table.id}-${hour}`}
-                              className="border-r border-gray-200 relative cursor-pointer hover:bg-blue-50 table-row"
-                              style={{
-                                width: `${cellWidth}px`,
-                                height: `${cellHeight}px`,
-                                backgroundColor:
-                                  hour === currentTime.substring(0, 5)
-                                    ? "rgba(255, 255, 255, 0.5)"
-                                    : "white",
-                              }}
-                              data-hour={hour}
-                              data-table={table.number}
-                              data-table-id={table.id}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const clickedHour =
-                                  e.currentTarget.getAttribute("data-hour");
-                                const clickedTableId =
-                                  e.currentTarget.getAttribute("data-table-id");
-                                if (clickedHour && clickedTableId) {
-                                  handleEmptyCellClick(
-                                    clickedTableId,
-                                    clickedHour
-                                  );
-                                } else {
-                                  toast.error("Hücre bilgileri alınamadı!");
-                                }
-                              }}
-                            ></div>
-                          ))}
+                          {hours.map((hour) => {
+                            // Saatin geçmiş olup olmadığını kontrol et
+                            const isPastHour = isTimePast(hour);
+
+                            return (
+                              <div
+                                key={`${table.id}-${hour}`}
+                                className={`border-r border-gray-200 relative ${
+                                  isPastHour
+                                    ? "bg-gray-100 cursor-not-allowed"
+                                    : "cursor-pointer hover:bg-blue-50"
+                                } table-row`}
+                                style={{
+                                  width: `${cellWidth}px`,
+                                  height: `${cellHeight}px`,
+                                  backgroundColor:
+                                    hour === currentTime.substring(0, 5)
+                                      ? "rgba(255, 255, 255, 0.5)"
+                                      : isPastHour
+                                      ? "rgba(243, 244, 246, 0.7)"
+                                      : "white",
+                                }}
+                                data-hour={hour}
+                                data-table={table.number}
+                                data-table-id={table.id}
+                                data-past-hour={isPastHour.toString()}
+                                onClick={(e) => {
+                                  // Geçmiş saatler için işlem yapma
+                                  if (isPastHour) {
+                                    return;
+                                  }
+
+                                  e.stopPropagation();
+                                  const clickedHour =
+                                    e.currentTarget.getAttribute("data-hour");
+                                  const clickedTableId =
+                                    e.currentTarget.getAttribute(
+                                      "data-table-id"
+                                    );
+                                  if (clickedHour && clickedTableId) {
+                                    handleEmptyCellClick(
+                                      clickedTableId,
+                                      clickedHour
+                                    );
+                                  } else {
+                                    toast.error("Hücre bilgileri alınamadı!");
+                                  }
+                                }}
+                              ></div>
+                            );
+                          })}
                         </div>
 
                         {/* Rezervasyonlar - Grid hücreleriyle uyumlu hale getirildi */}
@@ -2563,7 +2679,7 @@ function AdminPageComponent() {
 
                               return (
                                 <DraggableReservationCard
-                                  key={reservation.id}
+                                  key={`${reservation.id}_${forceUpdate}`}
                                   reservation={reservation}
                                   cellWidth={cellWidth}
                                   cellHeight={cellHeight}
@@ -2764,7 +2880,15 @@ function AdminPageComponent() {
             onMouseEnter={() => setSidebarClicked(true)} // Mouse sidebar'a girdiğinde de açık tut
           >
             <div className="p-4 border-b border-gray-200 flex justify-between items-center">
-              <h2 className="text-lg font-semibold">Rezervasyon Detayları</h2>
+              <div className="flex items-center">
+                <h2 className="text-lg font-semibold">Rezervasyon Detayları</h2>
+                {isReservationPast &&
+                  isReservationPast(selectedReservation.startTime) && (
+                    <span className="ml-2 text-xs font-medium bg-red-600 text-white px-2 py-1 rounded-full">
+                      Geçmiş
+                    </span>
+                  )}
+              </div>
               <button
                 onClick={closeRightSidebar}
                 className="text-gray-500 hover:text-gray-700"
@@ -2800,7 +2924,16 @@ function AdminPageComponent() {
                     reservationStatuses[selectedReservation.id] === "arrived"
                       ? "bg-pink-600 text-white"
                       : "bg-gray-100 text-gray-700 hover:bg-pink-500 hover:text-white"
-                  } transition-colors`}
+                  } transition-colors ${
+                    isReservationPast &&
+                    isReservationPast(selectedReservation.startTime)
+                      ? "opacity-50 cursor-not-allowed"
+                      : ""
+                  }`}
+                  disabled={
+                    isReservationPast &&
+                    isReservationPast(selectedReservation.startTime)
+                  }
                 >
                   Müşteri Geldi
                 </button>
@@ -2815,7 +2948,16 @@ function AdminPageComponent() {
                     reservationStatuses[selectedReservation.id] === "departed"
                       ? "bg-gray-900 text-white"
                       : "bg-gray-100 text-gray-700 hover:bg-gray-900 hover:text-white"
-                  } transition-colors`}
+                  } transition-colors ${
+                    isReservationPast &&
+                    isReservationPast(selectedReservation.startTime)
+                      ? "opacity-50 cursor-not-allowed"
+                      : ""
+                  }`}
+                  disabled={
+                    isReservationPast &&
+                    isReservationPast(selectedReservation.startTime)
+                  }
                 >
                   Müşteri Gitti
                 </button>
@@ -2840,7 +2982,16 @@ function AdminPageComponent() {
                           customerName: e.target.value,
                         })
                       }
-                      className="w-full p-2 border border-gray-300 rounded mt-1"
+                      className={`w-full p-2 border border-gray-300 rounded mt-1 ${
+                        isReservationPast &&
+                        isReservationPast(selectedReservation.startTime)
+                          ? "bg-gray-100 cursor-not-allowed"
+                          : ""
+                      }`}
+                      disabled={
+                        isReservationPast &&
+                        isReservationPast(selectedReservation.startTime)
+                      }
                     />
                   </div>
                   <div>
@@ -2857,7 +3008,16 @@ function AdminPageComponent() {
                           guestCount: parseInt(e.target.value),
                         })
                       }
-                      className="w-full p-2 border border-gray-300 rounded mt-1"
+                      className={`w-full p-2 border border-gray-300 rounded mt-1 ${
+                        isReservationPast &&
+                        isReservationPast(selectedReservation.startTime)
+                          ? "bg-gray-100 cursor-not-allowed"
+                          : ""
+                      }`}
+                      disabled={
+                        isReservationPast &&
+                        isReservationPast(selectedReservation.startTime)
+                      }
                     />
                   </div>
                 </div>
@@ -2963,7 +3123,16 @@ function AdminPageComponent() {
                           toast.error("Masa bulunamadı");
                         }
                       }}
-                      className="w-full p-2 border border-gray-300 rounded"
+                      className={`w-full p-2 border border-gray-300 rounded ${
+                        isReservationPast &&
+                        isReservationPast(selectedReservation.startTime)
+                          ? "bg-gray-100 cursor-not-allowed"
+                          : ""
+                      }`}
+                      disabled={
+                        isReservationPast &&
+                        isReservationPast(selectedReservation.startTime)
+                      }
                     >
                       {tableCategories.map((category) => (
                         <optgroup key={category.id} label={category.name}>
@@ -2978,100 +3147,107 @@ function AdminPageComponent() {
                       ))}
                     </select>
 
-                    {/* Hızlı masa değiştirme butonları */}
-                    <div className="grid grid-cols-3 gap-2 mt-2">
-                      {tableCategories.map((category) => {
-                        // Her kategoriden kapasiteye göre masaları göster
-                        const smallTable = tables.find(
-                          (t) => t.categoryId === category.id && t.capacity <= 2
-                        );
-                        const mediumTable = tables.find(
-                          (t) =>
-                            t.categoryId === category.id &&
-                            t.capacity >= 3 &&
-                            t.capacity <= 4
-                        );
-                        const largeTable = tables.find(
-                          (t) => t.categoryId === category.id && t.capacity >= 6
-                        );
+                    {/* Hızlı masa değiştirme butonları - geçmiş rezervasyonlar için gizle */}
+                    {!(
+                      isReservationPast &&
+                      isReservationPast(selectedReservation.startTime)
+                    ) && (
+                      <div className="grid grid-cols-3 gap-2 mt-2">
+                        {tableCategories.map((category) => {
+                          // Her kategoriden kapasiteye göre masaları göster
+                          const smallTable = tables.find(
+                            (t) =>
+                              t.categoryId === category.id && t.capacity <= 2
+                          );
+                          const mediumTable = tables.find(
+                            (t) =>
+                              t.categoryId === category.id &&
+                              t.capacity >= 3 &&
+                              t.capacity <= 4
+                          );
+                          const largeTable = tables.find(
+                            (t) =>
+                              t.categoryId === category.id && t.capacity >= 6
+                          );
 
-                        return smallTable || mediumTable || largeTable ? (
-                          <div
-                            key={category.id}
-                            className="flex flex-col space-y-1"
-                          >
+                          return smallTable || mediumTable || largeTable ? (
                             <div
-                              className="text-xs font-medium text-center"
-                              style={{ color: category.borderColor }}
+                              key={category.id}
+                              className="flex flex-col space-y-1"
                             >
-                              {category.name}
+                              <div
+                                className="text-xs font-medium text-center"
+                                style={{ color: category.borderColor }}
+                              >
+                                {category.name}
+                              </div>
+                              <div className="flex justify-between space-x-1">
+                                {smallTable && (
+                                  <button
+                                    onClick={() => {
+                                      const newReservation = {
+                                        ...selectedReservation,
+                                        tableId: smallTable.id,
+                                      };
+                                      setSelectedReservation(newReservation);
+                                      toast.success(
+                                        `Masa ${smallTable.number}'e taşındı`
+                                      );
+                                    }}
+                                    className="flex-1 py-1 text-xs rounded text-white"
+                                    style={{
+                                      backgroundColor: category.borderColor,
+                                    }}
+                                  >
+                                    S{smallTable.number}
+                                  </button>
+                                )}
+                                {mediumTable && (
+                                  <button
+                                    onClick={() => {
+                                      const newReservation = {
+                                        ...selectedReservation,
+                                        tableId: mediumTable.id,
+                                      };
+                                      setSelectedReservation(newReservation);
+                                      toast.success(
+                                        `Masa ${mediumTable.number}'e taşındı`
+                                      );
+                                    }}
+                                    className="flex-1 py-1 text-xs rounded text-white"
+                                    style={{
+                                      backgroundColor: category.borderColor,
+                                    }}
+                                  >
+                                    M{mediumTable.number}
+                                  </button>
+                                )}
+                                {largeTable && (
+                                  <button
+                                    onClick={() => {
+                                      const newReservation = {
+                                        ...selectedReservation,
+                                        tableId: largeTable.id,
+                                      };
+                                      setSelectedReservation(newReservation);
+                                      toast.success(
+                                        `Masa ${largeTable.number}'e taşındı`
+                                      );
+                                    }}
+                                    className="flex-1 py-1 text-xs rounded text-white"
+                                    style={{
+                                      backgroundColor: category.borderColor,
+                                    }}
+                                  >
+                                    L{largeTable.number}
+                                  </button>
+                                )}
+                              </div>
                             </div>
-                            <div className="flex justify-between space-x-1">
-                              {smallTable && (
-                                <button
-                                  onClick={() => {
-                                    const newReservation = {
-                                      ...selectedReservation,
-                                      tableId: smallTable.id,
-                                    };
-                                    setSelectedReservation(newReservation);
-                                    toast.success(
-                                      `Masa ${smallTable.number}'e taşındı`
-                                    );
-                                  }}
-                                  className="flex-1 py-1 text-xs rounded text-white"
-                                  style={{
-                                    backgroundColor: category.borderColor,
-                                  }}
-                                >
-                                  S{smallTable.number}
-                                </button>
-                              )}
-                              {mediumTable && (
-                                <button
-                                  onClick={() => {
-                                    const newReservation = {
-                                      ...selectedReservation,
-                                      tableId: mediumTable.id,
-                                    };
-                                    setSelectedReservation(newReservation);
-                                    toast.success(
-                                      `Masa ${mediumTable.number}'e taşındı`
-                                    );
-                                  }}
-                                  className="flex-1 py-1 text-xs rounded text-white"
-                                  style={{
-                                    backgroundColor: category.borderColor,
-                                  }}
-                                >
-                                  M{mediumTable.number}
-                                </button>
-                              )}
-                              {largeTable && (
-                                <button
-                                  onClick={() => {
-                                    const newReservation = {
-                                      ...selectedReservation,
-                                      tableId: largeTable.id,
-                                    };
-                                    setSelectedReservation(newReservation);
-                                    toast.success(
-                                      `Masa ${largeTable.number}'e taşındı`
-                                    );
-                                  }}
-                                  className="flex-1 py-1 text-xs rounded text-white"
-                                  style={{
-                                    backgroundColor: category.borderColor,
-                                  }}
-                                >
-                                  L{largeTable.number}
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        ) : null;
-                      })}
-                    </div>
+                          ) : null;
+                        })}
+                      </div>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
@@ -3105,7 +3281,16 @@ function AdminPageComponent() {
                             endTime: endTime,
                           });
                         }}
-                        className="w-full p-2 border border-gray-300 rounded mt-1"
+                        className={`w-full p-2 border border-gray-300 rounded mt-1 ${
+                          isReservationPast &&
+                          isReservationPast(selectedReservation.startTime)
+                            ? "bg-gray-100 cursor-not-allowed"
+                            : ""
+                        }`}
+                        disabled={
+                          isReservationPast &&
+                          isReservationPast(selectedReservation.startTime)
+                        }
                       />
                     </div>
                     <div>
@@ -3121,7 +3306,16 @@ function AdminPageComponent() {
                             endTime: e.target.value,
                           })
                         }
-                        className="w-full p-2 border border-gray-300 rounded mt-1"
+                        className={`w-full p-2 border border-gray-300 rounded mt-1 ${
+                          isReservationPast &&
+                          isReservationPast(selectedReservation.startTime)
+                            ? "bg-gray-100 cursor-not-allowed"
+                            : ""
+                        }`}
+                        disabled={
+                          isReservationPast &&
+                          isReservationPast(selectedReservation.startTime)
+                        }
                       />
                     </div>
                   </div>
@@ -3140,7 +3334,16 @@ function AdminPageComponent() {
                             | "cancelled",
                         })
                       }
-                      className="w-full p-2 border border-gray-300 rounded mt-1"
+                      className={`w-full p-2 border border-gray-300 rounded mt-1 ${
+                        isReservationPast &&
+                        isReservationPast(selectedReservation.startTime)
+                          ? "bg-gray-100 cursor-not-allowed"
+                          : ""
+                      }`}
+                      disabled={
+                        isReservationPast &&
+                        isReservationPast(selectedReservation.startTime)
+                      }
                     >
                       <option value="confirmed">Onaylandı</option>
                       <option value="pending">Beklemede</option>
@@ -3159,8 +3362,17 @@ function AdminPageComponent() {
                           note: e.target.value,
                         })
                       }
-                      className="w-full p-2 border border-gray-300 rounded mt-1 h-20"
+                      className={`w-full p-2 border border-gray-300 rounded mt-1 h-20 ${
+                        isReservationPast &&
+                        isReservationPast(selectedReservation.startTime)
+                          ? "bg-gray-100 cursor-not-allowed"
+                          : ""
+                      }`}
                       placeholder="Özel istekler, notlar..."
+                      disabled={
+                        isReservationPast &&
+                        isReservationPast(selectedReservation.startTime)
+                      }
                     ></textarea>
                   </div>
                 </div>
@@ -3170,7 +3382,14 @@ function AdminPageComponent() {
               <div>
                 <h3 className="text-md font-medium mb-2">Garson Ataması</h3>
                 <div className="space-y-3">
-                  <div className="max-h-40 overflow-y-auto border border-gray-300 rounded p-2">
+                  <div
+                    className={`max-h-40 overflow-y-auto border border-gray-300 rounded p-2 ${
+                      isReservationPast &&
+                      isReservationPast(selectedReservation.startTime)
+                        ? "bg-gray-100"
+                        : ""
+                    }`}
+                  >
                     {staff.map((s) => (
                       <div
                         key={s.id}
@@ -3196,6 +3415,10 @@ function AdminPageComponent() {
                             });
                           }}
                           className="h-4 w-4 text-blue-600"
+                          disabled={
+                            isReservationPast &&
+                            isReservationPast(selectedReservation.startTime)
+                          }
                         />
                         <label htmlFor={`staff-${s.id}`} className="text-sm">
                           {s.name}{" "}
@@ -3212,7 +3435,14 @@ function AdminPageComponent() {
               {/* Rezervasyon Rengi */}
               <div>
                 <h3 className="text-md font-medium mb-2">Rezervasyon Rengi</h3>
-                <div className="flex space-x-2">
+                <div
+                  className={`flex space-x-2 ${
+                    isReservationPast &&
+                    isReservationPast(selectedReservation.startTime)
+                      ? "opacity-50 pointer-events-none"
+                      : ""
+                  }`}
+                >
                   {[
                     "#3B82F6",
                     "#10B981",
@@ -3223,12 +3453,18 @@ function AdminPageComponent() {
                   ].map((color) => (
                     <div
                       key={color}
-                      onClick={() =>
+                      onClick={() => {
+                        if (
+                          isReservationPast &&
+                          isReservationPast(selectedReservation.startTime)
+                        ) {
+                          return; // Geçmiş rezervasyonlar için renk değiştirmeyi engelle
+                        }
                         setSelectedReservation({
                           ...selectedReservation,
                           color,
-                        })
-                      }
+                        });
+                      }}
                       className={`w-8 h-8 rounded-full cursor-pointer ${
                         selectedReservation.color === color
                           ? "ring-2 ring-offset-2 ring-gray-500"
@@ -3242,110 +3478,170 @@ function AdminPageComponent() {
             </div>
 
             <div className="p-4 border-t border-gray-200">
-              <div className="grid grid-cols-2 gap-3 mb-3">
-                <button
-                  onClick={() => updateReservation(selectedReservation)}
-                  className="bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 flex justify-center items-center space-x-1"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-4 w-4"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
+              {/* Geçmiş rezervasyonlar için bilgi mesajı */}
+              {isReservationPast &&
+              isReservationPast(selectedReservation.startTime) ? (
+                <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-3 rounded-md mb-3">
+                  <div className="flex items-start">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-5 w-5 mr-2 mt-0.5"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                    <div>
+                      <p className="font-medium">
+                        Bu rezervasyon geçmiş bir tarihte/saatte.
+                      </p>
+                      <p className="text-sm">
+                        Bilgileri görüntüleyebilirsiniz ancak düzenleme
+                        yapılamaz.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <button
+                    onClick={() => updateReservation(selectedReservation)}
+                    className="bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 flex justify-center items-center space-x-1"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M5 13l4 4L19 7"
-                    />
-                  </svg>
-                  <span>Kaydet</span>
-                </button>
-                <button
-                  onClick={closeRightSidebar}
-                  className="bg-gray-200 text-gray-700 py-2 px-4 rounded hover:bg-gray-300 flex justify-center items-center space-x-1"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-4 w-4"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-4 w-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                    <span>Kaydet</span>
+                  </button>
+                  <button
+                    onClick={closeRightSidebar}
+                    className="bg-gray-200 text-gray-700 py-2 px-4 rounded hover:bg-gray-300 flex justify-center items-center space-x-1"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                  <span>İptal</span>
-                </button>
-              </div>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-4 w-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                    <span>İptal</span>
+                  </button>
+                </div>
+              )}
 
-              {/* Tehlikeli İşlemler */}
-              <div className="border-t border-gray-200 pt-3 space-y-2">
-                <button
-                  onClick={() => {
-                    if (
-                      window.confirm(
-                        "Bu rezervasyonu iptal etmek istediğinize emin misiniz?"
-                      )
-                    ) {
-                      const updatedReservation = {
-                        ...selectedReservation,
-                        status: "cancelled" as
-                          | "confirmed"
-                          | "pending"
-                          | "cancelled",
-                      };
-                      updateReservation(updatedReservation);
-                      closeRightSidebar();
-                    }
-                  }}
-                  className="w-full bg-red-500 text-white py-2 px-4 rounded hover:bg-red-600 flex justify-center items-center space-x-1"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-4 w-4"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
+              {/* Geçmiş rezervasyonlar için kapat butonu */}
+              {isReservationPast &&
+                isReservationPast(selectedReservation.startTime) && (
+                  <button
+                    onClick={closeRightSidebar}
+                    className="w-full bg-gray-200 text-gray-700 py-2 px-4 rounded hover:bg-gray-300 flex justify-center items-center space-x-1"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                  <span>Rezervasyonu İptal Et</span>
-                </button>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-4 w-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                    <span>Kapat</span>
+                  </button>
+                )}
 
-                {/* Rezervasyon Silme Butonu */}
-                <button
-                  onClick={() => deleteReservation(selectedReservation.id)}
-                  className="w-full bg-red-700 text-white py-2 px-4 rounded hover:bg-red-800 flex justify-center items-center space-x-1"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-4 w-4"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
+              {/* Tehlikeli İşlemler - sadece geçmiş olmayan rezervasyonlar için */}
+              {!(
+                isReservationPast &&
+                isReservationPast(selectedReservation.startTime)
+              ) && (
+                <div className="border-t border-gray-200 pt-3 space-y-2">
+                  <button
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          "Bu rezervasyonu iptal etmek istediğinize emin misiniz?"
+                        )
+                      ) {
+                        const updatedReservation = {
+                          ...selectedReservation,
+                          status: "cancelled" as
+                            | "confirmed"
+                            | "pending"
+                            | "cancelled",
+                        };
+                        updateReservation(updatedReservation);
+                        closeRightSidebar();
+                      }
+                    }}
+                    className="w-full bg-red-500 text-white py-2 px-4 rounded hover:bg-red-600 flex justify-center items-center space-x-1"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                    />
-                  </svg>
-                  <span>Rezervasyonu Sil</span>
-                </button>
-              </div>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-4 w-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                    <span>Rezervasyonu İptal Et</span>
+                  </button>
+
+                  {/* Rezervasyon Silme Butonu */}
+                  <button
+                    onClick={() => deleteReservation(selectedReservation.id)}
+                    className="w-full bg-red-700 text-white py-2 px-4 rounded hover:bg-red-800 flex justify-center items-center space-x-1"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-4 w-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      />
+                    </svg>
+                    <span>Rezervasyonu Sil</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}

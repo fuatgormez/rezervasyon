@@ -74,6 +74,25 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
   // Son adım indexini tut (her adımda bir kez güncelleme için)
   const [lastStep, setLastStep] = useState<number>(0);
 
+  // Rezervasyonun geçmiş olup olmadığını kontrol et
+  const isPastReservation = isReservationPast
+    ? isReservationPast(reservation.startTime)
+    : false;
+
+  // Debug: Rezervasyon bilgilerini ve zaman hesaplamalarını yazdıralım
+  useEffect(() => {
+    if (isPastReservation) {
+      console.log(
+        `Geçmiş rezervasyon: ${reservation.id} - ${reservation.customerName} (${reservation.startTime})`
+      );
+    }
+  }, [
+    isPastReservation,
+    reservation.id,
+    reservation.customerName,
+    reservation.startTime,
+  ]);
+
   useEffect(() => {
     setLeftPx(parseInt(position.left));
     setWidthPx(parseInt(position.width));
@@ -111,6 +130,13 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
 
   // Sürüklemeye başladığında
   const handleDragStart = (e: DraggableEvent, data: DraggableData) => {
+    // Geçmiş rezervasyonların taşınmasını engelle
+    if (isPastReservation) {
+      e.stopPropagation();
+      e.preventDefault();
+      return false;
+    }
+
     e.stopPropagation();
     setIsDragging(true);
     setDraggedReservation({ ...reservation });
@@ -340,11 +366,28 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
 
   // Kartın stil ve renklerini hesapla
   const getCardStyle = () => {
-    // Eğer renk bilgisi geldiyse direkt onu kullan
-    const bgColor = reservationColor || reservation.color || categoryColor;
+    // Geçmiş rezervasyonlar her zaman siyah olmalı (Bu kontrol önemli)
+    if (isPastReservation) {
+      return {
+        backgroundColor: "#111827", // gray-900 - siyah
+        borderLeft: `4px solid ${categoryBorderColor}`,
+        color: "#FFFFFF", // Yazı rengini her zaman beyaz yap
+        opacity: 0.85, // Geçmiş rezervasyonları biraz soluk göster
+      };
+    }
 
+    // Eğer belirli bir renk belirlenmişse
+    if (reservationColor) {
+      return {
+        backgroundColor: reservationColor,
+        borderLeft: `4px solid ${categoryBorderColor}`,
+        color: "#FFFFFF", // Yazı rengini her zaman beyaz yap
+      };
+    }
+
+    // Varsayılan durumda kategori rengini kullan
     return {
-      backgroundColor: bgColor,
+      backgroundColor: reservation.color || categoryColor,
       borderLeft: `4px solid ${categoryBorderColor}`,
       color: "#FFFFFF", // Yazı rengini her zaman beyaz yap
     };
@@ -359,12 +402,17 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
       onStop={handleDragStop}
       position={{ x: 0, y: 0 }}
       grid={[cellWidth / 4, cellHeight]}
-      cancel=".resize-handle"
+      cancel={isPastReservation ? ".reservation-card" : ".resize-handle"}
+      disabled={isPastReservation} // Geçmiş rezervasyonların taşınmasını devre dışı bırak
     >
       <div
         id={`reservation-${reservation.id}`}
-        className={`absolute rounded-md pointer-events-auto flex items-center overflow-visible shadow-md hover:shadow-lg transition-all duration-200 ${
-          isDragging ? "cursor-grabbing z-50" : "cursor-grab z-5"
+        className={`absolute rounded-md pointer-events-auto flex items-center overflow-visible shadow-md hover:shadow-lg transition-all duration-200 reservation-card ${
+          isDragging
+            ? "cursor-grabbing z-50"
+            : isPastReservation
+            ? "cursor-pointer z-5"
+            : "cursor-grab z-5"
         }`}
         style={{
           left: resizeDir ? `${leftPx}px` : position.left,
@@ -373,11 +421,11 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
           height: `calc(${cellHeight}px - 2px)`,
           ...getCardStyle(),
           minWidth: "80px",
-          opacity: isDragging ? 0.85 : 1,
         }}
         data-reservation-id={reservation.id}
         data-table-id={reservation.tableId}
         data-time={`${reservation.startTime}-${reservation.endTime}`}
+        data-past={isPastReservation.toString()}
         onMouseEnter={() => {
           if (!isDragging) {
             onReservationHover(reservation);
@@ -391,24 +439,27 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
         onClick={(e) => {
           if (!isDragging) {
             e.stopPropagation();
+            // Her iki durumda da tıklamayı işle, sidebar'ı aç
             onReservationClick(reservation);
           }
         }}
       >
-        {/* Sol tutamaç - Genişletme işlemi için */}
-        <div
-          className="resize-handle absolute left-0 top-0 h-full w-4 cursor-ew-resize hover:bg-white hover:bg-opacity-20 z-10"
-          onMouseDown={(e) => {
-            e.stopPropagation();
-            setResizeDir("left");
-            setResizeStartX(e.clientX);
-            setResizeStartWidth(widthPx);
-            setResizeStartLeft(leftPx);
-            setResizeStartTime(reservation.startTime);
-            setResizeEndTime(reservation.endTime);
-            setDraggedReservation({ ...reservation });
-          }}
-        ></div>
+        {/* Sol tutamaç - Genişletme işlemi için - sadece geçmiş olmayan rezervasyonlarda göster */}
+        {!isPastReservation && (
+          <div
+            className="resize-handle absolute left-0 top-0 h-full w-4 cursor-ew-resize hover:bg-white hover:bg-opacity-20 z-10"
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              setResizeDir("left");
+              setResizeStartX(e.clientX);
+              setResizeStartWidth(widthPx);
+              setResizeStartLeft(leftPx);
+              setResizeStartTime(reservation.startTime);
+              setResizeEndTime(reservation.endTime);
+              setDraggedReservation({ ...reservation });
+            }}
+          ></div>
+        )}
 
         <div className="px-3 py-0 text-xs truncate max-w-full text-white h-full flex flex-col justify-center">
           {cellHeight < 50 ? (
@@ -434,6 +485,11 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
             <>
               <div className="font-semibold whitespace-nowrap overflow-hidden text-ellipsis text-white">
                 {reservation.customerName}
+                {isPastReservation && (
+                  <span className="ml-1 text-[10px] text-white bg-red-600 px-1 rounded-sm">
+                    Geçmiş
+                  </span>
+                )}
               </div>
               <div className="text-white text-[11px] flex items-center mt-1">
                 <span className="mr-1">
@@ -448,20 +504,22 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
           )}
         </div>
 
-        {/* Sağ tutamaç - Genişletme işlemi için */}
-        <div
-          className="resize-handle absolute right-0 top-0 h-full w-4 cursor-ew-resize hover:bg-white hover:bg-opacity-20 z-10"
-          onMouseDown={(e) => {
-            e.stopPropagation();
-            setResizeDir("right");
-            setResizeStartX(e.clientX);
-            setResizeStartWidth(widthPx);
-            setResizeStartLeft(leftPx);
-            setResizeStartTime(reservation.startTime);
-            setResizeEndTime(reservation.endTime);
-            setDraggedReservation({ ...reservation });
-          }}
-        ></div>
+        {/* Sağ tutamaç - Genişletme işlemi için - sadece geçmiş olmayan rezervasyonlarda göster */}
+        {!isPastReservation && (
+          <div
+            className="resize-handle absolute right-0 top-0 h-full w-4 cursor-ew-resize hover:bg-white hover:bg-opacity-20 z-10"
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              setResizeDir("right");
+              setResizeStartX(e.clientX);
+              setResizeStartWidth(widthPx);
+              setResizeStartLeft(leftPx);
+              setResizeStartTime(reservation.startTime);
+              setResizeEndTime(reservation.endTime);
+              setDraggedReservation({ ...reservation });
+            }}
+          ></div>
+        )}
       </div>
     </Draggable>
   );
