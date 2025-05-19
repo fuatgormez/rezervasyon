@@ -96,6 +96,39 @@ CREATE TABLE IF NOT EXISTS system_logs (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
 );
 
+-- Müşteriler tablosu
+CREATE TABLE IF NOT EXISTS customers (
+    id UUID PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255),
+    phone VARCHAR(20),
+    notes TEXT,
+    formitable_id VARCHAR(255),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
+    company_id BIGINT REFERENCES companies(id),
+    branch_id BIGINT REFERENCES branches(id)
+);
+
+-- Müşteri tablosunu oluşturmak için RPC fonksiyonu
+CREATE OR REPLACE FUNCTION create_customers_table()
+RETURNS void AS $$
+BEGIN
+  CREATE TABLE IF NOT EXISTS customers (
+    id UUID PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255),
+    phone VARCHAR(20),
+    notes TEXT,
+    formitable_id VARCHAR(255),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
+    company_id BIGINT,
+    branch_id BIGINT
+  );
+END;
+$$ LANGUAGE plpgsql;
+
 -- Trigger fonksiyonu - updated_at alanını güncellemek için
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
@@ -136,6 +169,11 @@ CREATE TRIGGER update_users_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
+CREATE TRIGGER update_customers_updated_at
+    BEFORE UPDATE ON customers
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
 -- RLS (Row Level Security) Politikaları
 ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tables ENABLE ROW LEVEL SECURITY;
@@ -145,6 +183,7 @@ ALTER TABLE branches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_roles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE system_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE customers ENABLE ROW LEVEL SECURITY;
 
 -- Herkes okuyabilir
 CREATE POLICY "Herkes kategorileri görebilir" ON categories
@@ -216,6 +255,22 @@ CREATE POLICY "Şube yöneticileri kendi verilerini görebilir" ON branches
             WHERE branch_id = branches.id AND role_id = (SELECT id FROM user_roles WHERE name = 'branch_admin')
         )
     );
+
+-- Yetkililer müşterileri görebilir
+CREATE POLICY "Yetkililer müşterileri görebilir" ON customers
+    FOR SELECT USING (auth.role() IS NOT NULL);
+
+-- Yetkililer müşteri ekleyebilir
+CREATE POLICY "Yetkililer müşteri ekleyebilir" ON customers
+    FOR INSERT WITH CHECK (auth.role() IS NOT NULL);
+
+-- Yetkililer müşteri düzenleyebilir
+CREATE POLICY "Yetkililer müşteri düzenleyebilir" ON customers
+    FOR UPDATE USING (auth.role() IS NOT NULL);
+
+-- Yetkililer müşteri silebilir
+CREATE POLICY "Yetkililer müşteri silebilir" ON customers
+    FOR DELETE USING (auth.role() IS NOT NULL);
 
 -- Örnek kategori verileri
 INSERT INTO categories (name, status) VALUES

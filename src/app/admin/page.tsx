@@ -1,8 +1,16 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useState, useEffect, useRef, useMemo } from "react";
-import { format, subDays, addDays } from "date-fns";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import {
+  format,
+  subDays,
+  addDays,
+  parse,
+  addMinutes,
+  isBefore,
+  isAfter,
+} from "date-fns";
 import { tr } from "date-fns/locale";
 import { BiSearch, BiArrowToRight, BiArrowToLeft } from "react-icons/bi";
 import { IoMdRefresh } from "react-icons/io";
@@ -17,6 +25,8 @@ import "react-resizable/css/styles.css";
 import DraggableReservationCard from "@/components/reservation/DraggableReservationCard";
 import { supabase } from "@/lib/supabase/client";
 import StaffAssignmentForm from "@/components/StaffAssignmentForm";
+import { db } from "@/lib/supabase/client";
+import { v4 as uuidv4 } from "uuid";
 
 // Bu componenti sadece tarayıcıda çalıştırılacak şekilde dinamik olarak import ediyoruz
 // SSG sırasında çalıştırılmaz
@@ -39,7 +49,7 @@ interface TableType {
   number: number;
   capacity: number;
   categoryId: string;
-  status: "available" | "unavailable" | "reserved";
+  status: "Available" | "Unavailable" | "Reserved";
 }
 
 // Rezervasyon türü arayüzü
@@ -1115,7 +1125,10 @@ function AdminPageComponent() {
       if (timeStr.includes(" ")) {
         return timeStr.split(" ")[1]; // "yyyy-MM-dd HH:mm" -> "HH:mm"
       } else if (timeStr.includes("T")) {
-        return timeStr.split("T")[1].substring(0, 5); // "yyyy-MM-ddTHH:mm:ss" -> "HH:mm"
+        // ISO formatını saat kısmına dönüştür
+        const timePart = timeStr.split("T")[1];
+        // Saniye ve milisaniye kısmını kaldır
+        return timePart.substring(0, 5); // "yyyy-MM-ddTHH:mm:ss" -> "HH:mm"
       }
       return timeStr; // Zaten saat formatındaysa olduğu gibi bırak
     };
@@ -1132,24 +1145,6 @@ function AdminPageComponent() {
     const timeOnly3 = extractTimeOnly(start2);
     const timeOnly4 = extractTimeOnly(end2);
 
-    // Tarih kısımlarını çıkar (farklı günlerin karşılaştırmasını önlemek için)
-    const date1 = start1.includes(" ")
-      ? start1.split(" ")[0]
-      : start1.includes("T")
-      ? start1.split("T")[0]
-      : null;
-    const date2 = start2.includes(" ")
-      ? start2.split(" ")[0]
-      : start2.includes("T")
-      ? start2.split("T")[0]
-      : null;
-
-    // Farklı günlerde çakışma olmamalı
-    if (date1 && date2 && date1 !== date2) {
-      console.log(`Farklı günler: ${date1} vs ${date2} - Çakışma yok`);
-      return false;
-    }
-
     // Sonra dakikaya çevir
     const start1Min = convertTimeToMinutes(timeOnly1);
     const end1Min = convertTimeToMinutes(timeOnly2);
@@ -1162,8 +1157,6 @@ function AdminPageComponent() {
 
     // Debug log ekleyelim
     console.log("Çakışma kontrolü:", {
-      date1,
-      date2,
       start1: timeOnly1,
       end1: timeOnly2,
       start2: timeOnly3,
@@ -1238,99 +1231,99 @@ function AdminPageComponent() {
         const defaultTables: TableType[] = [
           // TERAS kategorisindeki masalar
           {
-            id: "t1",
+            id: uuidv4(),
             number: 1,
             capacity: 2,
-            status: "available",
             categoryId: "1",
+            status: "Available",
           },
           {
-            id: "t2",
+            id: uuidv4(),
             number: 2,
             capacity: 4,
-            status: "available",
             categoryId: "1",
+            status: "Available",
           },
           {
-            id: "t3",
+            id: uuidv4(),
             number: 3,
             capacity: 6,
-            status: "available",
             categoryId: "1",
+            status: "Available",
           },
           {
-            id: "t4",
+            id: uuidv4(),
             number: 4,
             capacity: 8,
-            status: "available",
             categoryId: "1",
+            status: "Available",
           },
           {
-            id: "t5",
+            id: uuidv4(),
             number: 5,
             capacity: 2,
-            status: "available",
             categoryId: "1",
+            status: "Available",
           },
 
           // BAHÇE kategorisindeki masalar
           {
-            id: "b1",
+            id: uuidv4(),
             number: 6,
             capacity: 2,
-            status: "available",
             categoryId: "2",
+            status: "Available",
           },
           {
-            id: "b2",
+            id: uuidv4(),
             number: 7,
             capacity: 4,
-            status: "available",
             categoryId: "2",
+            status: "Available",
           },
           {
-            id: "b3",
+            id: uuidv4(),
             number: 8,
             capacity: 6,
-            status: "available",
             categoryId: "2",
+            status: "Available",
           },
           {
-            id: "b4",
+            id: uuidv4(),
             number: 9,
             capacity: 8,
-            status: "available",
             categoryId: "2",
+            status: "Available",
           },
 
           // İÇ SALON kategorisindeki masalar
           {
-            id: "i1",
+            id: uuidv4(),
             number: 10,
             capacity: 2,
-            status: "available",
             categoryId: "3",
+            status: "Available",
           },
           {
-            id: "i2",
+            id: uuidv4(),
             number: 11,
             capacity: 4,
-            status: "available",
             categoryId: "3",
+            status: "Available",
           },
           {
-            id: "i3",
+            id: uuidv4(),
             number: 12,
             capacity: 6,
-            status: "available",
             categoryId: "3",
+            status: "Available",
           },
           {
-            id: "i4",
+            id: uuidv4(),
             number: 13,
             capacity: 8,
-            status: "available",
             categoryId: "3",
+            status: "Available",
           },
         ];
 
@@ -1403,6 +1396,13 @@ function AdminPageComponent() {
     endTime: string,
     excludeReservationId?: string
   ): boolean => {
+    console.log("Çakışma kontrolü:", {
+      tableId,
+      startTime,
+      endTime,
+      excludeId: excludeReservationId,
+    });
+
     // Aynı masa için rezervasyonları filtrele (belirtilen rezervasyon hariç)
     const reservationsForTable = reservations.filter(
       (r) =>
@@ -1411,45 +1411,109 @@ function AdminPageComponent() {
     );
 
     if (reservationsForTable.length === 0) {
+      console.log("Masada hiç rezervasyon yok, çakışma kontrolüne gerek yok");
       return false; // Masada hiç rezervasyon yoksa, çakışma da yok
     }
 
-    // Kontrol edilen rezervasyonun tarihi
-    const currentDateStr = format(selectedDate, "yyyy-MM-dd");
+    // İşlem yapılan rezervasyon tarihini çıkart
+    const getDateFromTime = (timeStr: string): string => {
+      if (timeStr.includes(" ")) {
+        return timeStr.split(" ")[0]; // "yyyy-MM-dd HH:mm" -> "yyyy-MM-dd"
+      } else if (timeStr.includes("T")) {
+        return timeStr.split("T")[0]; // "yyyy-MM-ddTHH:mm:ss" -> "yyyy-MM-dd"
+      }
+      // Eğer tarih kısmı yoksa, aktif seçili tarihi kullan
+      return format(selectedDate, "yyyy-MM-dd");
+    };
 
-    // Başlangıç ve bitiş zamanlarını formatla (sadece saat bilgisi varsa tarih ekle)
-    const formattedStartTime = startTime.includes(" ")
-      ? startTime
-      : `${currentDateStr} ${startTime}`;
-
-    const formattedEndTime = endTime.includes(" ")
-      ? endTime
-      : `${currentDateStr} ${endTime}`;
+    // Çakışma kontrolü yapılacak rezervasyonun tarih bilgisi
+    const checkDate = getDateFromTime(startTime);
+    console.log("Kontrol edilen tarih:", checkDate);
 
     // Çakışma kontrolü
-    return reservationsForTable.some((r) => {
+    const hasConflict = reservationsForTable.some((r) => {
       // Rezervasyonun tarihini kontrol et
-      const reservationDateStr = r.startTime.includes(" ")
-        ? r.startTime.split(" ")[0]
-        : currentDateStr;
+      const reservationDate = getDateFromTime(r.startTime);
+      console.log(`Rezervasyon (${r.id}) tarihi:`, reservationDate);
 
-      // Sadece aynı gün için kontrol et
-      if (reservationDateStr === currentDateStr) {
-        // Bu durumda hasTimeOverlap fonksiyonunu kullanabiliriz
-        return hasTimeOverlap(
-          formattedStartTime,
-          formattedEndTime,
-          r.startTime,
-          r.endTime
+      // Farklı günlerde çakışma olmaz
+      if (reservationDate !== checkDate) {
+        console.log(
+          `Farklı günler: işlem yapılan=${checkDate}, mevcut=${reservationDate} - çakışma yok`
+        );
+        return false;
+      }
+
+      // Aynı gün içinde çakışma kontrolü
+      const hasOverlap = hasTimeOverlap(
+        startTime,
+        endTime,
+        r.startTime,
+        r.endTime
+      );
+
+      if (hasOverlap) {
+        console.log(
+          `ÇAKIŞMA BULUNDU: ${r.id} (${r.customerName}) - ${r.startTime} ile ${r.endTime} arasında`
         );
       }
 
-      return false;
+      return hasOverlap;
     });
+
+    return hasConflict;
   };
 
-  // Rezervasyonu güncelleme fonksiyonu - Geliştirilmiş güvenlik ve doğruluk
-  const updateReservation = (updatedReservation: ReservationType) => {
+  // Tarih saat standart formata çevirme yardımcı fonksiyonu
+  const standardizeDateTime = (
+    dateTimeStr: string,
+    selectedDate: Date
+  ): string => {
+    console.log("Standardize ediliyor:", dateTimeStr);
+
+    // Sadece saat formatı ise (HH:MM veya HH:MM:SS)
+    if (!dateTimeStr.includes(" ") && !dateTimeStr.includes("T")) {
+      const formattedDate = format(selectedDate, "yyyy-MM-dd");
+      const result = `${formattedDate}T${dateTimeStr.substring(0, 5)}:00`;
+      console.log("Saat formatından ISO'ya:", result);
+      return result;
+    }
+
+    // "yyyy-MM-dd HH:MM" formatı ise
+    if (dateTimeStr.includes(" ")) {
+      const [datePart, timePart] = dateTimeStr.split(" ");
+      const result = `${datePart}T${timePart.substring(0, 5)}:00`;
+      console.log("Boşluklu formattan ISO'ya:", result);
+      return result;
+    }
+
+    // Zaten ISO formatında ise (ama belki Z'siz veya milisaniyesiz)
+    if (dateTimeStr.includes("T")) {
+      // Z kısmını kaldır
+      const withoutZ = dateTimeStr.split("Z")[0];
+      // Sadece ilk 19 karakteri al (yyyy-MM-ddTHH:mm:ss) - milisaniyeleri kaldır
+      const sanitized = withoutZ.substring(0, 19);
+
+      // Eğer eksik karakterler varsa tamamla
+      if (sanitized.length < 19) {
+        if (sanitized.length === 16) {
+          // yyyy-MM-ddTHH:mm
+          const result = `${sanitized}:00`;
+          console.log("Eksik saniyeli ISO'yu tamamlama:", result);
+          return result;
+        }
+      }
+
+      console.log("Zaten ISO formatında:", sanitized);
+      return sanitized;
+    }
+
+    // Bilinmeyen format, olduğu gibi döndür
+    console.warn("Bilinmeyen tarih formatı:", dateTimeStr);
+    return dateTimeStr;
+  };
+
+  const updateReservation = async (updatedReservation: ReservationType) => {
     try {
       console.log("Rezervasyonu güncelleme başladı:", updatedReservation);
       console.log(
@@ -1468,6 +1532,8 @@ function AdminPageComponent() {
         bitişSaati: updatedReservation.endTime,
         tarih: updatedReservation.startTime.includes(" ")
           ? updatedReservation.startTime.split(" ")[0]
+          : updatedReservation.startTime.includes("T")
+          ? updatedReservation.startTime.split("T")[0]
           : "belirsiz",
       });
 
@@ -1488,26 +1554,18 @@ function AdminPageComponent() {
       const formattedDate = format(selectedDate, "yyyy-MM-dd");
       console.log(`Rezervasyon için tarih: ${formattedDate}`);
 
-      // Başlangıç ve bitiş saati format düzeltmesi - gece yarısı sorununu önlemek için
-      // Eğer sadece saat formatındaysa, tarih ekleyerek standartlaştırma
-      if (
-        !updatedReservation.startTime.includes(" ") &&
-        !updatedReservation.startTime.includes("T")
-      ) {
-        updatedReservation.startTime = `${formattedDate} ${updatedReservation.startTime}`;
-        console.log(
-          "Düzeltilmiş başlangıç saati:",
-          updatedReservation.startTime
-        );
-      }
+      // Başlangıç ve bitiş saatlerini standarize et (ISO formatı)
+      updatedReservation.startTime = standardizeDateTime(
+        updatedReservation.startTime,
+        selectedDate
+      );
+      updatedReservation.endTime = standardizeDateTime(
+        updatedReservation.endTime,
+        selectedDate
+      );
 
-      if (
-        !updatedReservation.endTime.includes(" ") &&
-        !updatedReservation.endTime.includes("T")
-      ) {
-        updatedReservation.endTime = `${formattedDate} ${updatedReservation.endTime}`;
-        console.log("Düzeltilmiş bitiş saati:", updatedReservation.endTime);
-      }
+      console.log("Standart başlangıç saati:", updatedReservation.startTime);
+      console.log("Standart bitiş saati:", updatedReservation.endTime);
 
       if (isNewReservation) {
         // Yeni rezervasyon eklendiğinde
@@ -1520,10 +1578,32 @@ function AdminPageComponent() {
           return;
         }
 
-        // Yeni ID oluştur
+        // Benzersiz ID oluştur
         const newId = `res-${Date.now()}`;
 
-        // Yeni rezervasyon objesi - id yeni olmalı
+        // Supabase için rezervasyon verilerini hazırla
+        const reservationData = {
+          id: newId,
+          table_id: updatedReservation.tableId,
+          customer_name: updatedReservation.customerName,
+          guest_count: updatedReservation.guestCount,
+          start_time: updatedReservation.startTime,
+          end_time: updatedReservation.endTime,
+          status: updatedReservation.status as
+            | "confirmed"
+            | "pending"
+            | "cancelled"
+            | "completed",
+          note: updatedReservation.note,
+          color: updatedReservation.color,
+        };
+
+        // Supabase'e kaydet ve yanıtı al
+        const newReservationResponse = await db.reservations.create(
+          reservationData as any
+        );
+
+        // Yeni rezervasyon objesi - oluşturduğumuz ID ile
         const newReservation = {
           ...updatedReservation,
           id: newId,
@@ -1532,7 +1612,11 @@ function AdminPageComponent() {
         console.log("Yeni rezervasyon oluşturuldu:", newReservation);
         console.log(
           `Oluşturulan rezervasyon tarihi: ${
-            newReservation.startTime.split(" ")[0]
+            newReservation.startTime.includes(" ")
+              ? newReservation.startTime.split(" ")[0]
+              : newReservation.startTime.includes("T")
+              ? newReservation.startTime.split("T")[0]
+              : "belirsiz"
           }, Seçilen tarih: ${format(selectedDate, "yyyy-MM-dd")}`
         );
 
@@ -1566,26 +1650,9 @@ function AdminPageComponent() {
         // Yeni eklenen rezervasyon ID'sini referansa ata (animasyon için)
         newReservationRef.current = newId;
 
-        // Tüm rezervasyonları localStorage'dan al
-        const allStoredReservations = JSON.parse(
-          localStorage.getItem("reservations") || "[]"
-        );
-
-        // Yeni rezervasyonu tüm rezervasyonlara ekle
-        const allUpdatedReservations = [
-          ...allStoredReservations,
-          newReservation,
-        ];
-
         // Ekranda görünen rezervasyonları güncelle (sadece seçilen güne ait olanları)
         const updatedReservations = [...reservations, newReservation];
         setReservations(updatedReservations);
-
-        // Tümünü localStorage'a kaydet (tüm günleri içerecek şekilde)
-        localStorage.setItem(
-          "reservations",
-          JSON.stringify(allUpdatedReservations)
-        );
 
         // Başarı mesajı göster ve sidebar'ı kapat
         toast.success("Yeni rezervasyon başarıyla eklendi!");
@@ -1744,20 +1811,24 @@ function AdminPageComponent() {
           }
         }
 
-        // Tüm rezervasyonları localStorage'dan al
-        const allStoredReservations = JSON.parse(
-          localStorage.getItem("reservations") || "[]"
-        );
+        // Supabase için rezervasyon verilerini hazırla
+        const reservationData = {
+          table_id: updatedReservation.tableId,
+          customer_name: updatedReservation.customerName,
+          guest_count: updatedReservation.guestCount,
+          start_time: updatedReservation.startTime,
+          end_time: updatedReservation.endTime,
+          status: updatedReservation.status as
+            | "confirmed"
+            | "pending"
+            | "cancelled"
+            | "completed", // Supabase'e uygun format
+          note: updatedReservation.note,
+          color: updatedReservation.color,
+        };
 
-        // Güncellenmiş tüm rezervasyonları oluştur (mevcut görüntülenenler + localStorage'dakiler)
-        const allUpdatedReservations = allStoredReservations.map(
-          (res: ReservationType) => {
-            if (res.id === updatedReservation.id) {
-              return updatedReservation;
-            }
-            return res;
-          }
-        );
+        // Supabase'de güncelle
+        await db.reservations.update(updatedReservation.id, reservationData);
 
         // Ekranda görünen rezervasyonları güncelle (sadece seçilen güne ait olanları)
         const updatedReservations = reservations.map((res) => {
@@ -1768,12 +1839,6 @@ function AdminPageComponent() {
         });
 
         setReservations(updatedReservations);
-
-        // Tümünü localStorage'a kaydet (tüm günleri içerecek şekilde)
-        localStorage.setItem(
-          "reservations",
-          JSON.stringify(allUpdatedReservations)
-        );
 
         // Başarı mesajı göster ve sidebar'ı kapat
         toast.success("Rezervasyon başarıyla güncellendi!");
@@ -1786,7 +1851,7 @@ function AdminPageComponent() {
   };
 
   // Rezervasyonu silme fonksiyonu
-  const deleteReservation = (reservationId: string) => {
+  const deleteReservation = async (reservationId: string) => {
     try {
       console.log("Rezervasyon silme başladı:", reservationId);
 
@@ -1817,28 +1882,15 @@ function AdminPageComponent() {
         return;
       }
 
+      // Supabase'den rezervasyonu sil
+      await db.reservations.delete(reservationId);
+
       // Ekrandaki rezervasyonları güncelle (görünür olanları)
       const updatedReservations = reservations.filter(
         (res) => res.id !== reservationId
       );
 
       setReservations(updatedReservations);
-
-      // Tüm günlerdeki rezervasyonları localStorage'dan al
-      const allStoredReservations = JSON.parse(
-        localStorage.getItem("reservations") || "[]"
-      );
-
-      // localStorage için tüm günlerden ID'si eşleşeni çıkart
-      const allUpdatedReservations = allStoredReservations.filter(
-        (res: ReservationType) => res.id !== reservationId
-      );
-
-      // localStorage'a kaydet (tüm günleri içerecek şekilde)
-      localStorage.setItem(
-        "reservations",
-        JSON.stringify(allUpdatedReservations)
-      );
 
       // Bildirim göster
       toast.success("Rezervasyon başarıyla silindi!");
@@ -2029,7 +2081,7 @@ function AdminPageComponent() {
   };
 
   // Tarihe göre rezervasyonları filtrele
-  const filterReservationsByDate = (date: Date) => {
+  const filterReservationsByDate = async (date: Date) => {
     // Seçilen tarihi güncelle
     setSelectedDate(date);
 
@@ -2037,66 +2089,62 @@ function AdminPageComponent() {
     const formattedDate = format(date, "yyyy-MM-dd");
 
     try {
-      // Tüm rezervasyonları burada saklıyoruz
-      const allReservations = JSON.parse(
-        localStorage.getItem("reservations") || "[]"
+      // Supabase API üzerinden rezervasyonları getir
+      setIsLoading(true); // Yükleme durumunu göster
+
+      // startTime ile endTime aralığını belirle
+      const startDate = `${formattedDate}T00:00:00`;
+      const endDate = `${formattedDate}T23:59:59`;
+
+      console.log(
+        `FİLTRELEME İŞLEMİ: ${formattedDate} tarihli rezervasyonlar aranıyor...`
+      );
+
+      // Supabase'den rezervasyonları al
+      const reservationsFromDB = await db.reservations.getByDateRange(
+        startDate,
+        endDate
       );
 
       console.log(
-        `FİLTRELEME İŞLEMİ: ${format(
-          date,
-          "yyyy-MM-dd"
-        )} tarihli rezervasyonlar aranıyor...`
+        `Veritabanından ${reservationsFromDB.length} rezervasyon alındı`
       );
 
-      // Hata ayıklama için tüm rezervasyonları göster
+      // Supabase'den gelen rezervasyonları lokal formata dönüştür
+      const formattedReservations = reservationsFromDB.map((dbRes: any) => ({
+        id: dbRes.id,
+        tableId: dbRes.table_id,
+        customerName: dbRes.customer_name,
+        guestCount: dbRes.guest_count,
+        startTime: dbRes.start_time,
+        endTime: dbRes.end_time,
+        status:
+          dbRes.status === "completed"
+            ? "confirmed"
+            : (dbRes.status as "confirmed" | "pending" | "cancelled"),
+        note: dbRes.note,
+        color: dbRes.color,
+        staffIds: [], // Varsayılan boş dizi
+      }));
+
+      // Hata ayıklama için alınan rezervasyonları göster
       console.log(
-        "Tüm rezervasyonlar:",
-        allReservations.map((r: ReservationType) => ({
+        "Veritabanından alınan rezervasyonlar:",
+        formattedReservations.map((r: ReservationType) => ({
           id: r.id,
           tarih: r.startTime,
           masa: r.tableId,
         }))
       );
 
+      // Yükleme durumunu kapat
+      setIsLoading(false);
+
       // Aktif formları temizle - tarih değiştiğinde devam eden formlar silinmeli
       setActiveForms([]);
 
-      // Seçilen tarihe göre filtreleme yap - farklı formatları dikkate al
-      const filteredReservations = allReservations.filter(
-        (reservation: ReservationType) => {
-          // Rezervasyon tarihini al (startTime farklı formatlarda olabilir)
-          let reservationDate = "";
-
-          if (reservation.startTime?.includes(" ")) {
-            // "yyyy-MM-dd HH:mm" formatı
-            reservationDate = reservation.startTime.split(" ")[0];
-          } else if (reservation.startTime?.includes("T")) {
-            // "yyyy-MM-ddTHH:mm" formatı
-            reservationDate = reservation.startTime.split("T")[0];
-          } else {
-            // Sadece saat formatı (HH:mm) - bu durumda tarih belirtilmemiş,
-            // bu tür rezervasyonları göz ardı et
-            console.log(
-              `Tarihsiz rezervasyon: ${reservation.id} - ${reservation.startTime}`
-            );
-            return false;
-          }
-
-          console.log(
-            `Rezervasyon tarih kontrolü: ${reservation.id} - ${reservationDate} vs ${formattedDate}`
-          );
-          return reservationDate === formattedDate;
-        }
-      );
-
-      console.log(
-        `${formattedDate} tarihli rezervasyonlar:`,
-        filteredReservations
-      );
-
       // Filtrelenmiş rezervasyonları güncelle
-      setReservations(filteredReservations);
+      setReservations(formattedReservations);
 
       // Gün değiştiğinde masa seçimlerini temizle
       clearTableSelection();
@@ -3117,6 +3165,78 @@ function AdminPageComponent() {
 
     return { intersects: false, position: null };
   };
+
+  // Loading state
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Sayfa yüklendiğinde veya tarayıcı yeniden boyutlandığında tablo ve rezervasyonları yükle
+  useEffect(() => {
+    // Tarayıcı tarafında çalışıyor muyuz kontrol et
+    if (typeof window !== "undefined") {
+      // Sayfa yüklendiğinde bugünün verilerini getir
+      const today = new Date();
+      filterReservationsByDate(today);
+
+      // Tabloları yükle
+      loadTables();
+
+      // Event listener'ları ekle - burada handleResize fonksiyonu
+      // daha önceden tanımlanmış olduğundan onu kullanıyoruz
+      const handleWindowResize = () => {
+        // Direkt olarak gerekli işlemler yapılabilir
+        if (gridContainerRef.current) {
+          // İçeriğin boyutları ve görünüm alanına göre gerekli düzenlemeler
+          const gridContainer = gridContainerRef.current;
+          const gridContent = gridContainer.querySelector("div");
+
+          if (gridContent) {
+            // Görünüm alanı boyutları
+            const viewportWidth = gridContainer.clientWidth;
+
+            // Güncel saat pozisyonunu hesapla
+            const now = new Date();
+            const formattedTime = format(now, "HH:mm");
+
+            // Zamanın hangi hücrede olduğunu bul
+            const hourPart = parseInt(formattedTime.split(":")[0]);
+            const minutePart = parseInt(formattedTime.split(":")[1]);
+
+            // Saat indeksi hesapla
+            let hourIndex = -1;
+            if (hourPart >= 7 && hourPart <= 23) {
+              hourIndex = hourPart - 7;
+            } else if (hourPart >= 0 && hourPart <= 2) {
+              hourIndex = 24 - 7 + hourPart; // Gece yarısı sonrası için
+            }
+
+            if (hourIndex >= 0) {
+              // Saat pozisyonunu hesapla
+              const position =
+                hourIndex * cellWidth + (minutePart / 60) * cellWidth;
+              // Scroll pozisyonunu ayarla
+              const leftPosition = CATEGORY_WIDTH + position;
+              const scrollPosition = leftPosition - viewportWidth / 2;
+
+              // Scroll yap
+              gridContainer.scrollLeft = Math.max(0, scrollPosition);
+            }
+          }
+        }
+      };
+
+      window.addEventListener("resize", handleWindowResize);
+
+      // Component unmount olduğunda event listener'ları kaldır
+      return () => {
+        window.removeEventListener("resize", handleWindowResize);
+
+        // Zamanlayıcıları temizle
+        if (hoverTimeoutRef.current) {
+          clearTimeout(hoverTimeoutRef.current);
+        }
+      };
+    }
+  }, []);
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-gray-50 text-gray-800">

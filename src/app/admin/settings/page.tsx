@@ -149,7 +149,7 @@ export default function SettingsPage() {
         number: tablesList.list.length + 1,
         capacity: 4,
         category_id: tableSettings.categories[0]?.id || "1",
-        status: "available",
+        status: "Available",
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };

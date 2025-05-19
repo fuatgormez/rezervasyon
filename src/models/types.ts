@@ -79,7 +79,7 @@ export interface TableType {
   id: string;
   number: number;
   capacity: number;
-  status: "available" | "unavailable" | "reserved";
+  status: "Available" | "Unavailable" | "Reserved";
   categoryId?: string;
 }
 

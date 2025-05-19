@@ -20,6 +20,12 @@ export class SupabaseService {
     try {
       console.log("Rezervasyon oluşturuluyor:", reservation);
 
+      // Benzersiz ID oluştur
+      const reservationId = `res-${Date.now()}-${Math.floor(
+        Math.random() * 1000
+      )}`;
+      console.log("Oluşturulan rezervasyon ID'si:", reservationId);
+
       // Eğer start_time verilmemişse date ve time'dan oluştur
       if (!reservation.start_time && reservation.date && reservation.time) {
         // Tarih ve saat bilgisini ISO formatında birleştir - Z eklemeden (yerel saat)
@@ -32,24 +38,48 @@ export class SupabaseService {
 
       // Eğer end_time verilmemişse start_time + 2 saat olarak ayarla
       if (!reservation.end_time && reservation.start_time) {
-        const startDate = new Date(reservation.start_time);
+        // Tarih-saat parse işlemi
+        let startDate = new Date(reservation.start_time);
+
+        // JavaScript normalde UTC'ye dönüştürür, ama biz yerel saat dilimini korumak istiyoruz
+        // startDate değerini yerel tarih olarak alın
         const endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000);
 
         // ISO formatında end_time oluştur (Z olmadan)
         const localISOString = endDate.toISOString().split("Z")[0];
         reservation.end_time = localISOString;
+
+        console.log("Oluşturulan başlangıç zamanı:", reservation.start_time);
+        console.log("Oluşturulan bitiş zamanı:", reservation.end_time);
+      }
+
+      // Eğer tarih değeri açık bir şekilde belirtilmediyse ve start_time varsa, start_time'dan çıkart
+      if (!reservation.date && reservation.start_time) {
+        reservation.date = reservation.start_time.split("T")[0];
+        console.log("Start_time'dan çıkartılan tarih:", reservation.date);
+      }
+
+      // Eğer saat değeri açık bir şekilde belirtilmediyse ve start_time varsa, start_time'dan çıkart
+      if (!reservation.time && reservation.start_time) {
+        const timePart = reservation.start_time.includes("T")
+          ? reservation.start_time.split("T")[1]
+          : reservation.start_time;
+
+        reservation.time = timePart.substring(0, 5); // HH:MM formatı
+        console.log("Start_time'dan çıkartılan saat:", reservation.time);
       }
 
       // Supabase rezervasyon işlemlerini kullan
       try {
         const result = await db.reservations.create({
+          id: reservationId, // Önceden oluşturulan ID kullan
           table_id: reservation.table_id,
           customer_name: reservation.customer_name,
           customer_phone: reservation.phone,
           customer_email: reservation.email,
           guest_count: reservation.guest_count,
-          start_time: reservation.start_time || new Date().toISOString(),
-          end_time: reservation.end_time || new Date().toISOString(),
+          start_time: reservation.start_time,
+          end_time: reservation.end_time,
           status: reservation.status,
           note: reservation.notes,
           created_by: reservation.user_id,
@@ -57,6 +87,8 @@ export class SupabaseService {
           branch_id: reservation.branch_id,
           color: reservation.color,
         });
+
+        console.log("Rezervasyon başarıyla oluşturuldu:", result);
 
         return {
           ...result,
@@ -181,6 +213,8 @@ export class SupabaseService {
     updates: Partial<Reservation>
   ): Promise<Reservation | null> {
     try {
+      console.log("Rezervasyon güncelleniyor:", { id, updates });
+
       // Eğer start_time yoksa date ve time kullanarak oluştur
       if (!updates.start_time && updates.date && updates.time) {
         // Tarih ve saat bilgisini direkt string olarak birleştirerek ISO formatında oluştur
@@ -191,59 +225,15 @@ export class SupabaseService {
 
       // Eğer end_time verilmemişse ve start_time varsa start_time + 2 saat olarak ayarla
       if (!updates.end_time && updates.start_time) {
-        let startDate;
+        // Start_time'ı parse et ve 2 saat ekle
+        const startDate = new Date(updates.start_time);
+        const endDate = new Date(startDate.getTime() + 2 * 60 * 60 * 1000);
 
-        // start_time'ı parse et
-        if (updates.start_time.includes("T")) {
-          const [datePart, timePart] = updates.start_time.split("T");
-          const [year, month, day] = datePart.split("-").map(Number);
-          const [hours, minutes, seconds] = timePart.split(":").map(Number);
+        // ISO formatında end_time oluştur (Z olmadan)
+        const localISOString = endDate.toISOString().split("Z")[0];
+        updates.end_time = localISOString;
 
-          // Ay değeri 0-11 arası, diğerleri olduğu gibi
-          startDate = new Date(
-            year,
-            month - 1,
-            day,
-            hours,
-            minutes,
-            seconds || 0
-          );
-        } else if (updates.start_time.includes(" ")) {
-          // Eğer "yyyy-MM-dd HH:mm:ss" formatındaysa
-          const [datePart, timePart] = updates.start_time.split(" ");
-          const [year, month, day] = datePart.split("-").map(Number);
-          const [hours, minutes, seconds] = timePart.split(":").map(Number);
-
-          startDate = new Date(
-            year,
-            month - 1,
-            day,
-            hours,
-            minutes,
-            seconds || 0
-          );
-        } else {
-          // Sadece saat formatındaysa, bugünün tarihini kullan
-          const [hours, minutes, seconds] = updates.start_time
-            .split(":")
-            .map(Number);
-          startDate = new Date();
-          startDate.setHours(hours, minutes, seconds || 0);
-        }
-
-        // 2 saat ekle
-        startDate.setHours(startDate.getHours() + 2);
-
-        // Yerel saat diliminde saklayacak şekilde string formatında dönüştür (ISO formatı, Z olmadan)
-        const endYear = startDate.getFullYear();
-        const endMonth = String(startDate.getMonth() + 1).padStart(2, "0");
-        const endDay = String(startDate.getDate()).padStart(2, "0");
-        const endHours = String(startDate.getHours()).padStart(2, "0");
-        const endMinutes = String(startDate.getMinutes()).padStart(2, "0");
-        const endSeconds = String(startDate.getSeconds()).padStart(2, "0");
-
-        updates.end_time = `${endYear}-${endMonth}-${endDay}T${endHours}:${endMinutes}:${endSeconds}`;
-        console.log("Güncellenen end_time:", updates.end_time);
+        console.log("Güncellenen bitiş zamanı:", updates.end_time);
       }
 
       // Supabase veri yapısına dönüştür
@@ -261,7 +251,10 @@ export class SupabaseService {
         table_id: updates.table_id,
       };
 
+      console.log("Supabase güncelleme verileri:", supabaseUpdates);
+
       const data = await db.reservations.update(id, supabaseUpdates);
+      console.log("Güncellenen rezervasyon:", data);
 
       return {
         ...data,

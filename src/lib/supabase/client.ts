@@ -20,11 +20,11 @@ export interface TableCategory {
 }
 
 export interface Table {
-  id: string;
+  id: number;
   number: number;
   capacity: number;
   category_id: string;
-  status: "available" | "unavailable" | "reserved";
+  status: "active" | "inactive";
   created_at: string;
   updated_at: string;
 }
@@ -55,6 +55,19 @@ export interface Staff {
   position: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface Customer {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  notes?: string;
+  formitable_id?: string;
+  company_id?: string;
+  branch_id?: string;
+  created_at: string;
+  updated_at?: string;
 }
 
 // Veritabanı işlemleri
@@ -242,12 +255,31 @@ export const db = {
       endTime: string,
       excludeId?: string
     ) {
+      console.log("Çakışma kontrolü:", {
+        tableId,
+        startTime,
+        endTime,
+        excludeId,
+      });
+
+      // Tarih/saat formatını standarlaştır
+      // ISO formatına çevrildiğinden emin ol, Z (UTC) olmadan
+      const standardizedStartTime = new Date(startTime)
+        .toISOString()
+        .split("Z")[0];
+      const standardizedEndTime = new Date(endTime).toISOString().split("Z")[0];
+
+      console.log("Standardize edilmiş zamanlar:", {
+        standardizedStartTime,
+        standardizedEndTime,
+      });
+
       let query = supabase
         .from("reservations")
         .select("*")
         .eq("table_id", tableId)
-        .filter("start_time", "lt", endTime)
-        .filter("end_time", "gt", startTime);
+        .filter("start_time", "lt", standardizedEndTime)
+        .filter("end_time", "gt", standardizedStartTime);
 
       if (excludeId) {
         query = query.neq("id", excludeId);
@@ -255,7 +287,18 @@ export const db = {
 
       const { data, error } = await query;
 
-      if (error) throw error;
+      if (error) {
+        console.error("Çakışma kontrol hatası:", error);
+        throw error;
+      }
+
+      // Bulunan çakışmaları logla
+      if (data && data.length > 0) {
+        console.log(`${data.length} çakışma bulundu:`, data);
+      } else {
+        console.log("Çakışma bulunamadı");
+      }
+
       return (data as Reservation[]).length > 0;
     },
 
@@ -268,6 +311,72 @@ export const db = {
       paymentStatus: Reservation["payment_status"]
     ) {
       return this.update(id, { payment_status: paymentStatus });
+    },
+  },
+
+  // Müşteri işlemleri
+  customers: {
+    async getAll() {
+      const { data, error } = await supabase
+        .from("customers")
+        .select("*")
+        .order("name", { ascending: true });
+
+      if (error) throw error;
+      return data as Customer[];
+    },
+
+    async getById(id: string) {
+      const { data, error } = await supabase
+        .from("customers")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+      if (error) throw error;
+      return data as Customer;
+    },
+
+    async create(customer: Omit<Customer, "id" | "created_at" | "updated_at">) {
+      const { data, error } = await supabase
+        .from("customers")
+        .insert([customer])
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data as Customer;
+    },
+
+    async update(id: string, customer: Partial<Customer>) {
+      const { data, error } = await supabase
+        .from("customers")
+        .update(customer)
+        .eq("id", id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data as Customer;
+    },
+
+    async delete(id: string) {
+      const { error } = await supabase.from("customers").delete().eq("id", id);
+
+      if (error) throw error;
+    },
+
+    async search(query: string) {
+      const { data, error } = await supabase
+        .from("customers")
+        .select("*")
+        .or(
+          `name.ilike.%${query}%,email.ilike.%${query}%,phone.ilike.%${query}%`
+        )
+        .order("name", { ascending: true });
+
+      if (error) throw error;
+      return data as Customer[];
     },
   },
 
