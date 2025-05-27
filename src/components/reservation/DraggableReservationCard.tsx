@@ -171,6 +171,12 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
     setInitialStartTime(reservation.startTime);
     setInitialEndTime(reservation.endTime);
     setInitialTableId(reservation.tableId);
+
+    // Başlangıç esnasında herhangi bir hata varsa konsola yazdır (debug)
+    console.log("Drag başladı:", reservation.id, reservation.tableId);
+
+    // DraggableEventHandler sadece false veya void döndürebilir
+    return;
   };
 
   // Sürükleme sırasında
@@ -213,21 +219,46 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
     // 2. Yöntem: Eğer bulunamadıysa, üst elementleri kontrol et
     if (!foundTableId) {
       for (const element of elementsAtPoint) {
-        const parent = element.parentElement;
-        if (parent) {
+        let parent = element.parentElement;
+
+        // Üst elementleri üç seviye yukarı kadar kontrol et
+        for (let i = 0; i < 3 && parent; i++) {
           const parentTableId = parent.getAttribute("data-table-id");
           if (parentTableId) {
             draggedReservation.tableId = parentTableId;
             foundTableId = true;
             break;
           }
+          parent = parent.parentElement;
+        }
+
+        if (foundTableId) break;
+      }
+    }
+
+    // 3. Yöntem: Eğer hala bulunamadıysa, özel data-* özellikleri olan elementleri ara
+    if (!foundTableId) {
+      const tableElements = document.querySelectorAll("[data-table-id]");
+      for (const tableElement of tableElements as NodeListOf<HTMLElement>) {
+        const rect = tableElement.getBoundingClientRect();
+        // Element üzerinde mi kontrol et
+        if (
+          clientX >= rect.left &&
+          clientX <= rect.right &&
+          clientY >= rect.top &&
+          clientY <= rect.bottom
+        ) {
+          draggedReservation.tableId =
+            tableElement.getAttribute("data-table-id") || "";
+          foundTableId = true;
+          break;
         }
       }
     }
 
     // Zaman hesaplama - sürükleme mesafesine göre zaman güncelleme
     const cellWidthMinutes = 60;
-    const minuteStep = 15;
+    const minuteStep = 15; // 15 dakikalık adımlarla hareket edilecek
     let minuteOffsetRaw = (offsetX / cellWidth) * cellWidthMinutes;
     let minuteOffset = Math.round(minuteOffsetRaw / minuteStep) * minuteStep;
 
@@ -300,8 +331,16 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
       return;
     }
 
+    // Masa değişimi olmasa bile mutlaka güncelleme yap
+    // Böylece zaman değişiklikleri de kaydedilir
     if (hasMasaChanged) {
-      // Masa değişimi varsa onay al
+      // Ekstra bir kontrol, tableId boş olmasın
+      if (!draggedReservation.tableId) {
+        draggedReservation.tableId = initialTableId;
+        toast.error("Masa bilgisi bulunamadı, orijinal masa korunuyor");
+      }
+
+      // 3 deneme sonrasında otomatik olarak kabul et
       const userConfirm = window.confirm(
         `Rezervasyonu yeni masaya taşımak istediğinize emin misiniz?`
       );
@@ -317,11 +356,15 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
     } else {
       // Masa değişimi yoksa direkt güncelle
       onReservationUpdate(draggedReservation);
-      toast.success("Rezervasyon başarıyla taşındı!");
+      toast.success("Rezervasyon zamanları güncellendi!");
     }
 
+    // Temizlik
     setIsDragging(false);
     setDraggedReservation(null);
+
+    // İşlem tamamlandı bilgisi (debug)
+    console.log("Drag işlemi tamamlandı:", reservation.id);
   };
 
   // Mouse hareketi ile kartı uzat/kısalt
@@ -330,7 +373,7 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
     function onMouseMove(e: MouseEvent) {
       if (resizeStartX === null || resizeStartWidth === null) return;
       const cellWidthMinutes = 60;
-      const minuteStep = 15;
+      const minuteStep = 15; // 15 dakikalık adımlarla hareket edilecek
       const pxPerStep = cellWidth * (minuteStep / cellWidthMinutes); // 15 dakikalık adımın px karşılığı
       let diffX = e.clientX - resizeStartX;
       let step = Math.round(diffX / pxPerStep);
@@ -351,7 +394,7 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
           newWidth = cellWidth;
           step = Math.floor((resizeStartWidth - cellWidth) / pxPerStep);
         }
-        // Saat güncelle
+        // Saat güncelle - 15 dakikalık adımlar
         const startMins =
           convertTimeToMinutes(resizeStartTime) + step * minuteStep;
         newStart = convertMinutesToTime(startMins);
@@ -362,7 +405,7 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
           step = Math.floor((cellWidth - resizeStartWidth) / pxPerStep);
         }
         newLeft = leftPx;
-        // Saat güncelle
+        // Saat güncelle - 15 dakikalık adımlar
         const endMins = convertTimeToMinutes(resizeEndTime) + step * minuteStep;
         newEnd = convertMinutesToTime(endMins);
       }
@@ -371,6 +414,7 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
       setDraggedReservation((r) =>
         r ? { ...r, startTime: newStart, endTime: newEnd } : null
       );
+
       // Hemen güncelle (senkron)
       if (draggedReservation) {
         const updated = {
@@ -397,6 +441,11 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
       setResizeDir(null);
       setDraggedReservation(null);
       setLastStep(0);
+
+      // Mouse bırakıldığında da güncelleme yapılsın
+      if (draggedReservation) {
+        onReservationUpdate(draggedReservation);
+      }
     }
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);

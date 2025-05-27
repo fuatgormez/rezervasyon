@@ -2223,146 +2223,119 @@ function AdminPageComponent() {
   const handleDrag = (e: any, data: { x: number; y: number }) => {
     if (!draggedReservation) return;
 
-    // Bugün değilse kırmızı çizgi kontrolü yapmaya gerek yok
+    // Taşıma esnasında kırmızı çizgi kontrolü
     const isToday =
       format(selectedDate, "yyyy-MM-dd") === format(new Date(), "yyyy-MM-dd");
 
-    // Mevcut pozisyonu güncelle
-    const offsetX = data.x;
-    const offsetY = data.y;
+    // Mevcut fare konumunu al
+    const clientX = e.clientX || e.touches?.[0]?.clientX || 0;
+    const clientY = e.clientY || e.touches?.[0]?.clientY || 0;
 
-    // Elementin altındaki masa ID'sini bul
-    // Daha güvenilir bir yöntem kullanıyoruz: document.elementsFromPoint
-    const elementsAtPoint = document.elementsFromPoint(e.clientX, e.clientY);
+    // Fare konum bilgisi yoksa işlemi durdur
+    if (clientX === 0 && clientY === 0) return;
 
-    // Debug için tüm bulunan elementleri loglayalım
-    console.log(
-      "Bulunan elementler (admin):",
-      elementsAtPoint.map((el) => ({
-        tag: el.tagName,
-        className: el.className,
-        dataTableId: el.getAttribute("data-table-id"),
-        dataHour: el.getAttribute("data-hour"),
-        dataPastHour: el.getAttribute("data-past-hour"),
-      }))
-    );
+    // Masa ID'sini bulmak için elementsFromPoint kullan
+    const elementsAtPoint = document.elementsFromPoint(clientX, clientY);
+    let foundTableId = null;
 
-    // Geçmiş zaman hücresine taşıma yapılmasını engelle
-    const targetIsPastHour = elementsAtPoint.some((el) => {
-      // Eğer üzerinde bulunduğumuz element geçmiş saat hücresi ise
-      return el.getAttribute("data-past-hour") === "true";
-    });
-
-    if (targetIsPastHour) {
-      // Geçmiş saate taşınamaz, işlemi engelle
-      return;
-    }
-
-    // Masa ID'sini bulmaya çalışalım
-    let foundTableId = false;
-
-    // 1. Yöntem: Doğrudan data-table-id özniteliği olan elementi bul
+    // Özel data-* attributelerini içeren elementleri bul
     for (const element of elementsAtPoint) {
+      // Eğer data-table-id attribute'u varsa
       const tableId = element.getAttribute("data-table-id");
       if (tableId) {
-        console.log(
-          "Bulundu! tableId:",
-          tableId,
-          "element:",
-          element.tagName,
-          element.className
-        );
-        draggedReservation.tableId = tableId;
-        foundTableId = true;
+        foundTableId = tableId;
         break;
       }
+
+      // Eğer parent elementlerde data-table-id attribute'u varsa
+      let parent = element.parentElement;
+      while (parent) {
+        const parentTableId = parent.getAttribute("data-table-id");
+        if (parentTableId) {
+          foundTableId = parentTableId;
+          break;
+        }
+        parent = parent.parentElement;
+      }
+
+      if (foundTableId) break;
     }
 
-    // 2. Yöntem: Eğer bulunamadıysa, bir üst veya parent elementi kontrol et
+    // Eğer yine de bulunamadıysa, taşıma sırasında rect kontrolü yap
     if (!foundTableId) {
-      for (const element of elementsAtPoint) {
-        const parent = element.parentElement;
-        if (parent) {
-          const parentTableId = parent.getAttribute("data-table-id");
-          if (parentTableId) {
-            console.log("Parent'ta bulundu! tableId:", parentTableId);
-            draggedReservation.tableId = parentTableId;
-            foundTableId = true;
-            break;
-          }
+      const tableElements = document.querySelectorAll("[data-table-id]");
+      for (const tableElement of tableElements as NodeListOf<HTMLElement>) {
+        const rect = tableElement.getBoundingClientRect();
+        if (
+          clientX >= rect.left &&
+          clientX <= rect.right &&
+          clientY >= rect.top &&
+          clientY <= rect.bottom
+        ) {
+          foundTableId = tableElement.getAttribute("data-table-id");
+          break;
         }
       }
     }
 
-    // 3. Yöntem: table-row sınıfına sahip elementleri dene
-    if (!foundTableId) {
-      for (const element of elementsAtPoint) {
-        if (element.classList && element.classList.contains("table-row")) {
-          const closestWithTableId = element.closest("[data-table-id]");
-          if (closestWithTableId) {
-            const tableRowId = closestWithTableId.getAttribute("data-table-id");
-            if (tableRowId) {
-              console.log("table-row üzerinden bulundu! tableId:", tableRowId);
-              draggedReservation.tableId = tableRowId;
-              foundTableId = true;
-              break;
-            }
-          }
-        }
-      }
+    // Masa ID'si bulunduysa rezervasyonu güncelle
+    if (foundTableId) {
+      draggedReservation.tableId = foundTableId;
     }
 
-    // Zaman hesaplama - sürükleme mesafesine göre zaman güncelleme
+    // x pozisyonuna göre zaman değişimi
+    const initialPosition = getReservationPosition(
+      initialStartTime,
+      initialEndTime
+    );
+    const initialLeft = parseInt(initialPosition.left);
+    const offsetX = data.x;
+
+    // Zaman hesaplama - 15 dakikalık periyotlara göre
     const cellWidthMinutes = 60;
-    const minuteOffset = Math.round((offsetX / cellWidth) * cellWidthMinutes);
+    const minuteStep = 15; // 15 dakikalık periyotlar
+    const minuteOffset =
+      Math.round(((offsetX / cellWidth) * cellWidthMinutes) / minuteStep) *
+      minuteStep;
 
-    // Yeni başlangıç ve bitiş zamanlarını hesapla (taşıma sırasında süre aynı kalır)
+    // Başlangıç ve bitiş zamanlarını güncelle
     const startMinutes = convertTimeToMinutes(initialStartTime);
     const endMinutes = convertTimeToMinutes(initialEndTime);
     const duration = endMinutes - startMinutes;
 
+    // Yeni zamanları hesapla (15 dakikalık periyotlara yuvarlanmış)
     let newStartMinutes = startMinutes + minuteOffset;
     let newEndMinutes = newStartMinutes + duration;
 
-    // Eğer bugün ise ve kırmızı çizgiyi geçmeye çalışıyorsa kontrol et
+    // Bugün için özel durumlar
     if (isToday && currentTimePosition !== null) {
-      // Şu anki zaman (mevcut dakika olarak)
+      // Şu anki zaman (dakika olarak)
       const now = new Date();
       const currentHour = now.getHours();
       const currentMinute = now.getMinutes();
       const currentTotalMinutes = currentHour * 60 + currentMinute;
 
-      // Eğer yeni başlangıç zamanı mevcut zamanın gerisindeyse
+      // Eğer yeni başlangıç zamanı mevcut zamanın gerisindeyse, şu anki zamana ayarla
       if (newStartMinutes < currentTotalMinutes) {
-        // Şu anki zaman dakikasına otomatik ayarla
-        newStartMinutes = currentTotalMinutes;
-        newEndMinutes = newStartMinutes + duration;
-
-        // Kullanıcıya bilgi ver
-        toast.success(
-          "Geçmiş saatlere taşınamaz. Rezervasyon şu anki saate ayarlandı.",
-          {
-            id: "past-time-drag",
-            duration: 1500,
-          }
-        );
+        // Şu anki zamanı 15 dakikalık periyoda yuvarla (yukarı)
+        const roundedCurrentMinutes =
+          Math.ceil(currentTotalMinutes / minuteStep) * minuteStep;
+        const offsetChange = roundedCurrentMinutes - newStartMinutes;
+        newStartMinutes = roundedCurrentMinutes;
+        newEndMinutes += offsetChange;
       }
     }
 
-    // Yeni zamanları ayarla
+    // 15 dakikalık periyotlara göre yuvarla
+    newStartMinutes = Math.round(newStartMinutes / minuteStep) * minuteStep;
+    newEndMinutes = Math.round(newEndMinutes / minuteStep) * minuteStep;
+
+    // Zamanları güncelle
     draggedReservation.startTime = convertMinutesToTime(newStartMinutes);
     draggedReservation.endTime = convertMinutesToTime(newEndMinutes);
 
-    // Güncellenmiş pozisyonu göster
-    // Not: Burada render trigger etmek için state'i güncelliyoruz
+    // Pozisyonu güncelle
     setDraggedReservation({ ...draggedReservation });
-
-    // Masa değişimini loglayalım
-    if (foundTableId && draggedReservation.tableId !== initialTableId) {
-      console.log(
-        `Masa değişiyor (admin): ${initialTableId} -> ${draggedReservation.tableId}`
-      );
-    }
   };
 
   // Sürükleme tamamlandığında çağrılacak fonksiyon
@@ -2524,6 +2497,9 @@ function AdminPageComponent() {
 
     const { size } = data;
     const cellWidthMinutes = 60;
+    // 15 dakikalık adım boyutu (kesin 15 dakikalık aralıklarla çalışması için)
+    const minuteStep = 15;
+    const pxPerStep = (cellWidth / cellWidthMinutes) * minuteStep;
 
     // Sağdan veya soldan boyutlandırma durumunu hesapla
     if (direction === "right") {
@@ -2535,9 +2511,10 @@ function AdminPageComponent() {
         ).width
       );
       const widthDiff = size.width - currentWidth;
-      const minutesDiff = Math.round(
-        (widthDiff / cellWidth) * cellWidthMinutes
-      );
+
+      // Farkı 15 dakikalık adımlara yuvarla
+      const stepsCount = Math.round(widthDiff / pxPerStep);
+      const minutesDiff = stepsCount * minuteStep;
 
       // Bitiş zamanını güncelle
       const endMinutes = convertTimeToMinutes(draggedReservation.endTime);
@@ -2546,7 +2523,10 @@ function AdminPageComponent() {
 
       // Minimum süre kontrolü (15 dakika)
       if (newEndMinutes - startMinutes >= 15) {
-        draggedReservation.endTime = convertMinutesToTime(newEndMinutes);
+        // Yeni bitiş zamanını 15 dakikalık adımlara yuvarla
+        const roundedEndMinutes =
+          Math.round(newEndMinutes / minuteStep) * minuteStep;
+        draggedReservation.endTime = convertMinutesToTime(roundedEndMinutes);
       }
     } else if (direction === "left") {
       // Soldan boyutlandırma - sol pozisyon ve genişlik değişir
@@ -2562,9 +2542,10 @@ function AdminPageComponent() {
             draggedReservation.endTime
           ).left
         ) - currentLeft;
-      const minutesDiff = Math.round(
-        (positionDiff / cellWidth) * cellWidthMinutes
-      );
+
+      // Farkı 15 dakikalık adımlara yuvarla
+      const stepsCount = Math.round(positionDiff / pxPerStep);
+      const minutesDiff = stepsCount * minuteStep;
 
       // Başlangıç zamanını güncelle
       const startMinutes = convertTimeToMinutes(initialStartTime);
@@ -2581,8 +2562,10 @@ function AdminPageComponent() {
 
         // Eğer yeni başlangıç zamanı mevcut zamanın gerisindeyse
         if (newStartMinutes < currentTotalMinutes) {
-          // Şu anki zaman dakikasına otomatik ayarla
-          newStartMinutes = currentTotalMinutes;
+          // Şu anki zaman dakikasını 15 dakikalık periyoda yuvarla
+          const roundedCurrentMinutes =
+            Math.ceil(currentTotalMinutes / minuteStep) * minuteStep;
+          newStartMinutes = roundedCurrentMinutes;
 
           // Kullanıcıya bilgi ver
           toast.success(
@@ -2594,6 +2577,9 @@ function AdminPageComponent() {
           );
         }
       }
+
+      // Başlangıç zamanını 15 dakikalık adımlara yuvarla
+      newStartMinutes = Math.round(newStartMinutes / minuteStep) * minuteStep;
 
       // Minimum süre kontrolü (15 dakika)
       if (endMinutes - newStartMinutes >= 15) {
