@@ -3224,6 +3224,40 @@ function AdminPageComponent() {
     }
   }, []);
 
+  useEffect(() => {
+    // Mobil cihazlarda dokunmatik etkileşimi iyileştirmek için
+    const improveTouchInteraction = () => {
+      // Grid container elementini bul
+      const gridContainer = gridContainerRef.current;
+      if (!gridContainer) return;
+
+      // Tüm masa hücrelerini bul
+      const tableCells = gridContainer.querySelectorAll("[data-table-id]");
+
+      // Her masa hücresine touch-action: none ekle
+      tableCells.forEach((cell) => {
+        (cell as HTMLElement).style.touchAction = "none";
+      });
+
+      // Tüm rezervasyon kartlarına da uygula
+      const reservationCards =
+        gridContainer.querySelectorAll(".reservation-card");
+      reservationCards.forEach((card) => {
+        (card as HTMLElement).style.touchAction = "none";
+      });
+    };
+
+    // Sayfa yüklendiğinde ve değişikliklerde çalıştır
+    setTimeout(improveTouchInteraction, 1000);
+
+    // Rezervasyonlar değiştiğinde tekrar çalıştır
+    window.addEventListener("resize", improveTouchInteraction);
+
+    return () => {
+      window.removeEventListener("resize", improveTouchInteraction);
+    };
+  }, [reservations, tables]);
+
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-gray-50 text-gray-800">
       {/* Aktif rezervasyon bildirimleri */}
@@ -3397,8 +3431,8 @@ function AdminPageComponent() {
           ref={mainContentRef}
         >
           <div
-            className="flex-1 overflow-auto hide-scrollbar relative"
             ref={gridContainerRef}
+            className="h-[calc(100vh-250px)] overflow-auto relative"
             onMouseLeave={handleMainContentLeave}
           >
             {/* Boş durum mesajını kaldırdık, toast bildirimi kullanılacak */}

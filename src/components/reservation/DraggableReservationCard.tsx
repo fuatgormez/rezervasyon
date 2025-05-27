@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import Draggable, { DraggableData, DraggableEvent } from "react-draggable";
 import toast from "react-hot-toast";
 
@@ -163,7 +163,15 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
       return false;
     }
 
+    // Yeni sürükleme işlemi için olay önizlemesini engelle
     e.stopPropagation();
+
+    // Dokunmatik olaylar için daha iyi destek
+    if ("touches" in e) {
+      document.body.style.overflow = "hidden"; // Sayfanın kaydırılmasını engelle
+    }
+
+    // Sürükleme durumunu güncelle
     setIsDragging(true);
     setDraggedReservation({ ...reservation });
 
@@ -171,9 +179,6 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
     setInitialStartTime(reservation.startTime);
     setInitialEndTime(reservation.endTime);
     setInitialTableId(reservation.tableId);
-
-    // Başlangıç esnasında herhangi bir hata varsa konsola yazdır (debug)
-    console.log("Drag başladı:", reservation.id, reservation.tableId);
 
     // DraggableEventHandler sadece false veya void döndürebilir
     return;
@@ -190,67 +195,42 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
     let clientX: number;
     let clientY: number;
 
-    if ("touches" in e) {
-      // TouchEvent durumu
+    // Touch olaylarını daha iyi yakala (mobil cihazlar için)
+    if ("touches" in e && e.touches.length > 0) {
+      // TouchEvent durumu - mobil için
       clientX = e.touches[0].clientX;
       clientY = e.touches[0].clientY;
+      // İlave olarak, sayfanın kaydırılmasını engelle
+      e.preventDefault();
+    } else if ("changedTouches" in e && e.changedTouches.length > 0) {
+      // TouchEvent - touchend olayı için
+      clientX = e.changedTouches[0].clientX;
+      clientY = e.changedTouches[0].clientY;
     } else {
-      // MouseEvent durumu
+      // MouseEvent durumu - masaüstü için
       clientX = (e as MouseEvent).clientX;
       clientY = (e as MouseEvent).clientY;
     }
 
-    // Elementin altındaki masa ID'sini bul - farklı yöntemleri deneyelim
+    // Mevcut fare konumunun altındaki elementleri bul
     const elementsAtPoint = document.elementsFromPoint(clientX, clientY);
 
-    // Masa ID'sini bulmaya çalışalım
-    let foundTableId = false;
-
-    // 1. Yöntem: Doğrudan data-table-id özniteliği olan elementi bul
-    for (const element of elementsAtPoint) {
+    // Doğrudan masa ID'si olan elementi bul veya yakındaki bir elementi bul
+    for (let i = 0; i < elementsAtPoint.length; i++) {
+      const element = elementsAtPoint[i];
       const tableId = element.getAttribute("data-table-id");
+
       if (tableId) {
         draggedReservation.tableId = tableId;
-        foundTableId = true;
         break;
       }
-    }
 
-    // 2. Yöntem: Eğer bulunamadıysa, üst elementleri kontrol et
-    if (!foundTableId) {
-      for (const element of elementsAtPoint) {
-        let parent = element.parentElement;
-
-        // Üst elementleri üç seviye yukarı kadar kontrol et
-        for (let i = 0; i < 3 && parent; i++) {
-          const parentTableId = parent.getAttribute("data-table-id");
-          if (parentTableId) {
-            draggedReservation.tableId = parentTableId;
-            foundTableId = true;
-            break;
-          }
-          parent = parent.parentElement;
-        }
-
-        if (foundTableId) break;
-      }
-    }
-
-    // 3. Yöntem: Eğer hala bulunamadıysa, özel data-* özellikleri olan elementleri ara
-    if (!foundTableId) {
-      const tableElements = document.querySelectorAll("[data-table-id]");
-      for (const tableElement of tableElements as NodeListOf<HTMLElement>) {
-        const rect = tableElement.getBoundingClientRect();
-        // Element üzerinde mi kontrol et
-        if (
-          clientX >= rect.left &&
-          clientX <= rect.right &&
-          clientY >= rect.top &&
-          clientY <= rect.bottom
-        ) {
-          draggedReservation.tableId =
-            tableElement.getAttribute("data-table-id") || "";
-          foundTableId = true;
+      // Eğer direkt elementi bulamazsak, üst elemente bak
+      const parent = element.closest("[data-table-id]");
+      if (parent) {
+        const parentTableId = parent.getAttribute("data-table-id");
+        if (parentTableId) {
+          draggedReservation.tableId = parentTableId;
           break;
         }
       }
@@ -272,8 +252,6 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
       const newEndMinutes = newStartMinutes + duration;
 
       // Yeni zamanları ayarla
-      // Eğer orijinal zaman ISO 8601 veya benzer formattaysa (tarih kısmı varsa)
-      // yeni zamanı oluştururken sadece zaman kısmını değiştir, tarih kısmını koru
       let newStartTime = convertMinutesToTime(newStartMinutes);
       let newEndTime = convertMinutesToTime(newEndMinutes);
 
@@ -292,15 +270,13 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
         newEndTime = `${endDatePart} ${newEndTime}`;
       }
 
-      console.log(`Sürükleme - Yeni zamanlar: ${newStartTime} - ${newEndTime}`);
-
       draggedReservation.startTime = newStartTime;
       draggedReservation.endTime = newEndTime;
 
+      // Sürükleme sırasında sürekli güncelle
       setDraggedReservation({ ...draggedReservation });
     } catch (error) {
       console.error("Zaman dönüşümü hatası:", error);
-      toast.error("Zaman hesaplama hatası oluştu!");
     }
   };
 
@@ -310,6 +286,9 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
       setIsDragging(false);
       return;
     }
+
+    // Mobil için overflow'u eski haline getir
+    document.body.style.overflow = "";
 
     // Masa değişimi oldu mu kontrol et
     const hasMasaChanged = initialTableId !== draggedReservation.tableId;
@@ -340,31 +319,18 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
         toast.error("Masa bilgisi bulunamadı, orijinal masa korunuyor");
       }
 
-      // 3 deneme sonrasında otomatik olarak kabul et
-      const userConfirm = window.confirm(
-        `Rezervasyonu yeni masaya taşımak istediğinize emin misiniz?`
-      );
-
-      if (userConfirm) {
-        // Çakışma yoksa güncelleyelim
-        onReservationUpdate(draggedReservation);
-        toast.success("Rezervasyon başarıyla taşındı!");
-      } else {
-        // Onay verilmezse işlemi iptal et
-        toast("Taşıma işlemi iptal edildi");
-      }
+      // Direkt olarak güncelle, onay kutusu gösterme (mobilde daha hızlı işlem için)
+      onReservationUpdate({ ...draggedReservation });
+      toast.success("Rezervasyon başarıyla taşındı!");
     } else {
       // Masa değişimi yoksa direkt güncelle
-      onReservationUpdate(draggedReservation);
+      onReservationUpdate({ ...draggedReservation });
       toast.success("Rezervasyon zamanları güncellendi!");
     }
 
     // Temizlik
     setIsDragging(false);
     setDraggedReservation(null);
-
-    // İşlem tamamlandı bilgisi (debug)
-    console.log("Drag işlemi tamamlandı:", reservation.id);
   };
 
   // Mouse hareketi ile kartı uzat/kısalt
@@ -441,11 +407,6 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
       setResizeDir(null);
       setDraggedReservation(null);
       setLastStep(0);
-
-      // Mouse bırakıldığında da güncelleme yapılsın
-      if (draggedReservation) {
-        onReservationUpdate(draggedReservation);
-      }
     }
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
@@ -506,10 +467,12 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
       grid={[cellWidth / 4, cellHeight]}
       cancel={isPastReservation ? ".reservation-card" : ".resize-handle"}
       disabled={isPastReservation} // Geçmiş rezervasyonların taşınmasını devre dışı bırak
+      enableUserSelectHack={false} // Mobil cihazlarda sürükleme sorununu çözer
+      scale={1} // Tam ölçek (zoom durumunda bile doğru çalışması için)
     >
       <div
         id={`reservation-${reservation.id}`}
-        className={`absolute rounded-md pointer-events-auto flex items-center overflow-visible shadow-md hover:shadow-lg transition-all duration-200 reservation-card ${
+        className={`absolute rounded-md pointer-events-auto flex items-center overflow-visible shadow-md hover:shadow-lg transition-all duration-100 reservation-card ${
           isDragging
             ? "cursor-grabbing z-50"
             : isPastReservation
@@ -523,6 +486,7 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
           height: `calc(${cellHeight}px - 2px)`,
           ...getCardStyle(),
           minWidth: "80px",
+          touchAction: "none", // Mobil cihazlarda dokunmatik olayların önceliğini sürüklemeye ver
         }}
         data-reservation-id={reservation.id}
         data-table-id={reservation.tableId}
