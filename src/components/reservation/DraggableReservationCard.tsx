@@ -26,7 +26,10 @@ interface DraggableReservationCardProps {
   onReservationClick: (reservation: ReservationType) => void;
   onReservationHover: (reservation: ReservationType) => void;
   onReservationLeave: () => void;
-  onReservationUpdate: (reservation: ReservationType) => void;
+  onReservationUpdate: (
+    reservation: ReservationType,
+    oldReservation?: ReservationType
+  ) => void;
   hasTableConflict: (
     tableId: string,
     startTime: string,
@@ -36,6 +39,12 @@ interface DraggableReservationCardProps {
   reservationColor?: string;
   reservationStatuses?: Record<string, "arrived" | "departed" | null>;
   isReservationPast?: (startTime: string) => boolean;
+  showConfirmation?: (
+    title: string,
+    message: string,
+    onConfirm: () => void,
+    onCancel: () => void
+  ) => void;
 }
 
 const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
@@ -53,6 +62,7 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
   reservationColor,
   reservationStatuses,
   isReservationPast,
+  showConfirmation,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [draggedReservation, setDraggedReservation] =
@@ -293,6 +303,20 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
     // Masa değişimi oldu mu kontrol et
     const hasMasaChanged = initialTableId !== draggedReservation.tableId;
 
+    // Zaman değişimi oldu mu kontrol et
+    const hasTimeChanged =
+      initialStartTime !== draggedReservation.startTime ||
+      initialEndTime !== draggedReservation.endTime;
+
+    // Sürükleme mesafesi çok az ise tıklama olarak değerlendir ve güncelleme yapma
+    const dx = Math.abs(data.x);
+    const dy = Math.abs(data.y);
+    if (dx < 5 && dy < 5) {
+      setIsDragging(false);
+      setDraggedReservation(null);
+      return;
+    }
+
     // Çakışma kontrolü
     const hasConflict = hasTableConflict(
       draggedReservation.tableId,
@@ -310,27 +334,117 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
       return;
     }
 
+    // Orijinal rezervasyon bilgilerini kopyala (eski durum)
+    const originalReservation = { ...reservation };
+
     // Masa değişimi olmasa bile mutlaka güncelleme yap
     // Böylece zaman değişiklikleri de kaydedilir
-    if (hasMasaChanged) {
-      // Ekstra bir kontrol, tableId boş olmasın
+    if (hasMasaChanged && !hasTimeChanged) {
+      // Sadece masa değişikliği - onay gerektirmez
       if (!draggedReservation.tableId) {
         draggedReservation.tableId = initialTableId;
         toast.error("Masa bilgisi bulunamadı, orijinal masa korunuyor");
       }
 
-      // Direkt olarak güncelle, onay kutusu gösterme (mobilde daha hızlı işlem için)
-      onReservationUpdate({ ...draggedReservation });
+      // Direkt olarak güncelle, onay kutusu gösterme
+      onReservationUpdate({ ...draggedReservation }, originalReservation);
       toast.success("Rezervasyon başarıyla taşındı!");
-    } else {
-      // Masa değişimi yoksa direkt güncelle
-      onReservationUpdate({ ...draggedReservation });
-      toast.success("Rezervasyon zamanları güncellendi!");
-    }
 
-    // Temizlik
-    setIsDragging(false);
-    setDraggedReservation(null);
+      // Temizlik
+      setIsDragging(false);
+      setDraggedReservation(null);
+    } else if (hasTimeChanged) {
+      // Saat değişikliği var, onay gerekir
+      if (showConfirmation) {
+        // Zamanları okunaklı formata çevirelim
+        const formatTimeForDisplay = (timeStr: string): string => {
+          if (timeStr.includes("T")) {
+            return timeStr.split("T")[1].substring(0, 5);
+          } else if (timeStr.includes(" ")) {
+            return timeStr.split(" ")[1].substring(0, 5);
+          }
+          return timeStr;
+        };
+
+        const oldTimeDisplay = `${formatTimeForDisplay(
+          initialStartTime
+        )} - ${formatTimeForDisplay(initialEndTime)}`;
+        const newTimeDisplay = `${formatTimeForDisplay(
+          draggedReservation.startTime
+        )} - ${formatTimeForDisplay(draggedReservation.endTime)}`;
+
+        // Onay popup'ı göster
+        showConfirmation(
+          "Rezervasyon Zamanı Değiştirilecek",
+          `<strong>${draggedReservation.customerName}</strong> isimli müşterinin rezervasyon zamanını değiştirmek istediğinize emin misiniz?<br/><br/>
+          <div style="text-align: left; padding: 10px; background: #f8f9fa; border-radius: 5px; margin-bottom: 10px;">
+            <div><strong>Eski Zaman:</strong> ${oldTimeDisplay}</div>
+            <div><strong>Yeni Zaman:</strong> ${newTimeDisplay}</div>
+            <div><strong>Masa:</strong> ${draggedReservation.tableId}</div>
+            <div><strong>Kişi Sayısı:</strong> ${draggedReservation.guestCount}</div>
+          </div>`,
+          () => {
+            console.log(
+              "DraggableReservationCard -> Onay fonksiyonu çalıştırılıyor"
+            );
+            console.log(
+              "Rezervasyon:",
+              draggedReservation.id,
+              draggedReservation.customerName
+            );
+            console.log(
+              "Güncellenen zaman:",
+              draggedReservation.startTime,
+              draggedReservation.endTime
+            );
+
+            try {
+              // Onaylandı, güncelleme yap
+              onReservationUpdate(
+                { ...draggedReservation },
+                originalReservation
+              );
+              toast.success("Rezervasyon zamanı güncellendi!");
+            } catch (error) {
+              console.error("Rezervasyon güncellenirken hata:", error);
+              toast.error("Rezervasyon güncellenirken bir hata oluştu");
+            } finally {
+              // Temizlik
+              setIsDragging(false);
+              setDraggedReservation(null);
+            }
+          },
+          () => {
+            console.log(
+              "DraggableReservationCard -> İptal fonksiyonu çalıştırılıyor"
+            );
+
+            try {
+              // İptal edildi, orijinal duruma geri dön
+              toast.success("İşlem iptal edildi");
+            } catch (error) {
+              console.error("İptal işlemi sırasında hata:", error);
+            } finally {
+              // Temizlik
+              setIsDragging(false);
+              setDraggedReservation(null);
+            }
+          }
+        );
+      } else {
+        // Onay popup'ı yoksa direkt güncelle
+        onReservationUpdate({ ...draggedReservation }, originalReservation);
+        toast.success("Rezervasyon zamanları güncellendi!");
+
+        // Temizlik
+        setIsDragging(false);
+        setDraggedReservation(null);
+      }
+    } else {
+      // Başka değişiklik yoksa, güncelleme yapma
+      setIsDragging(false);
+      setDraggedReservation(null);
+    }
   };
 
   // Mouse hareketi ile kartı uzat/kısalt
@@ -381,7 +495,7 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
         r ? { ...r, startTime: newStart, endTime: newEnd } : null
       );
 
-      // Hemen güncelle (senkron)
+      // Hemen güncelle (senkron) - resize işlemleri için onay gerekmez
       if (draggedReservation) {
         const updated = {
           ...draggedReservation,
@@ -398,7 +512,11 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
             updated.id
           );
           if (!hasConflict) {
-            onReservationUpdate(updated);
+            // Orijinal rezervasyon kopyasını oluştur
+            const originalReservation = { ...reservation };
+
+            // Güncellemeyi yap - resize için onay gerekmez
+            onReservationUpdate(updated, originalReservation);
           }
         }
       }
@@ -492,20 +610,10 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
         data-table-id={reservation.tableId}
         data-time={`${reservation.startTime}-${reservation.endTime}`}
         data-past={isPastReservation.toString()}
-        onMouseEnter={() => {
-          if (!isDragging) {
-            onReservationHover(reservation);
-          }
-        }}
-        onMouseLeave={() => {
-          if (!isDragging) {
-            onReservationLeave();
-          }
-        }}
         onClick={(e) => {
           if (!isDragging) {
             e.stopPropagation();
-            // Her iki durumda da tıklamayı işle, sidebar'ı aç
+            // Sidebar'ı sadece tıklama ile aç, hover özelliğini kaldırdık
             onReservationClick(reservation);
           }
         }}
@@ -538,9 +646,6 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
                   .join("")}
               </div>
               <div className="text-white text-[11px] flex items-center ml-2">
-                <span className="mr-1">
-                  {draggedReservation?.startTime || reservation.startTime}
-                </span>
                 <span className="bg-white bg-opacity-30 px-1 rounded text-[10px] text-white">
                   {reservation.guestCount}
                 </span>
@@ -558,10 +663,6 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
                 )}
               </div>
               <div className="text-white text-[11px] flex items-center mt-1">
-                <span className="mr-1">
-                  {draggedReservation?.startTime || reservation.startTime}-
-                  {draggedReservation?.endTime || reservation.endTime}
-                </span>
                 <span className="bg-white bg-opacity-30 px-1 rounded text-[10px] text-white">
                   {reservation.guestCount} kişi
                 </span>

@@ -10,9 +10,17 @@ import {
   addMinutes,
   isBefore,
   isAfter,
+  setHours,
+  setMinutes,
+  isToday,
 } from "date-fns";
 import { tr } from "date-fns/locale";
-import { BiSearch, BiArrowToRight, BiArrowToLeft } from "react-icons/bi";
+import {
+  BiSearch,
+  BiArrowToRight,
+  BiArrowToLeft,
+  BiRefresh,
+} from "react-icons/bi";
 import { IoMdRefresh } from "react-icons/io";
 import { HiOutlineDotsVertical } from "react-icons/hi";
 import { FiChevronDown, FiUsers } from "react-icons/fi";
@@ -28,11 +36,17 @@ import StaffAssignmentForm from "@/components/StaffAssignmentForm";
 import { db } from "@/lib/supabase/client";
 import { v4 as uuidv4 } from "uuid";
 
+// SweetAlert2 import
+import Swal from "sweetalert2";
+
 // Bu componenti sadece tarayıcıda çalıştırılacak şekilde dinamik olarak import ediyoruz
 // SSG sırasında çalıştırılmaz
-const AdminPageContent = dynamic(() => Promise.resolve(AdminPageComponent), {
-  ssr: false,
-});
+const AdminPageContent = dynamic(
+  () => Promise.resolve({ default: AdminPageComponent }),
+  {
+    ssr: false,
+  }
+);
 
 // Masa kategorisi arayüzü
 interface TableCategoryType {
@@ -852,6 +866,8 @@ function AdminPageComponent() {
   const handleReservationClick = (reservation: ReservationType) => {
     setSelectedReservation(reservation);
     setIsRightSidebarOpen(true);
+    // Tıklandığında artık sidebarClicked durumunu true yap
+    setSidebarClicked(true);
   };
 
   // Hover yönetimi için global bir referans değişkeni ekleyelim
@@ -864,26 +880,14 @@ function AdminPageComponent() {
   // Boş hücre için hover state'i - ARTIK GEREKLİ DEĞİL, KALDIRIYORUZ
   // const [hoveredEmptyCell, setHoveredEmptyCell] = useState<{tableId: string, hour: string} | null>(null);
 
-  // Rezervasyon hover durumunda - Sadece rezervasyon kartları için
+  // NOT: Hover işlemleriyle ilgili fonksiyonlar artık kullanılmıyor ama API uyumluluğu için tutuyoruz
   const handleReservationHover = (reservation: ReservationType) => {
-    // Eğer sidebar tıklama ile açık durumdaysa, hover özelliğini devre dışı bırak
-    if (sidebarClicked) return;
-
-    // Hover durumunda seçili rezervasyonu güncelle
-    setSelectedReservation(reservation);
-
-    // Sidebar'ı hemen aç
-    setIsRightSidebarOpen(true);
-    setSidebarOpenedByHover(true);
+    // Hover fonksiyonu artık kullanılmıyor, sadece API uyumluluğu için burada tutuldu
   };
 
   // Hover durumu bittiğinde - Hemen kapat
   const handleReservationLeave = () => {
-    // Eğer sidebar hover ile açıldıysa, hemen kapat (bekleme yok)
-    if (sidebarOpenedByHover && !sidebarClicked) {
-      setIsRightSidebarOpen(false);
-      setSidebarOpenedByHover(false);
-    }
+    // Hover fonksiyonu artık kullanılmıyor, sadece API uyumluluğu için burada tutuldu
   };
 
   // Boş bir hücreye tıklandığında yeni rezervasyon oluşturma işlemi başlatır
@@ -1513,7 +1517,10 @@ function AdminPageComponent() {
     return dateTimeStr;
   };
 
-  const updateReservation = async (updatedReservation: ReservationType) => {
+  const updateReservation = async (
+    updatedReservation: ReservationType,
+    oldReservation?: ReservationType
+  ) => {
     try {
       console.log("Rezervasyonu güncelleme başladı:", updatedReservation);
       console.log(
@@ -1536,6 +1543,21 @@ function AdminPageComponent() {
           ? updatedReservation.startTime.split("T")[0]
           : "belirsiz",
       });
+
+      // Eğer eski rezervasyon bilgisi varsa, son işlem olarak kaydet
+      if (oldReservation && updatedReservation.id !== "temp") {
+        setLastOperation({
+          type:
+            oldReservation.tableId !== updatedReservation.tableId
+              ? "move"
+              : oldReservation.startTime !== updatedReservation.startTime ||
+                oldReservation.endTime !== updatedReservation.endTime
+              ? "resize"
+              : "update",
+          oldReservation: { ...oldReservation },
+          newReservation: { ...updatedReservation },
+        });
+      }
 
       // Seçilen masa bilgisini kontrol et
       const selectedTable = tables.find(
@@ -3258,10 +3280,113 @@ function AdminPageComponent() {
     };
   }, [reservations, tables]);
 
+  // Saat formatını düzenleyen yardımcı fonksiyon
+  const formatTimeForInput = (timeString: string): string => {
+    try {
+      // Tarih+saat formatı kontrolü yapıp sadece saat kısmını döndür
+      if (timeString.includes("T")) {
+        return timeString.split("T")[1].substring(0, 5);
+      } else if (timeString.includes(" ")) {
+        return timeString.split(" ")[1].substring(0, 5);
+      }
+      // Sadece saat formatındaysa olduğu gibi döndür
+      return timeString.substring(0, 5);
+    } catch (error) {
+      console.error("Saat formatı düzenlenirken hata:", error);
+      return "00:00"; // Hata durumunda varsayılan değer
+    }
+  };
+
+  // Onay gösterme fonksiyonu - SweetAlert2 kullanarak yeniden yazıldı
+  const showConfirmation = (
+    title: string,
+    message: string,
+    onConfirm: () => void,
+    onCancel: () => void
+  ) => {
+    console.log("showConfirmation çağrıldı:", { title, message });
+
+    // SweetAlert2 ile şık bir onay dialog'u göster
+    Swal.fire({
+      title: title,
+      html: message.replace(/\n/g, "<br>"),
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonColor: "#3085d6",
+      cancelButtonColor: "#d33",
+      confirmButtonText: "Onayla",
+      cancelButtonText: "İptal",
+      focusConfirm: false,
+      customClass: {
+        container: "swal-custom-container",
+        popup: "swal-custom-popup",
+        title: "swal-custom-title",
+        confirmButton: "swal-custom-confirm",
+        cancelButton: "swal-custom-cancel",
+      },
+    }).then((result) => {
+      console.log("SweetAlert2 sonucu:", result);
+
+      if (result.isConfirmed) {
+        console.log("Kullanıcı onayladı, onConfirm çağrılıyor");
+        try {
+          onConfirm();
+        } catch (error) {
+          console.error("Onay fonksiyonu çalışırken hata oluştu:", error);
+          toast.error("İşlem sırasında bir hata oluştu");
+        }
+      } else {
+        console.log("Kullanıcı iptal etti, onCancel çağrılıyor");
+        try {
+          onCancel();
+        } catch (error) {
+          console.error("İptal fonksiyonu çalışırken hata oluştu:", error);
+        }
+      }
+    });
+  };
+
+  // Rezervasyon kartlarını render et
+  // Artık kullanılmıyor, kaldırılabilir
+
+  // Son işlemi geri alma için state ve yardımcı değişkenler
+  const [lastOperation, setLastOperation] = useState<{
+    type: "move" | "resize" | "update";
+    oldReservation: ReservationType;
+    newReservation: ReservationType;
+  } | null>(null);
+
+  // Son işlemi geri alma
+  const undoLastOperation = () => {
+    if (!lastOperation) {
+      toast.error("Geri alınacak işlem bulunamadı!");
+      return;
+    }
+
+    try {
+      // Eski rezervasyonu geri yükle
+      updateReservation(lastOperation.oldReservation);
+
+      // Bildirim göster
+      toast.success("Son işlem geri alındı!");
+
+      // Son işlem verisini temizle
+      setLastOperation(null);
+    } catch (error) {
+      console.error("İşlem geri alınırken hata oluştu:", error);
+      toast.error("İşlem geri alınamadı.");
+    }
+  };
+
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-gray-50 text-gray-800">
       {/* Aktif rezervasyon bildirimleri */}
       <ActiveReservations />
+
+      {/* Custom popup artık kullanılmıyor, native confirm kullanıyoruz */}
+      {/* {showConfirmPopup && confirmTitle && confirmMessage && (
+        <ConfirmationPopup />
+      )} */}
 
       {/* Navbar */}
       <div className="flex justify-between items-center bg-white p-4 border-b border-gray-200 shadow-sm">
@@ -3754,6 +3879,7 @@ function AdminPageComponent() {
                                   )}
                                   reservationStatuses={reservationStatuses}
                                   isReservationPast={isReservationPast}
+                                  showConfirmation={showConfirmation}
                                 />
                               );
                             })}
@@ -4290,9 +4416,26 @@ function AdminPageComponent() {
                       </label>
                       <input
                         type="time"
-                        value={selectedReservation.startTime}
+                        value={formatTimeForInput(
+                          selectedReservation.startTime
+                        )}
                         onChange={(e) => {
                           const newStartTime = e.target.value;
+                          // Tam saatin nasıl saklandığını kontrol et
+                          let formattedStartTime = newStartTime;
+                          // Eğer orijinal değerde tarih varsa, tarihi koru
+                          if (selectedReservation.startTime.includes("T")) {
+                            const datePart =
+                              selectedReservation.startTime.split("T")[0];
+                            formattedStartTime = `${datePart}T${newStartTime}`;
+                          } else if (
+                            selectedReservation.startTime.includes(" ")
+                          ) {
+                            const datePart =
+                              selectedReservation.startTime.split(" ")[0];
+                            formattedStartTime = `${datePart} ${newStartTime}`;
+                          }
+
                           // Başlangıç saatinden 1 saat sonrasını bitiş saati olarak ayarla
                           const [hours, minutes] = newStartTime
                             .split(":")
@@ -4308,10 +4451,24 @@ function AdminPageComponent() {
                             .toString()
                             .padStart(2, "0")}`;
 
+                          // Bitiş saati için de aynı tarih formatını koru
+                          let formattedEndTime = endTime;
+                          if (selectedReservation.endTime.includes("T")) {
+                            const datePart =
+                              selectedReservation.endTime.split("T")[0];
+                            formattedEndTime = `${datePart}T${endTime}`;
+                          } else if (
+                            selectedReservation.endTime.includes(" ")
+                          ) {
+                            const datePart =
+                              selectedReservation.endTime.split(" ")[0];
+                            formattedEndTime = `${datePart} ${endTime}`;
+                          }
+
                           setSelectedReservation({
                             ...selectedReservation,
-                            startTime: newStartTime,
-                            endTime: endTime,
+                            startTime: formattedStartTime,
+                            endTime: formattedEndTime,
                           });
                         }}
                         className={`w-full p-2 border border-gray-300 rounded mt-1 ${
@@ -4328,13 +4485,29 @@ function AdminPageComponent() {
                       </label>
                       <input
                         type="time"
-                        value={selectedReservation.endTime}
-                        onChange={(e) =>
+                        value={formatTimeForInput(selectedReservation.endTime)}
+                        onChange={(e) => {
+                          const newEndTime = e.target.value;
+                          // Tam saatin nasıl saklandığını kontrol et
+                          let formattedEndTime = newEndTime;
+                          // Eğer orijinal değerde tarih varsa, tarihi koru
+                          if (selectedReservation.endTime.includes("T")) {
+                            const datePart =
+                              selectedReservation.endTime.split("T")[0];
+                            formattedEndTime = `${datePart}T${newEndTime}`;
+                          } else if (
+                            selectedReservation.endTime.includes(" ")
+                          ) {
+                            const datePart =
+                              selectedReservation.endTime.split(" ")[0];
+                            formattedEndTime = `${datePart} ${newEndTime}`;
+                          }
+
                           setSelectedReservation({
                             ...selectedReservation,
-                            endTime: e.target.value,
-                          })
-                        }
+                            endTime: formattedEndTime,
+                          });
+                        }}
                         className={`w-full p-2 border border-gray-300 rounded mt-1 ${
                           isReservationPast(selectedReservation)
                             ? "bg-gray-100 cursor-not-allowed"
@@ -4661,6 +4834,35 @@ function AdminPageComponent() {
           scrollbar-width: none;
         }
 
+        /* SweetAlert2 özel stilleri */
+        .swal-custom-container {
+          z-index: 99999 !important;
+        }
+
+        .swal-custom-popup {
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+            "Helvetica Neue", Arial !important;
+          border-radius: 8px !important;
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25) !important;
+        }
+
+        .swal-custom-title {
+          font-weight: 600 !important;
+          font-size: 1.25rem !important;
+        }
+
+        .swal-custom-confirm {
+          background-color: #3085d6 !important;
+          padding: 0.5rem 1.25rem !important;
+          border-radius: 0.375rem !important;
+        }
+
+        .swal-custom-cancel {
+          background-color: #d33 !important;
+          padding: 0.5rem 1.25rem !important;
+          border-radius: 0.375rem !important;
+        }
+
         /* Rezervasyon bildirim animasyonu */
         @keyframes slideInRight {
           from {
@@ -4796,6 +4998,33 @@ function AdminPageComponent() {
             Seçimi Temizle
           </button>
         </div>
+      )}
+
+      {/* Onay popup'ı */}
+      {/* Popup zaten sayfa başında render ediliyor, burada tekrar render etmeye gerek yok */}
+
+      {/* Geri alma butonu - Son işlem varsa göster */}
+      {lastOperation && (
+        <button
+          onClick={undoLastOperation}
+          className="fixed bottom-4 right-4 z-40 bg-gray-800 text-white p-3 rounded-full shadow-lg hover:bg-gray-700 transition-colors"
+          title="Son işlemi geri al"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            className="h-6 w-6"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"
+            />
+          </svg>
+        </button>
       )}
     </div>
   );
