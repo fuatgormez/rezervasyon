@@ -7,7 +7,15 @@ import { tr } from "date-fns/locale";
 import DatePicker from "@/components/DatePicker";
 import TimeGrid from "@/components/reservation/TimeGrid";
 import toast, { Toaster } from "react-hot-toast";
-import { db } from "@/lib/supabase/client";
+import { db } from "@/config/firebase";
+import {
+  collection,
+  getDocs,
+  addDoc,
+  query,
+  where,
+  Timestamp,
+} from "firebase/firestore";
 
 interface Table {
   id: string;
@@ -50,7 +58,13 @@ export default function NewReservationPage() {
     const loadTablesAndReservations = async () => {
       try {
         // Masaları yükle
-        const tableData = await db.tables.getAll();
+        const tablesRef = collection(db, "tables");
+        const tablesSnapshot = await getDocs(tablesRef);
+        const tableData = tablesSnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        })) as Table[];
+
         setTables(tableData);
 
         // Seçilen gün için rezervasyonları yükle
@@ -60,10 +74,28 @@ export default function NewReservationPage() {
         const endDate = new Date(selectedDate);
         endDate.setHours(23, 59, 59, 999);
 
-        const reservationData = await db.reservations.getByDateRange(
-          startDate.toISOString(),
-          endDate.toISOString()
+        const reservationsRef = collection(db, "reservations");
+        const reservationsQuery = query(
+          reservationsRef,
+          where("start_time", ">=", Timestamp.fromDate(startDate)),
+          where("start_time", "<=", Timestamp.fromDate(endDate))
         );
+
+        const reservationsSnapshot = await getDocs(reservationsQuery);
+        const reservationData = reservationsSnapshot.docs.map((doc) => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            table_id: data.table_id,
+            customer_name: data.customer_name,
+            start_time:
+              data.start_time?.toDate()?.toISOString() ||
+              new Date().toISOString(),
+            end_time:
+              data.end_time?.toDate()?.toISOString() ||
+              new Date().toISOString(),
+          };
+        });
 
         setReservations(reservationData);
       } catch (error) {
@@ -135,33 +167,39 @@ export default function NewReservationPage() {
 
       // Başlangıç ve bitiş zamanlarını oluştur
       const dateStr = format(selectedDate, "yyyy-MM-dd");
-      const startTimeStr = `${dateStr}T${formData.time}:00`;
-      const endTimeStr = `${dateStr}T${formData.endTime}:00`;
+      const startTime = new Date(`${dateStr}T${formData.time}:00`);
+      const endTime = new Date(`${dateStr}T${formData.endTime}:00`);
 
       // Rezervasyon çakışmasını kontrol et
-      const hasConflict = await db.reservations.checkConflict(
-        formData.tableId,
-        startTimeStr,
-        endTimeStr
+      const reservationsRef = collection(db, "reservations");
+      const conflictQuery = query(
+        reservationsRef,
+        where("table_id", "==", formData.tableId),
+        where("start_time", "<", Timestamp.fromDate(endTime)),
+        where("end_time", ">", Timestamp.fromDate(startTime))
       );
 
-      if (hasConflict) {
+      const conflictSnapshot = await getDocs(conflictQuery);
+
+      if (!conflictSnapshot.empty) {
         toast.error("Bu zaman diliminde masa zaten rezerve edilmiş!");
         setLoading(false);
         return;
       }
 
       // Rezervasyon oluştur
-      await db.reservations.create({
+      await addDoc(collection(db, "reservations"), {
         table_id: formData.tableId,
         customer_name: formData.customerName,
         customer_phone: formData.phone,
         customer_email: formData.email,
-        guest_count: formData.guestCount,
-        start_time: startTimeStr,
-        end_time: endTimeStr,
+        guest_count: parseInt(formData.guestCount.toString()),
+        start_time: Timestamp.fromDate(startTime),
+        end_time: Timestamp.fromDate(endTime),
         status: "confirmed",
         note: formData.specialRequests,
+        created_at: Timestamp.now(),
+        updated_at: Timestamp.now(),
       });
 
       toast.success("Rezervasyon başarıyla oluşturuldu!");

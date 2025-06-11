@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ReservationController } from "@/controllers/reservation.controller";
-import type { Reservation } from "@/models/types";
+import { FirebaseService } from "@/services/firebase.service";
 
 // GET - Tüm rezervasyonları getir
 export async function GET(request: NextRequest) {
@@ -18,27 +17,25 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    let reservations: Reservation[] = [];
+    let reservations: any[] = [];
 
     try {
       if (startDate && endDate) {
         // Tarih aralığına göre rezervasyonları getir
-        reservations = await ReservationController.getReservationsByDateRange(
+        reservations = await FirebaseService.getReservationsByDateRange(
           companyId,
-          new Date(startDate),
-          new Date(endDate)
+          startDate,
+          endDate
         );
       } else if (date) {
         // Belirli bir tarihe göre rezervasyonları getir
-        reservations = await ReservationController.getCompanyReservations(
+        reservations = await FirebaseService.getCompanyReservations(
           companyId,
-          new Date(date)
+          date
         );
       } else {
         // Tüm rezervasyonları getir
-        reservations = await ReservationController.getCompanyReservations(
-          companyId
-        );
+        reservations = await FirebaseService.getCompanyReservations(companyId);
       }
     } catch (error) {
       console.error("Rezervasyonlar alınamadı:", error);
@@ -61,58 +58,26 @@ export async function GET(request: NextRequest) {
 // POST - Yeni rezervasyon ekle
 export async function POST(request: NextRequest) {
   try {
-    const {
-      user_id,
-      company_id,
-      date,
-      time,
-      customer_name,
-      guest_count,
-      phone,
-      email,
-      table_id,
-      end_time,
-      notes,
-      status,
-    } = await request.json();
+    const reservationData = await request.json();
 
-    if (!user_id || !company_id || !date || !time) {
+    // Gerekli alanların kontrolü
+    if (
+      !reservationData.user_id ||
+      !reservationData.company_id ||
+      !reservationData.date ||
+      !reservationData.time
+    ) {
       return NextResponse.json(
         { error: "Gerekli alanlar eksik" },
         { status: 400 }
       );
     }
 
-    console.log("Rezervasyon verileri:", {
-      user_id,
-      company_id,
-      date,
-      time,
-      customer_name,
-      guest_count,
-      phone,
-      email,
-      table_id,
-      end_time,
-      notes,
-      status,
-    });
+    console.log("Rezervasyon verileri:", reservationData);
 
-    const reservation = await ReservationController.createReservation(
-      user_id,
-      company_id,
-      date,
-      time,
-      {
-        customer_name,
-        guest_count,
-        phone,
-        email,
-        table_id,
-        end_time,
-        notes,
-        status: status || "pending",
-      }
+    // Firebase servisini kullanarak rezervasyon oluştur
+    const reservation = await FirebaseService.createReservation(
+      reservationData
     );
 
     return NextResponse.json(reservation);

@@ -7,7 +7,16 @@ import { tr } from "date-fns/locale";
 import toast, { Toaster } from "react-hot-toast";
 import DatePicker from "@/components/DatePicker";
 import type { Reservation } from "@/models/types";
-import { db } from "@/lib/supabase/client";
+import { db } from "@/config/firebase";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  doc,
+  updateDoc,
+  Timestamp,
+} from "firebase/firestore";
 
 // Framer Motion animasyonları
 const AnimatePresence = ({
@@ -67,34 +76,46 @@ export default function ReservationPage() {
       const endDate = new Date(date);
       endDate.setHours(23, 59, 59, 999);
 
-      // Supabase'den rezervasyonları çek
-      const data = await db.reservations.getByDateRange(
-        startDate.toISOString(),
-        endDate.toISOString()
+      // Firebase'den rezervasyonları çek
+      const reservationsRef = collection(db, "reservations");
+      const reservationsQuery = query(
+        reservationsRef,
+        where("start_time", ">=", Timestamp.fromDate(startDate)),
+        where("start_time", "<=", Timestamp.fromDate(endDate))
       );
 
+      const querySnapshot = await getDocs(reservationsQuery);
+
       // Verileri model tipine dönüştür
-      const formattedReservations = data.map((res) => ({
-        id: res.id,
-        user_id: res.created_by || "",
-        company_id: res.company_id || "",
-        branch_id: res.branch_id || "",
-        table_id: res.table_id,
-        date: format(new Date(res.start_time), "yyyy-MM-dd"),
-        time: format(new Date(res.start_time), "HH:mm"),
-        start_time: res.start_time,
-        end_time: res.end_time,
-        status: res.status,
-        payment_status: res.payment_status,
-        created_at: res.created_at,
-        updated_at: res.updated_at,
-        customer_name: res.customer_name,
-        guest_count: res.guest_count,
-        phone: res.customer_phone || "",
-        email: res.customer_email || "",
-        notes: res.note || "",
-        color: res.color || "",
-      })) as Reservation[];
+      const formattedReservations = querySnapshot.docs.map((doc) => {
+        const res = doc.data();
+        const startTime = res.start_time?.toDate() || new Date();
+        const endTime = res.end_time?.toDate() || new Date();
+
+        return {
+          id: doc.id,
+          user_id: res.created_by || "",
+          company_id: res.company_id || "",
+          branch_id: res.branch_id || "",
+          table_id: res.table_id,
+          date: format(startTime, "yyyy-MM-dd"),
+          time: format(startTime, "HH:mm"),
+          start_time: startTime.toISOString(),
+          end_time: endTime.toISOString(),
+          status: res.status,
+          payment_status: res.payment_status,
+          created_at:
+            res.created_at?.toDate()?.toISOString() || new Date().toISOString(),
+          updated_at:
+            res.updated_at?.toDate()?.toISOString() || new Date().toISOString(),
+          customer_name: res.customer_name,
+          guest_count: res.guest_count,
+          phone: res.customer_phone || "",
+          email: res.customer_email || "",
+          notes: res.note || "",
+          color: res.color || "",
+        };
+      }) as Reservation[];
 
       setReservations(formattedReservations);
     } catch (error) {
@@ -122,7 +143,14 @@ export default function ReservationPage() {
   ) => {
     try {
       toast.loading("Rezervasyon durumu değiştiriliyor...");
-      await db.reservations.updateStatus(id, status);
+
+      // Firebase'de rezervasyon durumunu güncelle
+      const reservationRef = doc(db, "reservations", id);
+      await updateDoc(reservationRef, {
+        status: status,
+        updated_at: Timestamp.now(),
+      });
+
       toast.dismiss();
       toast.success("Rezervasyon durumu güncellendi");
       // Listeyi yenile

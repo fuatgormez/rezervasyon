@@ -1,19 +1,26 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase/client";
+import { db } from "@/config/firebase";
+import { collection, getDocs, writeBatch, doc } from "firebase/firestore";
 
 export const dynamic = "force-dynamic";
 
 // Test rezervasyonlarını temizlemek için özel endpoint
 export async function GET() {
   try {
-    const { error } = await supabase
-      .from("reservations")
-      .delete()
-      .neq("id", "00000000-0000-0000-0000-000000000000");
+    // Tüm rezervasyonları getir
+    const reservationsRef = collection(db, "reservations");
+    const querySnapshot = await getDocs(reservationsRef);
 
-    if (error) {
-      throw error;
-    }
+    // Batch işlemi başlat
+    const batch = writeBatch(db);
+
+    // Her rezervasyonu silme işlemine ekle
+    querySnapshot.forEach((document) => {
+      batch.delete(doc(db, "reservations", document.id));
+    });
+
+    // Batch işlemini gerçekleştir
+    await batch.commit();
 
     return new NextResponse(
       JSON.stringify({ message: "Tüm rezervasyonlar başarıyla temizlendi" }),

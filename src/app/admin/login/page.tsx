@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase/client";
+import { auth, db } from "@/lib/firebase";
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { ref, get, child } from "firebase/database";
 
 export default function AdminLoginPage() {
   const [email, setEmail] = useState("");
@@ -13,31 +15,49 @@ export default function AdminLoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      // Firebase ile giriş yap
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
         email,
-        password,
-      });
+        password
+      );
+      const user = userCredential.user;
 
-      if (error) throw error;
+      // Kullanıcı bilgilerini Realtime Database'den al
+      const dbRef = ref(db);
+      const snapshot = await get(child(dbRef, `users/${user.uid}`));
 
-      // Kullanıcı bilgilerini al ve süper admin kontrolü yap
-      const { data: userData, error: userError } = await supabase
-        .from("users")
-        .select("*")
-        .eq("id", data.user?.id)
-        .single();
+      if (!snapshot.exists()) {
+        throw new Error("Kullanıcı bilgileri bulunamadı!");
+      }
 
-      if (userError) throw userError;
+      const userData = snapshot.val();
 
+      // Admin kontrolü yap
       if (!userData.is_super_admin) {
         throw new Error("Bu sayfaya erişim yetkiniz yok!");
       }
 
       // Başarılı giriş sonrası yönlendirme
-      router.push("/admin/dashboard");
+      router.push("/admin");
       router.refresh();
     } catch (error: any) {
-      setError(error.message);
+      let errorMessage = "Giriş yapılırken bir hata oluştu.";
+
+      if (error.code === "auth/user-not-found") {
+        errorMessage = "Bu e-posta adresiyle kayıtlı kullanıcı bulunamadı.";
+      } else if (error.code === "auth/wrong-password") {
+        errorMessage = "Hatalı şifre girdiniz.";
+      } else if (error.code === "auth/invalid-email") {
+        errorMessage = "Geçersiz e-posta adresi.";
+      } else if (error.code === "auth/too-many-requests") {
+        errorMessage =
+          "Çok fazla başarısız giriş denemesi. Lütfen daha sonra tekrar deneyin.";
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
+      setError(errorMessage);
     }
   };
 

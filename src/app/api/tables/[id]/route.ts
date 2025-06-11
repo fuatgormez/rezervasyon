@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase/client";
+import { db } from "@/config/firebase";
+import { doc, getDoc, updateDoc, deleteDoc } from "firebase/firestore";
 
 export async function GET(
   request: NextRequest,
@@ -7,19 +8,19 @@ export async function GET(
 ) {
   try {
     const id = params.id;
-    const { data: table, error } = await supabase
-      .from("tables")
-      .select("*")
-      .eq("id", id)
-      .single();
 
-    if (error) {
-      throw error;
-    }
+    // Firestore'dan masa bilgisini getir
+    const tableRef = doc(db, "tables", id);
+    const tableSnap = await getDoc(tableRef);
 
-    if (!table) {
+    if (!tableSnap.exists()) {
       return NextResponse.json({ error: "Table not found" }, { status: 404 });
     }
+
+    const table = {
+      id: tableSnap.id,
+      ...tableSnap.data(),
+    };
 
     return NextResponse.json({ table });
   } catch (error) {
@@ -40,16 +41,24 @@ export async function PATCH(
     const id = params.id;
     const updates = await request.json();
 
-    const { data: updatedTable, error } = await supabase
-      .from("tables")
-      .update(updates)
-      .eq("id", id)
-      .select()
-      .single();
+    // Firestore'da masayı güncelle
+    const tableRef = doc(db, "tables", id);
+    await updateDoc(tableRef, updates);
 
-    if (error) {
-      throw error;
+    // Güncellenmiş masayı getir
+    const updatedTableSnap = await getDoc(tableRef);
+
+    if (!updatedTableSnap.exists()) {
+      return NextResponse.json(
+        { error: "Table not found after update" },
+        { status: 404 }
+      );
     }
+
+    const updatedTable = {
+      id: updatedTableSnap.id,
+      ...updatedTableSnap.data(),
+    };
 
     return NextResponse.json({
       message: "Table updated successfully",
@@ -71,11 +80,10 @@ export async function DELETE(
 ) {
   try {
     const id = params.id;
-    const { error } = await supabase.from("tables").delete().eq("id", id);
 
-    if (error) {
-      throw error;
-    }
+    // Firestore'dan masayı sil
+    const tableRef = doc(db, "tables", id);
+    await deleteDoc(tableRef);
 
     return NextResponse.json({
       message: "Table deleted successfully",

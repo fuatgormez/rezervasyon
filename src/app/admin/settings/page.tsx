@@ -3,10 +3,25 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import toast from "react-hot-toast";
-import { mockTables, mockTableCategories } from "@/lib/supabase/tables";
-import type { Table } from "@/lib/supabase/tables";
+import { mockTables, mockTableCategories } from "@/models/tables";
+import type { Table } from "@/models/tables";
+import { db } from "@/config/firebase";
+import {
+  collection,
+  getDocs,
+  addDoc,
+  doc,
+  getDoc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where,
+  orderBy,
+  Timestamp,
+} from "firebase/firestore";
+import { UserPreferences, SettingsService } from "@/services/firebase.service";
 
-// Masa kategorisi arayüzü güncelleniyor
+// Masa kategorisi arayüzü
 interface TableCategory {
   id: string;
   name: string;
@@ -68,44 +83,117 @@ export default function SettingsPage() {
     list: [],
   });
 
+  // Yükleniyor göstergesi
+  const [loading, setLoading] = useState({
+    company: false,
+    tables: false,
+    time: false,
+    tableList: false,
+  });
+
   // Firma ayarlarını kaydetmek için fonksiyon
-  const saveCompanySettings = () => {
-    // API çağrısı yapılacak
-    localStorage.setItem("companySettings", JSON.stringify(companySettings));
-    toast.success("Firma ayarları kaydedildi!");
+  const saveCompanySettings = async () => {
+    try {
+      setLoading((prev) => ({ ...prev, company: true }));
+
+      // Firebase'e kaydet
+      await SettingsService.updateSettings({
+        company: companySettings,
+      });
+
+      toast.success("Firma ayarları kaydedildi!");
+    } catch (error: any) {
+      console.error("Firma ayarları kaydedilirken hata:", error);
+      toast.error(`Hata: ${error.message || "Bilinmeyen bir hata oluştu"}`);
+    } finally {
+      setLoading((prev) => ({ ...prev, company: false }));
+    }
   };
 
   // Masa ayarlarını kaydetmek için fonksiyon
-  const saveTableSettings = () => {
-    // API çağrısı yapılacak
-    localStorage.setItem("tableSettings", JSON.stringify(tableSettings));
-    toast.success("Masa ayarları kaydedildi!");
+  const saveTableSettings = async () => {
+    try {
+      setLoading((prev) => ({ ...prev, tables: true }));
+
+      // Firebase'e kaydet
+      await SettingsService.updateSettings({
+        table_categories: tableSettings.categories,
+      });
+
+      toast.success("Masa ayarları kaydedildi!");
+    } catch (error: any) {
+      console.error("Masa ayarları kaydedilirken hata:", error);
+      toast.error(`Hata: ${error.message || "Bilinmeyen bir hata oluştu"}`);
+    } finally {
+      setLoading((prev) => ({ ...prev, tables: false }));
+    }
   };
 
   // Saat ayarlarını kaydetmek için fonksiyon
-  const saveTimeSettings = () => {
-    // API çağrısı yapılacak
-    localStorage.setItem("timeSettings", JSON.stringify(timeSettings));
-    toast.success("Saat ayarları kaydedildi!");
+  const saveTimeSettings = async () => {
+    try {
+      setLoading((prev) => ({ ...prev, time: true }));
+
+      // Firebase'e kaydet
+      await SettingsService.updateSettings({
+        working_hours: {
+          opening: timeSettings.openingTime,
+          closing: timeSettings.closingTime,
+        },
+        reservation_duration: timeSettings.reservationDuration,
+      });
+
+      toast.success("Saat ayarları kaydedildi!");
+    } catch (error: any) {
+      console.error("Saat ayarları kaydedilirken hata:", error);
+      toast.error(`Hata: ${error.message || "Bilinmeyen bir hata oluştu"}`);
+    } finally {
+      setLoading((prev) => ({ ...prev, time: false }));
+    }
   };
 
-  // Firma ayarlarını yüklemek için useEffect
+  // Ayarları yüklemek için useEffect
   useEffect(() => {
-    const savedCompanySettings = localStorage.getItem("companySettings");
-    const savedTableSettings = localStorage.getItem("tableSettings");
-    const savedTimeSettings = localStorage.getItem("timeSettings");
+    const loadSettings = async () => {
+      try {
+        // Firebase'den ayarları getir
+        const settings = await SettingsService.getSettings();
 
-    if (savedCompanySettings) {
-      setCompanySettings(JSON.parse(savedCompanySettings));
-    }
+        // Firma ayarları
+        if (settings.company) {
+          setCompanySettings(settings.company);
+        }
 
-    if (savedTableSettings) {
-      setTableSettings(JSON.parse(savedTableSettings));
-    }
+        // Masa kategorileri
+        if (settings.table_categories && settings.table_categories.length > 0) {
+          setTableSettings({
+            categories: settings.table_categories,
+          });
+        }
 
-    if (savedTimeSettings) {
-      setTimeSettings(JSON.parse(savedTimeSettings));
-    }
+        // Çalışma saatleri
+        if (settings.working_hours) {
+          setTimeSettings((prev) => ({
+            ...prev,
+            openingTime: settings.working_hours?.opening || "07:00",
+            closingTime: settings.working_hours?.closing || "02:00",
+          }));
+        }
+
+        // Rezervasyon süresi
+        if (settings.reservation_duration) {
+          setTimeSettings((prev) => ({
+            ...prev,
+            reservationDuration: settings.reservation_duration || 120,
+          }));
+        }
+      } catch (error) {
+        console.error("Ayarlar yüklenirken hata:", error);
+        toast.error("Ayarlar yüklenirken bir hata oluştu.");
+      }
+    };
+
+    loadSettings();
   }, []);
 
   // Masaları yükle
@@ -116,27 +204,53 @@ export default function SettingsPage() {
   // Masaları yükleme fonksiyonu
   const loadTables = async () => {
     try {
+      setLoading((prev) => ({ ...prev, tableList: true }));
       console.log("Masalar yükleniyor...");
-      // Gerçek API çağrısı yerine mock veri kullanıyoruz
-      setTablesList({ list: mockTables });
 
-      // Kategorileri de mock veriden yükle
-      setTableSettings({
-        categories: mockTableCategories.map((cat) => ({
-          id: cat.id,
-          name: cat.name,
-          color: cat.color,
-          borderColor: cat.border_color,
-          backgroundColor: cat.background_color,
-        })),
-      });
+      // Firebase'den masaları getir
+      const tablesRef = collection(db, "tables");
+      const tablesQuery = query(tablesRef, orderBy("number", "asc"));
+      const tablesSnapshot = await getDocs(tablesQuery);
 
-      console.log("Yüklenen masalar:", mockTables);
+      if (!tablesSnapshot.empty) {
+        const tables = tablesSnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+          number: doc.data().number || 0,
+          capacity: doc.data().capacity || 4,
+          category_id: doc.data().category_id || "1",
+          status: doc.data().status || "active",
+        }));
+
+        setTablesList({ list: tables });
+        console.log("Yüklenen masalar:", tables);
+      } else {
+        // Gerçek veritabanında masa yoksa mock veri kullanabilirsiniz
+        setTablesList({ list: mockTables });
+      }
+
+      // Firebase'den kategorileri getir
+      const categoriesRef = collection(db, "table_categories");
+      const categoriesSnapshot = await getDocs(categoriesRef);
+
+      if (!categoriesSnapshot.empty) {
+        const categories = categoriesSnapshot.docs.map((doc) => ({
+          id: doc.id,
+          name: doc.data().name || "",
+          color: doc.data().color || "rgba(52, 152, 219, 0.8)",
+          borderColor: doc.data().borderColor || "#2980b9",
+          backgroundColor: doc.data().backgroundColor || "#f0f9ff",
+        }));
+
+        setTableSettings({ categories });
+      }
     } catch (error: any) {
       console.error("Masalar yüklenirken detaylı hata:", error);
       toast.error(
         `Masalar yüklenirken bir hata oluştu: ${error?.message || error}`
       );
+    } finally {
+      setLoading((prev) => ({ ...prev, tableList: false }));
     }
   };
 
@@ -144,19 +258,34 @@ export default function SettingsPage() {
   const addTable = async () => {
     try {
       console.log("Yeni masa ekleniyor...");
+
+      // En yüksek masa numarasını bul
+      const maxTableNumber =
+        tablesList.list.length > 0
+          ? Math.max(...tablesList.list.map((t) => t.number))
+          : 0;
+
       const newTable = {
-        id: `t${tablesList.list.length + 1}`,
-        number: tablesList.list.length + 1,
+        number: maxTableNumber + 1,
         capacity: 4,
         category_id: tableSettings.categories[0]?.id || "1",
-        status: "Available",
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        status: "active",
+        created_at: Timestamp.now(),
+        updated_at: Timestamp.now(),
       };
+
       console.log("Eklenecek masa bilgileri:", newTable);
 
-      // Gerçek API çağrısı yerine state güncelleme
-      setTablesList({ list: [...tablesList.list, newTable] });
+      // Firebase'e kaydet
+      const tableRef = await addDoc(collection(db, "tables"), newTable);
+
+      // State'i güncelle
+      const savedTable = {
+        id: tableRef.id,
+        ...newTable,
+      };
+
+      setTablesList({ list: [...tablesList.list, savedTable] });
       toast.success("Yeni masa eklendi!");
     } catch (error: any) {
       console.error("Masa eklenirken detaylı hata:", error);
@@ -171,12 +300,20 @@ export default function SettingsPage() {
     try {
       console.log(`${id} ID'li masa güncelleniyor:`, data);
 
-      // Gerçek API çağrısı yerine state güncelleme
+      // Firebase'de güncelle
+      const tableRef = doc(db, "tables", id);
+      await updateDoc(tableRef, {
+        ...data,
+        updated_at: Timestamp.now(),
+      });
+
+      // State'i güncelle
       setTablesList({
         list: tablesList.list.map((table) =>
           table.id === id ? { ...table, ...data } : table
         ),
       });
+
       toast.success("Masa güncellendi!");
     } catch (error: any) {
       console.error("Masa güncellenirken detaylı hata:", error);
@@ -191,10 +328,15 @@ export default function SettingsPage() {
     try {
       console.log(`${id} ID'li masa siliniyor...`);
 
-      // Gerçek API çağrısı yerine state güncelleme
+      // Firebase'den sil
+      const tableRef = doc(db, "tables", id);
+      await deleteDoc(tableRef);
+
+      // State'i güncelle
       setTablesList({
         list: tablesList.list.filter((table) => table.id !== id),
       });
+
       toast.success("Masa silindi!");
     } catch (error: any) {
       console.error("Masa silinirken detaylı hata:", error);
@@ -205,24 +347,45 @@ export default function SettingsPage() {
   };
 
   // Kategori ekleme fonksiyonu
-  const addCategory = () => {
-    const randomColor =
-      "#" +
-      Math.floor(Math.random() * 16777215)
-        .toString(16)
-        .padStart(6, "0");
-    const newCategory = {
-      id: Date.now().toString(),
-      name: "Yeni Kategori",
-      color: hexToRgba(randomColor, 0.8), // RGBA formatında şeffaf renk
-      borderColor: randomColor, // Kenarlık rengi tam opak
-      backgroundColor: getLighterColor(randomColor), // Açık tonda arkaplan rengi
-    };
+  const addCategory = async () => {
+    try {
+      const randomColor =
+        "#" +
+        Math.floor(Math.random() * 16777215)
+          .toString(16)
+          .padStart(6, "0");
 
-    setTableSettings({
-      ...tableSettings,
-      categories: [...tableSettings.categories, newCategory],
-    });
+      const newCategory = {
+        name: "Yeni Kategori",
+        color: hexToRgba(randomColor, 0.8), // RGBA formatında şeffaf renk
+        borderColor: randomColor, // Kenarlık rengi tam opak
+        backgroundColor: getLighterColor(randomColor), // Açık tonda arkaplan rengi
+        created_at: Timestamp.now(),
+        updated_at: Timestamp.now(),
+      };
+
+      // Firebase'e kaydet
+      const categoryRef = await addDoc(
+        collection(db, "table_categories"),
+        newCategory
+      );
+
+      // State'i güncelle
+      const savedCategory = {
+        id: categoryRef.id,
+        ...newCategory,
+      };
+
+      setTableSettings({
+        ...tableSettings,
+        categories: [...tableSettings.categories, savedCategory],
+      });
+
+      toast.success("Yeni kategori eklendi!");
+    } catch (error: any) {
+      console.error("Kategori eklenirken hata:", error);
+      toast.error(`Hata: ${error.message || "Bilinmeyen bir hata oluştu"}`);
+    }
   };
 
   // Açık renk oluşturma fonksiyonu
@@ -244,23 +407,48 @@ export default function SettingsPage() {
   };
 
   // Kategori silme fonksiyonu
-  const removeCategory = (id: string) => {
-    setTableSettings({
-      ...tableSettings,
-      categories: tableSettings.categories.filter(
-        (category) => category.id !== id
-      ),
-    });
+  const removeCategory = async (id: string) => {
+    try {
+      // Firebase'den sil
+      const categoryRef = doc(db, "table_categories", id);
+      await deleteDoc(categoryRef);
+
+      // State'i güncelle
+      setTableSettings({
+        ...tableSettings,
+        categories: tableSettings.categories.filter(
+          (category) => category.id !== id
+        ),
+      });
+
+      toast.success("Kategori silindi!");
+    } catch (error: any) {
+      console.error("Kategori silinirken hata:", error);
+      toast.error(`Hata: ${error.message || "Bilinmeyen bir hata oluştu"}`);
+    }
   };
 
   // Kategori güncelleme fonksiyonu
-  const updateCategory = (id: string, field: string, value: string) => {
-    setTableSettings({
-      ...tableSettings,
-      categories: tableSettings.categories.map((category) =>
-        category.id === id ? { ...category, [field]: value } : category
-      ),
-    });
+  const updateCategory = async (id: string, field: string, value: string) => {
+    try {
+      // Önce state'i güncelle (UI için hızlı yanıt)
+      setTableSettings({
+        ...tableSettings,
+        categories: tableSettings.categories.map((category) =>
+          category.id === id ? { ...category, [field]: value } : category
+        ),
+      });
+
+      // Firebase'de güncelle (asenkron olarak)
+      const categoryRef = doc(db, "table_categories", id);
+      await updateDoc(categoryRef, {
+        [field]: value,
+        updated_at: Timestamp.now(),
+      });
+    } catch (error: any) {
+      console.error("Kategori güncellenirken hata:", error);
+      toast.error(`Hata: ${error.message || "Bilinmeyen bir hata oluştu"}`);
+    }
   };
 
   // RGBA renk değerini HEX değerine çevirme
@@ -275,14 +463,42 @@ export default function SettingsPage() {
   };
 
   // Kategori renk güncellemesi için özel fonksiyon
-  const updateCategoryColor = (
+  const updateCategoryColor = async (
     id: string,
     hexColor: string,
     opacity: number
   ) => {
-    updateCategory(id, "color", hexToRgba(hexColor, opacity));
-    updateCategory(id, "borderColor", hexColor);
-    updateCategory(id, "backgroundColor", getLighterColor(hexColor));
+    try {
+      const rgbaColor = hexToRgba(hexColor, opacity);
+      const bgColor = getLighterColor(hexColor);
+
+      // Önce state'i güncelle (UI için hızlı yanıt)
+      setTableSettings({
+        ...tableSettings,
+        categories: tableSettings.categories.map((category) =>
+          category.id === id
+            ? {
+                ...category,
+                color: rgbaColor,
+                borderColor: hexColor,
+                backgroundColor: bgColor,
+              }
+            : category
+        ),
+      });
+
+      // Firebase'de güncelle
+      const categoryRef = doc(db, "table_categories", id);
+      await updateDoc(categoryRef, {
+        color: rgbaColor,
+        borderColor: hexColor,
+        backgroundColor: bgColor,
+        updated_at: Timestamp.now(),
+      });
+    } catch (error: any) {
+      console.error("Kategori rengi güncellenirken hata:", error);
+      toast.error(`Hata: ${error.message || "Bilinmeyen bir hata oluştu"}`);
+    }
   };
 
   return (
@@ -516,7 +732,9 @@ export default function SettingsPage() {
                           type="color"
                           value={category.color}
                           onChange={(e) => {
-                            updateCategoryColor(category.id, e.target.value, 1);
+                            // hex değerini RGBA'ya çevir ve güncelle
+                            const hexValue = e.target.value;
+                            updateCategoryColor(category.id, hexValue, 0.8);
                           }}
                           className="w-full h-8"
                         />

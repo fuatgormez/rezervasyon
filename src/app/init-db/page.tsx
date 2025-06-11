@@ -1,1114 +1,404 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import initializeDatabase from "../../lib/db-init";
-import { supabase } from "../../lib/supabase/client";
-import { v4 as uuidv4 } from "uuid";
+import { useState, useEffect } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { checkFirebaseConnection } from "@/lib/firebase/config";
+import {
+  checkInternetConnection,
+  reconnectFirebase,
+} from "@/services/firebase.service";
+import { resetFirebaseConnection } from "@/lib/firebase/reset";
 
-export default function InitDBPage() {
-  const [status, setStatus] = useState<string>("Hazır");
-  const [tables, setTables] = useState<any[]>([]);
-  const [loading, setLoading] = useState<boolean>(false);
+export default function InitDbPage() {
+  const router = useRouter();
+  const [isLoading, setIsLoading] = useState(false);
+  const [results, setResults] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [restaurantKey, setRestaurantKey] = useState<string>("");
-  const [formitableRestaurantId, setFormitableRestaurantId] =
-    useState<string>("");
-  const [importStatus, setImportStatus] = useState<string>("");
-  const [importedData, setImportedData] = useState<{
-    customers?: number;
-    tables?: number;
-  }>({});
+  const [success, setSuccess] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<
+    "loading" | "success" | "error"
+  >("loading");
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const [resetMessage, setResetMessage] = useState<string | null>(null);
 
-  // Manuel eklemeler için state
-  const [showManualForm, setShowManualForm] = useState<boolean>(false);
-  const [manualTableData, setManualTableData] = useState({
-    number: "",
-    capacity: "",
-    category: "Teras",
-    status: "active",
-  });
-  const [manualCustomerData, setManualCustomerData] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    notes: "",
-  });
-  const [categories, setCategories] = useState<any[]>([]);
-
-  // Sayfa yüklendiğinde mevcut tabloları ve kategorileri kontrol et
+  // Firebase bağlantısını kontrol et
   useEffect(() => {
-    checkTables();
-    fetchCategories();
+    const checkConnection = async () => {
+      try {
+        // Önce internet bağlantısını kontrol et
+        const isOnline = await checkInternetConnection();
+        if (!isOnline) {
+          setConnectionStatus("error");
+          setConnectionError(
+            "İnternet bağlantısı bulunamadı. Lütfen bağlantınızı kontrol edin."
+          );
+          return;
+        }
+
+        // Firebase bağlantısını kontrol et
+        const result = await checkFirebaseConnection();
+        if (result.success) {
+          setConnectionStatus("success");
+        } else {
+          console.error("Firebase bağlantı hatası:", result.error);
+          setConnectionStatus("error");
+
+          // Çevrimdışı hata mesajı kontrolü
+          if (
+            result.error &&
+            typeof result.error === "string" &&
+            (result.error.includes("offline") ||
+              result.error.includes("çevrimdışı"))
+          ) {
+            setConnectionError(
+              "Firebase çevrimdışı modda çalışıyor. Yeniden bağlanmayı deneyin."
+            );
+          } else {
+            setConnectionError(
+              result.error || "Bilinmeyen bir bağlantı hatası"
+            );
+          }
+        }
+      } catch (error) {
+        console.error("Genel bağlantı hatası:", error);
+        setConnectionStatus("error");
+        setConnectionError(
+          error instanceof Error
+            ? error.message
+            : "Bilinmeyen bir bağlantı hatası"
+        );
+      }
+    };
+
+    checkConnection();
   }, []);
 
-  const initDB = async () => {
+  const initializeDatabase = async () => {
     try {
-      setLoading(true);
+      setIsLoading(true);
       setError(null);
-      setStatus("Veritabanı tabloları ve veriler kontrol ediliyor...");
+      setResults([]);
+      setSuccess(false);
 
-      const result = await initializeDatabase();
+      console.log("Veritabanı başlatma isteği gönderiliyor...");
+
+      const response = await fetch("/api/init-db", {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-cache",
+        },
+      });
+
+      console.log("API yanıtı alındı, durum kodu:", response.status);
+
+      if (!response.ok) {
+        throw new Error(
+          `API yanıtı başarısız: ${response.status} ${response.statusText}`
+        );
+      }
+
+      const responseText = await response.text();
+      console.log("API yanıt metni:", responseText);
+
+      if (!responseText || responseText.trim() === "") {
+        throw new Error("API'den boş yanıt alındı");
+      }
+
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (parseError: any) {
+        console.error("JSON parse hatası:", parseError);
+        throw new Error(`JSON parse hatası: ${parseError.message}`);
+      }
+
+      console.log("İşlenmiş API yanıtı:", data);
+
+      if (data.success) {
+        setSuccess(true);
+        setResults(data.results || []);
+      } else {
+        setError(data.error || "Bilinmeyen bir hata oluştu");
+      }
+    } catch (error) {
+      console.error("Veritabanı başlatılırken hata:", error);
+      setError(
+        error instanceof Error ? error.message : "Bilinmeyen bir hata oluştu"
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Yeniden bağlanma işlemi
+  const handleReconnect = async () => {
+    try {
+      setIsReconnecting(true);
+      setConnectionStatus("loading");
+      setConnectionError(null);
+
+      // İnternet bağlantısını kontrol et
+      const isOnline = await checkInternetConnection();
+      if (!isOnline) {
+        setConnectionStatus("error");
+        setConnectionError(
+          "İnternet bağlantısı bulunamadı. Lütfen bağlantınızı kontrol edin."
+        );
+        return;
+      }
+
+      // Firebase ağını yeniden bağla
+      await reconnectFirebase();
+
+      // Bağlantıyı tekrar kontrol et
+      const result = await checkFirebaseConnection();
+      if (result.success) {
+        setConnectionStatus("success");
+        setConnectionError(null);
+      } else {
+        setConnectionStatus("error");
+        setConnectionError(
+          result.error ||
+            "Firebase bağlantısı kurulamadı. Lütfen daha sonra tekrar deneyin."
+        );
+      }
+    } catch (error) {
+      setConnectionStatus("error");
+      setConnectionError(
+        error instanceof Error
+          ? error.message
+          : "Bilinmeyen bir bağlantı hatası"
+      );
+    } finally {
+      setIsReconnecting(false);
+    }
+  };
+
+  // Firebase'i tamamen sıfırlama işlemi
+  const handleReset = async () => {
+    try {
+      setIsResetting(true);
+      setResetMessage(null);
+
+      // Firebase'i sıfırla
+      const result = await resetFirebaseConnection();
+      setResetMessage(result.message);
 
       if (result.success) {
-        setTables(result.tables || []);
-        setStatus(
-          `Veritabanı başarıyla hazırlandı. ${
-            result.tables?.length || 0
-          } masa mevcut.`
-        );
-      } else {
-        setError("Veritabanı hazırlama işlemi sırasında bir hata oluştu.");
-        setStatus("Hata oluştu, lütfen konsolu kontrol edin.");
-      }
-
-      await checkTables();
-    } catch (error) {
-      console.error("Veritabanı başlatma hatası:", error);
-      setError(
-        `Hata: ${error instanceof Error ? error.message : String(error)}`
-      );
-      setStatus("Hata oluştu, lütfen konsolu kontrol edin.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const checkTables = async () => {
-    try {
-      setStatus("Veritabanı kontrol ediliyor...");
-      const { data, error } = await supabase.from("tables").select("*");
-
-      if (error) {
-        throw error;
-      }
-
-      setTables(data || []);
-
-      if (data && data.length > 0) {
-        setStatus(`Tablolar başarıyla yüklendi. ${data.length} masa bulundu.`);
-        console.log("Mevcut masalar:", data); // Masa ID'lerini logla
-      } else {
-        setStatus(
-          "Tablolar kontrol edildi, fakat masa bulunamadı. Lütfen 'Veritabanını Başlat' butonuna tıklayın."
-        );
-      }
-    } catch (error) {
-      console.error("Tablo kontrol hatası:", error);
-      setError(
-        `Tablo kontrol hatası: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
-      setStatus("Veritabanı tabloları kontrol edilirken bir hata oluştu.");
-    }
-  };
-
-  const addExampleTable = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      setStatus("Örnek masa ekleniyor...");
-
-      // Benzersiz ID'ler oluştur
-      const categoryId = uuidv4();
-      const tableId = uuidv4();
-
-      // Kategori ekleme
-      const categoryData = {
-        id: categoryId,
-        name: "Teras",
-        color: "#FF5722",
-        border_color: "#E64A19",
-        background_color: "#FFCCBC",
-      };
-
-      const { error: categoryError } = await supabase
-        .from("table_categories")
-        .insert(categoryData)
-        .select()
-        .single();
-
-      if (categoryError) {
-        console.error("Kategori ekleme hatası:", categoryError);
-        setStatus("Kategori eklenirken bir hata oluştu.");
-        setError(`Kategori Hatası: ${JSON.stringify(categoryError, null, 2)}`);
-        return;
-      }
-
-      // Masa ekleme
-      const tableData = {
-        id: tableId,
-        number: 1,
-        capacity: 4,
-        category_id: categoryId,
-        status: "active",
-      };
-
-      const { error: tableError } = await supabase
-        .from("tables")
-        .insert(tableData)
-        .select()
-        .single();
-
-      if (tableError) {
-        console.error("Masa ekleme hatası:", tableError);
-        setStatus("Masa eklenirken bir hata oluştu.");
-        setError(`Masa Hatası: ${JSON.stringify(tableError, null, 2)}`);
-        return;
-      }
-
-      setStatus("Örnek masa başarıyla eklendi!");
-      await checkTables();
-    } catch (error) {
-      console.error("Örnek masa ekleme hatası:", error);
-      // Daha detaylı hata gösterimi için JSON.stringify kullan
-      let errorMessage = "Bilinmeyen hata";
-      try {
-        if (error instanceof Error) {
-          errorMessage = error.message;
-        } else if (typeof error === "object") {
-          errorMessage = JSON.stringify(error, null, 2);
-        } else {
-          errorMessage = String(error);
-        }
-      } catch (e) {
-        errorMessage = "Hata detayları gösterilemiyor";
-      }
-      setError(`Genel Hata: ${errorMessage}`);
-      setStatus("Örnek masa eklenirken bir hata oluştu.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const importFromFormitable = async () => {
-    try {
-      if (!restaurantKey || !formitableRestaurantId) {
-        setError("Formitable Restaurant Key ve Restoran ID'si gereklidir");
-        return;
-      }
-
-      setLoading(true);
-      setError(null);
-      setImportStatus(
-        "Formitable API'sine bağlanılıyor ve veriler alınıyor..."
-      );
-
-      // Debug bilgisi
-      console.log("Making request to Formitable API with:", {
-        restaurantId: formitableRestaurantId,
-        keyLength: restaurantKey.length,
-        keyPreview: restaurantKey.substring(0, 5) + "...",
-      });
-
-      // Masaları çek - Kendi API proxy'mizi kullanıyoruz
-      const tablesResponse = await fetch("/api/formitable", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          endpoint: "tables",
-          restaurantKey: restaurantKey,
-          restaurantId: formitableRestaurantId,
-        }),
-      });
-
-      if (!tablesResponse.ok) {
-        const errorData = await tablesResponse.json();
-        console.error("Tables fetch error:", errorData);
-
-        // Detaylı hata gösterimi
-        let errorMessage = `Masa verileri alınamadı: ${
-          errorData.error || tablesResponse.status
-        }`;
-        if (errorData.attempts) {
-          errorMessage += "\n\nDenenen URL'ler:";
-          errorData.attempts.forEach((attempt: any, index: number) => {
-            errorMessage += `\n${index + 1}. ${attempt.url} - ${
-              attempt.status || "Hata"
-            }: ${attempt.error || "Bilinmiyor"}`;
-          });
-        }
-
-        throw new Error(errorMessage);
-      }
-
-      const tablesData = await tablesResponse.json();
-      console.log("Tables data received:", tablesData);
-
-      setImportStatus("Masalar alındı, müşteriler çekiliyor...");
-
-      // Müşterileri çek - Kendi API proxy'mizi kullanıyoruz
-      const customersResponse = await fetch("/api/formitable", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          endpoint: "customers",
-          restaurantKey: restaurantKey,
-          restaurantId: formitableRestaurantId,
-        }),
-      });
-
-      if (!customersResponse.ok) {
-        const errorData = await customersResponse.json();
-        console.error("Customers fetch error:", errorData);
-
-        // Detaylı hata gösterimi
-        let errorMessage = `Müşteri verileri alınamadı: ${
-          errorData.error || customersResponse.status
-        }`;
-        if (errorData.attempts) {
-          errorMessage += "\n\nDenenen URL'ler:";
-          errorData.attempts.forEach((attempt: any, index: number) => {
-            errorMessage += `\n${index + 1}. ${attempt.url} - ${
-              attempt.status || "Hata"
-            }: ${attempt.error || "Bilinmiyor"}`;
-          });
-        }
-
-        throw new Error(errorMessage);
-      }
-
-      const customersData = await customersResponse.json();
-      console.log("Customers data received:", customersData);
-
-      setImportStatus("Veriler alındı, Supabase'e aktarılıyor...");
-
-      // Veri yapılarını log'la
-      console.log("Tables data structure:", {
-        type: typeof tablesData,
-        isArray: Array.isArray(tablesData),
-        keys: typeof tablesData === "object" ? Object.keys(tablesData) : [],
-        dataType: tablesData.data ? typeof tablesData.data : "no data property",
-        dataIsArray: tablesData.data ? Array.isArray(tablesData.data) : false,
-        dataLength:
-          tablesData.data && Array.isArray(tablesData.data)
-            ? tablesData.data.length
-            : 0,
-      });
-
-      console.log("Customers data structure:", {
-        type: typeof customersData,
-        isArray: Array.isArray(customersData),
-        keys:
-          typeof customersData === "object" ? Object.keys(customersData) : [],
-        dataType: customersData.data
-          ? typeof customersData.data
-          : "no data property",
-        dataIsArray: customersData.data
-          ? Array.isArray(customersData.data)
-          : false,
-        dataLength:
-          customersData.data && Array.isArray(customersData.data)
-            ? customersData.data.length
-            : 0,
-      });
-
-      // Masaları Supabase'e ekle
-      let importedTables = 0;
-
-      // Veri yapısı muhtemelen farklı olabilir, API yanıtına göre ayarlayalım
-      const tables = tablesData.data || tablesData.tables || [];
-
-      for (const table of tables) {
-        try {
-          // Kategori kontrolü yap veya oluştur
-          const categoryName = table.type || table.category || "Diğer";
-          let categoryId = "";
-
-          // Kategoriye bak
-          const { data: existingCategories } = await supabase
-            .from("table_categories")
-            .select("*")
-            .eq("name", categoryName)
-            .maybeSingle();
-
-          if (existingCategories) {
-            categoryId = existingCategories.id;
-          } else {
-            // Yeni kategori oluştur
-            const newCategoryId = uuidv4();
-            const { error: categoryError } = await supabase
-              .from("table_categories")
-              .insert({
-                id: newCategoryId,
-                name: categoryName,
-                color: "#2196F3",
-                border_color: "#1976D2",
-                background_color: "#BBDEFB",
-              });
-
-            if (categoryError) {
-              console.error("Kategori oluşturma hatası:", categoryError);
-              continue;
-            }
-            categoryId = newCategoryId;
+        // Başarılı sıfırlama sonrası sayfayı yenileme tavsiyesi
+        setTimeout(() => {
+          if (
+            window.confirm(
+              "Firebase bağlantısı sıfırlandı. Sayfayı yenilemek ister misiniz?"
+            )
+          ) {
+            window.location.reload();
           }
-
-          // Masa ekle
-          const { error: tableError } = await supabase.from("tables").insert({
-            id: uuidv4(),
-            number: table.number || table.id || importedTables + 1,
-            capacity: table.capacity || table.seats || 4,
-            category_id: categoryId,
-            status: "active",
-          });
-
-          if (tableError) {
-            console.error("Masa ekleme hatası:", tableError);
-          } else {
-            importedTables++;
-          }
-        } catch (err) {
-          console.error("Masa işleme hatası:", err);
-        }
-      }
-
-      // Müşterileri customers tablosuna ekleyelim
-      let importedCustomers = 0;
-
-      // Veri yapısı muhtemelen farklı olabilir, API yanıtına göre ayarlayalım
-      const customers = customersData.data || customersData.customers || [];
-
-      // Önce customers tablosunun varlığını kontrol edelim
-      const { error: checkTableError } = await supabase
-        .from("customers")
-        .select("id", { count: "exact" })
-        .limit(1);
-
-      // Tablo yoksa oluştur
-      if (checkTableError && checkTableError.code === "42P01") {
-        // relation does not exist
-        await supabase.rpc("create_customers_table");
-      }
-
-      for (const customer of customers) {
-        try {
-          const { error: customerError } = await supabase
-            .from("customers")
-            .insert({
-              id: uuidv4(),
-              name:
-                customer.fullName ||
-                `${customer.firstName || ""} ${customer.lastName || ""}`.trim(),
-              email: customer.email || null,
-              phone: customer.phone || customer.phoneNumber || null,
-              notes: customer.notes || customer.comment || null,
-              formitable_id: customer.id?.toString(),
-              created_at: new Date().toISOString(),
-            });
-
-          if (customerError) {
-            if (customerError.code === "42P01") {
-              // relation does not exist
-              console.warn("Customers tablosu bulunamadı, oluşturuluyor...");
-              // Tablo yoksa oluştur ve tekrar dene
-              await supabase.rpc("create_customers_table");
-
-              // Tekrar deneyelim
-              const { error: retryError } = await supabase
-                .from("customers")
-                .insert({
-                  id: uuidv4(),
-                  name:
-                    customer.fullName ||
-                    `${customer.firstName || ""} ${
-                      customer.lastName || ""
-                    }`.trim(),
-                  email: customer.email || null,
-                  phone: customer.phone || customer.phoneNumber || null,
-                  notes: customer.notes || customer.comment || null,
-                  formitable_id: customer.id?.toString(),
-                  created_at: new Date().toISOString(),
-                });
-
-              if (!retryError) importedCustomers++;
-            } else {
-              console.error("Müşteri ekleme hatası:", customerError);
-            }
-          } else {
-            importedCustomers++;
-          }
-        } catch (err) {
-          console.error("Müşteri işleme hatası:", err);
-        }
-      }
-
-      setImportedData({
-        tables: importedTables,
-        customers: importedCustomers,
-      });
-
-      setImportStatus(
-        `Veri aktarımı tamamlandı! ${importedTables} masa ve ${importedCustomers} müşteri aktarıldı.`
-      );
-      await checkTables(); // Tabloları yenile
-    } catch (error) {
-      console.error("Formitable veri aktarım hatası:", error);
-      setError(
-        `Formitable veri aktarım hatası: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
-      setImportStatus("Veri aktarımı sırasında hata oluştu.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Kategorileri getir
-  const fetchCategories = async () => {
-    try {
-      const { data, error } = await supabase
-        .from("table_categories")
-        .select("*")
-        .order("name", { ascending: true });
-
-      if (error) throw error;
-      setCategories(data || []);
-
-      // Eğer hiç kategori yoksa, varsayılan kategorileri oluştur
-      if (!data || data.length === 0) {
-        await createDefaultCategories();
-        fetchCategories(); // Kategorileri tekrar al
+        }, 1500);
       }
     } catch (error) {
-      console.error("Kategori getirme hatası:", error);
-    }
-  };
-
-  // Varsayılan kategorileri oluştur
-  const createDefaultCategories = async () => {
-    try {
-      const defaultCategories = [
-        {
-          id: uuidv4(),
-          name: "Teras",
-          color: "#FF5722",
-          border_color: "#E64A19",
-          background_color: "#FFCCBC",
-        },
-        {
-          id: uuidv4(),
-          name: "Bahçe",
-          color: "#4CAF50",
-          border_color: "#388E3C",
-          background_color: "#C8E6C9",
-        },
-        {
-          id: uuidv4(),
-          name: "İç Salon",
-          color: "#2196F3",
-          border_color: "#1976D2",
-          background_color: "#BBDEFB",
-        },
-      ];
-
-      for (const category of defaultCategories) {
-        await supabase.from("table_categories").insert(category);
-      }
-    } catch (error) {
-      console.error("Varsayılan kategori oluşturma hatası:", error);
-    }
-  };
-
-  // Manuel masa ekleme
-  const addManualTable = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Girdi doğrulama
-      if (
-        !manualTableData.number ||
-        !manualTableData.capacity ||
-        !manualTableData.category
-      ) {
-        setError("Masa numarası, kapasite ve kategori bilgileri gereklidir.");
-        return;
-      }
-
-      // Kategori ID'sini bul
-      let categoryId = "";
-      const foundCategory = categories.find(
-        (cat) => cat.name === manualTableData.category
-      );
-
-      if (foundCategory) {
-        categoryId = foundCategory.id;
-      } else {
-        // Kategori yoksa yeni oluştur
-        const newCategoryId = uuidv4();
-        const { error: categoryError } = await supabase
-          .from("table_categories")
-          .insert({
-            id: newCategoryId,
-            name: manualTableData.category,
-            color: "#2196F3",
-            border_color: "#1976D2",
-            background_color: "#BBDEFB",
-          });
-
-        if (categoryError) {
-          throw categoryError;
-        }
-        categoryId = newCategoryId;
-      }
-
-      // Masa ekle - UUID kullanma, veritabanının otomatik ID atamasına izin ver
-      const { data: newTable, error: tableError } = await supabase
-        .from("tables")
-        .insert({
-          // id alanını kaldırıyoruz, veritabanı otomatik olarak bir BIGINT ID atayacak
-          number: parseInt(manualTableData.number),
-          capacity: parseInt(manualTableData.capacity),
-          category_id: categoryId,
-          status: manualTableData.status,
-        })
-        .select() // Eklenen masanın bilgilerini almak için select ekledik
-        .single();
-
-      if (tableError) {
-        throw tableError;
-      }
-
-      // Başarılı mesajı göster ve masaları yenile
-      setStatus(
-        `Masa #${manualTableData.number} başarıyla eklendi. (ID: ${newTable.id})`
-      );
-      console.log("Eklenen masa:", newTable);
-      await checkTables();
-
-      // Formu temizle
-      setManualTableData({
-        number: "",
-        capacity: "",
-        category: "Teras",
-        status: "active",
-      });
-    } catch (error) {
-      console.error("Manuel masa ekleme hatası:", error);
-      setError(
-        `Masa eklenirken hata oluştu: ${
-          error instanceof Error ? error.message : String(error)
+      setResetMessage(
+        `Sıfırlama sırasında hata: ${
+          error instanceof Error ? error.message : "Bilinmeyen hata"
         }`
       );
     } finally {
-      setLoading(false);
-    }
-  };
-
-  // Manuel müşteri ekleme
-  const addManualCustomer = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Girdi doğrulama
-      if (!manualCustomerData.name) {
-        setError("Müşteri adı gereklidir.");
-        return;
-      }
-
-      // Müşteri tablosunun varlığını kontrol et
-      const { error: checkTableError } = await supabase
-        .from("customers")
-        .select("id")
-        .limit(1);
-
-      // Tablo yoksa oluştur
-      if (checkTableError && checkTableError.code === "42P01") {
-        // relation does not exist
-        await supabase.rpc("create_customers_table");
-      }
-
-      // Müşteri ekle
-      const { error: customerError } = await supabase.from("customers").insert({
-        id: uuidv4(),
-        name: manualCustomerData.name,
-        email: manualCustomerData.email || null,
-        phone: manualCustomerData.phone || null,
-        notes: manualCustomerData.notes || null,
-        created_at: new Date().toISOString(),
-      });
-
-      if (customerError) {
-        throw customerError;
-      }
-
-      // Başarılı mesajı göster
-      setStatus(`Müşteri "${manualCustomerData.name}" başarıyla eklendi.`);
-
-      // Formu temizle
-      setManualCustomerData({
-        name: "",
-        email: "",
-        phone: "",
-        notes: "",
-      });
-    } catch (error) {
-      console.error("Manuel müşteri ekleme hatası:", error);
-      setError(
-        `Müşteri eklenirken hata oluştu: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
-    } finally {
-      setLoading(false);
+      setIsResetting(false);
     }
   };
 
   return (
-    <div className="container mx-auto p-8 max-w-4xl">
-      <h1 className="text-3xl font-bold mb-6">Veritabanı Başlatma</h1>
-      <div className="mb-8 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
-        <h2 className="text-xl font-semibold text-yellow-800 mb-2">
-          ⚠️ Dikkat
-        </h2>
-        <p className="text-yellow-700">
-          Bu sayfa, Supabase veritabanınızı rezervasyon sistemi için gerekli
-          tablolar ve varsayılan verilerle başlatacaktır. Bu işlem mevcut
-          verileri etkileyebilir. Sadece ilk kurulum sırasında veya veritabanını
-          sıfırlamak istediğinizde kullanın.
-        </p>
-      </div>
+    <div className="container mx-auto p-4">
+      <div className="max-w-lg mx-auto bg-white p-6 rounded-lg shadow-md">
+        <h1 className="text-2xl font-bold mb-4">Veritabanı Başlatma</h1>
 
-      <div className="bg-white p-6 rounded-lg shadow-md">
-        <div className="mb-6">
-          <h2 className="text-xl font-semibold mb-2">Durum:</h2>
-          <div
-            className={`p-3 rounded ${
-              status.includes("Hata") || error
-                ? "bg-red-100 text-red-700"
-                : status.includes("başarı") || status.includes("bulundu")
-                ? "bg-green-100 text-green-700"
-                : "bg-blue-100 text-blue-700"
-            }`}
-          >
-            {status}
-          </div>
-
-          {error && (
-            <div className="mt-2 p-3 bg-red-50 text-red-700 border border-red-200 rounded">
-              <p className="font-medium">Hata Detayı:</p>
-              <p>{error}</p>
-            </div>
-          )}
-        </div>
-
-        <div className="flex gap-3 mb-6">
-          <button
-            onClick={initDB}
-            disabled={loading}
-            className={`flex-1 py-3 rounded-md text-white font-medium ${
-              loading
-                ? "bg-gray-400 cursor-not-allowed"
-                : "bg-blue-600 hover:bg-blue-700"
-            }`}
-          >
-            {loading ? "İşlem Yapılıyor..." : "Veritabanını Başlat"}
-          </button>
-
-          <button
-            onClick={checkTables}
-            disabled={loading}
-            className={`flex-1 py-3 rounded-md text-white font-medium ${
-              loading
-                ? "bg-gray-400 cursor-not-allowed"
-                : "bg-green-600 hover:bg-green-700"
-            }`}
-          >
-            Tabloları Kontrol Et
-          </button>
-        </div>
-
-        {tables.length === 0 && (
-          <div className="mt-4 mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded text-yellow-800">
-            <p className="mb-3">
-              Hiç masa bulunamadı. Eğer 'Veritabanını Başlat' butonu
-              çalışmıyorsa, aşağıdaki buton ile manuel olarak örnek bir masa
-              ekleyebilirsiniz:
-            </p>
-            <button
-              onClick={addExampleTable}
-              disabled={loading}
-              className={`w-full py-2 rounded-md text-white font-medium ${
-                loading
-                  ? "bg-gray-400 cursor-not-allowed"
-                  : "bg-yellow-600 hover:bg-yellow-700"
-              }`}
-            >
-              Manuel Olarak Örnek Masa Ekle
-            </button>
-          </div>
-        )}
-
-        {tables.length > 0 && (
-          <div className="mt-8">
-            <h2 className="text-xl font-semibold mb-3">Mevcut Masalar</h2>
-            <div className="overflow-x-auto">
-              <table className="min-w-full bg-white border border-gray-200">
-                <thead className="bg-gray-100">
-                  <tr>
-                    <th className="py-2 px-4 border-b text-left">ID</th>
-                    <th className="py-2 px-4 border-b text-left">Numara</th>
-                    <th className="py-2 px-4 border-b text-left">Kapasite</th>
-                    <th className="py-2 px-4 border-b text-left">Kategori</th>
-                    <th className="py-2 px-4 border-b text-left">Durum</th>
-                    <th className="py-2 px-4 border-b text-left">ID Tipi</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {tables.map((table) => (
-                    <tr key={table.id} className="hover:bg-gray-50">
-                      <td className="py-2 px-4 border-b">{table.id}</td>
-                      <td className="py-2 px-4 border-b">{table.number}</td>
-                      <td className="py-2 px-4 border-b">{table.capacity}</td>
-                      <td className="py-2 px-4 border-b">
-                        {table.category_id}
-                      </td>
-                      <td className="py-2 px-4 border-b">{table.status}</td>
-                      <td className="py-2 px-4 border-b">{typeof table.id}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded text-blue-800">
-              <p>
-                <strong>Not:</strong> Masa ID'leri sayısal değerlerdir.
-                Rezervasyon oluştururken bu ID'leri kullanmalısınız. Aşağıdaki
-                kod, rezervasyon oluştururken ID'nin nasıl kullanılacağını
-                gösterir:
-              </p>
-              <pre className="mt-2 p-2 bg-gray-800 text-white rounded overflow-x-auto">
-                {`fetch('/api/reservations', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    user_id: "user-uuid",
-    company_id: "company-id",
-    date: "2023-12-31",
-    time: "19:00",
-    table_id: ${tables.length > 0 ? tables[0].id : "1"}, // Sayısal değer olmalı
-    ...diğer alanlar
-  })
-})`}
-              </pre>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Formitable veri aktarımı bölümü */}
-      <div className="mt-8 bg-white p-6 rounded-lg shadow-md">
-        <h2 className="text-xl font-semibold mb-4">
-          Formitable'dan Veri Aktarımı
-        </h2>
-        <p className="mb-4 text-gray-600">
-          Formitable API'sini kullanarak müşteri ve masa verilerinizi Supabase
-          veritabanına aktarabilirsiniz.
-        </p>
-
-        <div className="space-y-4 mb-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Formitable Restaurant Key
-            </label>
-            <input
-              type="text"
-              value={restaurantKey}
-              onChange={(e) => setRestaurantKey(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md"
-              placeholder="Restaurant Key'i girin"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Formitable Restoran ID (UUID)
-            </label>
-            <input
-              type="text"
-              value={formitableRestaurantId}
-              onChange={(e) => setFormitableRestaurantId(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md"
-              placeholder="Restoran UUID'sini girin"
-            />
-          </div>
-        </div>
-
-        <button
-          onClick={importFromFormitable}
-          disabled={loading || !restaurantKey || !formitableRestaurantId}
-          className={`w-full py-3 rounded-md text-white font-medium ${
-            loading || !restaurantKey || !formitableRestaurantId
-              ? "bg-gray-400 cursor-not-allowed"
-              : "bg-purple-600 hover:bg-purple-700"
-          }`}
-        >
-          {loading ? "Veriler Aktarılıyor..." : "Formitable'dan Verileri Aktar"}
-        </button>
-
-        {importStatus && (
-          <div
-            className={`mt-4 p-3 rounded ${
-              importStatus.includes("hata")
-                ? "bg-red-100 text-red-700"
-                : importStatus.includes("tamamlandı")
-                ? "bg-green-100 text-green-700"
-                : "bg-blue-100 text-blue-700"
-            }`}
-          >
-            {importStatus}
-          </div>
-        )}
-
-        {importedData.tables && importedData.customers && (
-          <div className="mt-4 flex gap-4">
-            <div className="flex-1 p-4 bg-green-50 border border-green-200 rounded-md">
-              <h3 className="font-semibold text-green-800">
-                Aktarılan Masalar
-              </h3>
-              <p className="text-3xl font-bold text-green-700">
-                {importedData.tables}
-              </p>
-            </div>
-            <div className="flex-1 p-4 bg-blue-50 border border-blue-200 rounded-md">
-              <h3 className="font-semibold text-blue-800">
-                Aktarılan Müşteriler
-              </h3>
-              <p className="text-3xl font-bold text-blue-700">
-                {importedData.customers}
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Manuel Veri Ekleme bölümü */}
-      <div className="mt-8 bg-white p-6 rounded-lg shadow-md">
-        <h2 className="text-xl font-semibold mb-4">Manuel Veri Ekleme</h2>
-        <p className="mb-4 text-gray-600">
-          Formitable API bağlantısı sorunlu ise, aşağıdaki form ile masaları ve
-          müşterileri manuel olarak ekleyebilirsiniz.
-        </p>
-
+        {/* Firebase Bağlantı Durumu */}
         <div className="mb-4">
-          <button
-            onClick={() => setShowManualForm(!showManualForm)}
-            className="py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded"
+          <div
+            className={`p-3 rounded-lg ${
+              connectionStatus === "loading"
+                ? "bg-gray-100 text-gray-700"
+                : connectionStatus === "success"
+                ? "bg-green-50 text-green-700 border-l-4 border-green-500"
+                : "bg-red-50 text-red-700 border-l-4 border-red-500"
+            }`}
           >
-            {showManualForm ? "Formu Gizle" : "Manuel Ekleme Formunu Göster"}
-          </button>
+            <div className="flex items-center">
+              {connectionStatus === "loading" && (
+                <div className="animate-pulse mr-2 h-3 w-3 rounded-full bg-gray-500"></div>
+              )}
+              {connectionStatus === "success" && (
+                <svg
+                  className="w-5 h-5 mr-2 text-green-500"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              )}
+              {connectionStatus === "error" && (
+                <svg
+                  className="w-5 h-5 mr-2 text-red-500"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              )}
+              <span className="font-medium">
+                {connectionStatus === "loading" &&
+                  "Firebase bağlantısı kontrol ediliyor..."}
+                {connectionStatus === "success" && "Firebase bağlantısı aktif!"}
+                {connectionStatus === "error" && "Firebase bağlantı hatası!"}
+              </span>
+            </div>
+            {connectionStatus === "error" && connectionError && (
+              <p className="mt-1 ml-7 text-sm">{connectionError}</p>
+            )}
+
+            {connectionStatus === "error" && (
+              <div className="mt-3 ml-7">
+                <div className="flex space-x-2">
+                  <button
+                    onClick={handleReconnect}
+                    disabled={isReconnecting || isResetting}
+                    className={`px-3 py-1 text-sm rounded ${
+                      isReconnecting || isResetting
+                        ? "bg-gray-300 cursor-not-allowed"
+                        : "bg-blue-500 hover:bg-blue-600 text-white"
+                    }`}
+                  >
+                    {isReconnecting
+                      ? "Yeniden Bağlanıyor..."
+                      : "Yeniden Bağlan"}
+                  </button>
+
+                  <button
+                    onClick={handleReset}
+                    disabled={isReconnecting || isResetting}
+                    className={`px-3 py-1 text-sm rounded ${
+                      isReconnecting || isResetting
+                        ? "bg-gray-300 cursor-not-allowed"
+                        : "bg-red-500 hover:bg-red-600 text-white"
+                    }`}
+                  >
+                    {isResetting ? "Sıfırlanıyor..." : "Firebase Sıfırla"}
+                  </button>
+                </div>
+
+                {resetMessage && (
+                  <div
+                    className={`mt-2 p-2 text-sm rounded ${
+                      resetMessage.includes("başarıyla")
+                        ? "bg-green-50 text-green-700 border border-green-200"
+                        : "bg-yellow-50 text-yellow-700 border border-yellow-200"
+                    }`}
+                  >
+                    {resetMessage}
+                  </div>
+                )}
+
+                <p className="text-xs mt-1 text-gray-600">
+                  Tarayıcıyı yenilemek de sorunu çözebilir. Sorun devam ederse{" "}
+                  <Link
+                    href="/reset-firebase"
+                    className="text-blue-500 hover:underline"
+                  >
+                    Firebase bağlantısını tamamen sıfırlamayı
+                  </Link>{" "}
+                  deneyin.
+                </p>
+              </div>
+            )}
+          </div>
         </div>
 
-        {showManualForm && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Masa Ekleme Formu */}
-            <div className="bg-gray-50 p-4 rounded border">
-              <h3 className="text-lg font-medium mb-3">Masa Ekle</h3>
+        <div className="mb-6">
+          <p className="text-gray-700 mb-2">
+            Bu sayfa, rezervasyon sisteminin veritabanını başlatmanıza olanak
+            tanır. Aşağıdaki işlemler gerçekleştirilecektir:
+          </p>
 
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Masa Numarası
-                  </label>
-                  <input
-                    type="number"
-                    value={manualTableData.number}
-                    onChange={(e) =>
-                      setManualTableData({
-                        ...manualTableData,
-                        number: e.target.value,
-                      })
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    placeholder="1"
-                  />
-                </div>
+          <ul className="list-disc pl-5 mb-4 text-gray-600">
+            <li>Gerekli koleksiyonlar oluşturulacak</li>
+            <li>Varsayılan ayarlar tanımlanacak</li>
+            <li>Örnek masa kategorileri eklenecek</li>
+            <li>Örnek masalar oluşturulacak</li>
+          </ul>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Kapasite
-                  </label>
-                  <input
-                    type="number"
-                    value={manualTableData.capacity}
-                    onChange={(e) =>
-                      setManualTableData({
-                        ...manualTableData,
-                        capacity: e.target.value,
-                      })
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    placeholder="4"
-                  />
-                </div>
+          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4">
+            <p className="text-yellow-700">
+              <strong>Uyarı:</strong> Bu işlem, veritabanınızı sıfırdan
+              oluşturacaktır. Eğer zaten veritabanı koleksiyonları mevcutsa, bu
+              işlem onları silmez, ancak boş koleksiyonlara örnek veriler
+              ekleyecektir.
+            </p>
+          </div>
+        </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Kategori
-                  </label>
-                  <select
-                    value={manualTableData.category}
-                    onChange={(e) =>
-                      setManualTableData({
-                        ...manualTableData,
-                        category: e.target.value,
-                      })
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  >
-                    {categories.map((category) => (
-                      <option key={category.id} value={category.name}>
-                        {category.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+        <div className="flex space-x-3 mb-6">
+          <button
+            onClick={initializeDatabase}
+            disabled={isLoading || connectionStatus !== "success"}
+            className={`flex-1 py-2 px-4 rounded ${
+              isLoading || connectionStatus !== "success"
+                ? "bg-gray-400 cursor-not-allowed"
+                : "bg-blue-500 hover:bg-blue-600 text-white"
+            }`}
+          >
+            {isLoading ? "İşlem Yapılıyor..." : "Veritabanını Başlat"}
+          </button>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Durum
-                  </label>
-                  <select
-                    value={manualTableData.status}
-                    onChange={(e) =>
-                      setManualTableData({
-                        ...manualTableData,
-                        status: e.target.value,
-                      })
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  >
-                    <option value="active">Aktif</option>
-                    <option value="inactive">Pasif</option>
-                  </select>
-                </div>
+          <Link href="/admin">
+            <button className="flex-1 py-2 px-4 bg-gray-200 hover:bg-gray-300 rounded">
+              Admin Paneline Dön
+            </button>
+          </Link>
+        </div>
 
-                <button
-                  onClick={addManualTable}
-                  disabled={loading}
-                  className={`w-full py-2 rounded-md text-white font-medium ${
-                    loading
-                      ? "bg-gray-400 cursor-not-allowed"
-                      : "bg-green-600 hover:bg-green-700"
-                  }`}
-                >
-                  {loading ? "Ekleniyor..." : "Masa Ekle"}
-                </button>
-              </div>
-            </div>
-
-            {/* Müşteri Ekleme Formu */}
-            <div className="bg-gray-50 p-4 rounded border">
-              <h3 className="text-lg font-medium mb-3">Müşteri Ekle</h3>
-
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Müşteri Adı
-                  </label>
-                  <input
-                    type="text"
-                    value={manualCustomerData.name}
-                    onChange={(e) =>
-                      setManualCustomerData({
-                        ...manualCustomerData,
-                        name: e.target.value,
-                      })
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    placeholder="Ahmet Yılmaz"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    E-posta
-                  </label>
-                  <input
-                    type="email"
-                    value={manualCustomerData.email}
-                    onChange={(e) =>
-                      setManualCustomerData({
-                        ...manualCustomerData,
-                        email: e.target.value,
-                      })
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    placeholder="ahmet@example.com"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Telefon
-                  </label>
-                  <input
-                    type="tel"
-                    value={manualCustomerData.phone}
-                    onChange={(e) =>
-                      setManualCustomerData({
-                        ...manualCustomerData,
-                        phone: e.target.value,
-                      })
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    placeholder="0555 123 4567"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Notlar
-                  </label>
-                  <textarea
-                    value={manualCustomerData.notes}
-                    onChange={(e) =>
-                      setManualCustomerData({
-                        ...manualCustomerData,
-                        notes: e.target.value,
-                      })
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    placeholder="Müşteri notları..."
-                    rows={3}
-                  ></textarea>
-                </div>
-
-                <button
-                  onClick={addManualCustomer}
-                  disabled={loading}
-                  className={`w-full py-2 rounded-md text-white font-medium ${
-                    loading
-                      ? "bg-gray-400 cursor-not-allowed"
-                      : "bg-blue-600 hover:bg-blue-700"
-                  }`}
-                >
-                  {loading ? "Ekleniyor..." : "Müşteri Ekle"}
-                </button>
-              </div>
-            </div>
+        {error && (
+          <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-4">
+            <p className="text-red-700">
+              <strong>Hata:</strong> {error}
+            </p>
           </div>
         )}
-      </div>
 
-      <div className="mt-4 text-sm text-gray-500">
-        <p>
-          Bu sayfayı kullandıktan sonra, veritabanınız hazır olacak ve
-          rezervasyon sistemi doğru şekilde çalışacaktır.{" "}
-          {tables.length > 0 && "Şu anda masalarınız başarıyla yüklenmiştir."}
-        </p>
-        <p className="mt-2">
-          <a href="/admin" className="text-blue-600 hover:underline">
-            Yönetim Paneline Dön
-          </a>
-        </p>
+        {success && (
+          <div className="bg-green-50 border-l-4 border-green-500 p-4 mb-4">
+            <p className="text-green-700">
+              <strong>Başarılı!</strong> Veritabanı başarıyla başlatıldı.
+            </p>
+          </div>
+        )}
+
+        {results.length > 0 && (
+          <div className="mt-4">
+            <h3 className="text-lg font-semibold mb-2">İşlem Sonuçları:</h3>
+            <ul className="bg-gray-50 p-3 rounded border border-gray-200">
+              {results.map((result, index) => (
+                <li
+                  key={index}
+                  className="py-1 border-b border-gray-100 last:border-0"
+                >
+                  {result}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   );

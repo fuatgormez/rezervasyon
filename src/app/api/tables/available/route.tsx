@@ -1,23 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase/client";
+import { db } from "@/config/firebase";
+import { collection, getDocs, query, where } from "firebase/firestore";
 
 // Masa tipi
 interface Table {
   id: string;
   number: number;
   capacity: number;
-  location: string;
-  categoryId: string;
+  location?: string;
+  categoryId?: string;
+  category_id?: string;
+  status?: string;
 }
 
 // Rezervasyon veri tipi
 interface Reservation {
   id: string;
-  tableId: string;
+  tableId?: string;
+  table_id?: string;
   date: string;
-  startTime: string;
-  endTime: string;
-  guestCount: number;
+  time?: string;
+  startTime?: string;
+  endTime?: string;
+  guestCount?: number;
   status: "confirmed" | "pending" | "cancelled";
 }
 
@@ -55,24 +60,26 @@ export async function GET(request: Request) {
       );
     }
 
-    // Tüm masaları getir
-    const { data: tables, error: tablesError } = await supabase
-      .from("tables")
-      .select("*");
+    // Firestore'dan tüm masaları getir
+    const tablesRef = collection(db, "tables");
+    const tablesSnapshot = await getDocs(tablesRef);
 
-    if (tablesError) {
-      throw tablesError;
-    }
+    const tables = tablesSnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    })) as Table[];
 
     // Seçilen tarih için rezervasyonları getir
-    const { data: reservations, error: reservationsError } = await supabase
-      .from("reservations")
-      .select("*")
-      .eq("date", date);
+    const reservationsRef = query(
+      collection(db, "reservations"),
+      where("date", "==", date)
+    );
+    const reservationsSnapshot = await getDocs(reservationsRef);
 
-    if (reservationsError) {
-      throw reservationsError;
-    }
+    const reservations = reservationsSnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    })) as Reservation[];
 
     // Müsait masaları filtrele
     const availableTables = tables.filter((table) => {
@@ -83,11 +90,14 @@ export async function GET(request: Request) {
 
       // Rezervasyon kontrolü
       const tableReservations = reservations.filter(
-        (reservation) => reservation.table_id === table.id
+        (reservation) =>
+          (reservation.tableId || reservation.table_id) === table.id
       );
 
       return !tableReservations.some((reservation) => {
-        const reservationTime = new Date(reservation.time);
+        const reservationTime = new Date(
+          reservation.startTime || `${date}T${reservation.time || "00:00"}`
+        );
         const requestedTime = new Date(`${date}T${time}`);
         const timeDiff = Math.abs(
           reservationTime.getTime() - requestedTime.getTime()

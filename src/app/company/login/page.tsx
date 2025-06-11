@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase/client";
+import { auth, db } from "@/config/firebase";
+import { signInWithEmailAndPassword } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
 
 export default function CompanyLoginPage() {
   const [email, setEmail] = useState("");
@@ -13,23 +15,26 @@ export default function CompanyLoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      // Firebase ile giriş yap
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
         email,
-        password,
-      });
+        password
+      );
+      const user = userCredential.user;
 
-      if (error) throw error;
+      // Kullanıcı bilgilerini Firestore'dan al
+      const userDocRef = doc(db, "users", user.uid);
+      const userDoc = await getDoc(userDocRef);
 
-      // Kullanıcı bilgilerini al ve firma yöneticisi kontrolü yap
-      const { data: userData, error: userError } = await supabase
-        .from("users")
-        .select("*, user_roles(*)")
-        .eq("id", data.user?.id)
-        .single();
+      if (!userDoc.exists()) {
+        throw new Error("Kullanıcı bilgileri bulunamadı!");
+      }
 
-      if (userError) throw userError;
+      const userData = userDoc.data();
 
-      if (userData.user_roles?.name !== "company_admin") {
+      // Firma yöneticisi kontrolü yap
+      if (userData.role !== "company_admin") {
         throw new Error("Bu sayfaya erişim yetkiniz yok!");
       }
 
@@ -37,7 +42,22 @@ export default function CompanyLoginPage() {
       router.push("/company/dashboard");
       router.refresh();
     } catch (error: any) {
-      setError(error.message);
+      let errorMessage = "Giriş yapılırken bir hata oluştu.";
+
+      if (error.code === "auth/user-not-found") {
+        errorMessage = "Bu e-posta adresiyle kayıtlı kullanıcı bulunamadı.";
+      } else if (error.code === "auth/wrong-password") {
+        errorMessage = "Hatalı şifre girdiniz.";
+      } else if (error.code === "auth/invalid-email") {
+        errorMessage = "Geçersiz e-posta adresi.";
+      } else if (error.code === "auth/too-many-requests") {
+        errorMessage =
+          "Çok fazla başarısız giriş denemesi. Lütfen daha sonra tekrar deneyin.";
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
+      setError(errorMessage);
     }
   };
 

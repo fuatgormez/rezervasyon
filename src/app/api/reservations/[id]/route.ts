@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { SupabaseService } from "@/services/supabase.service";
+import { FirebaseService } from "@/services/firebase.service";
 
 export async function GET(
   request: NextRequest,
@@ -7,7 +7,7 @@ export async function GET(
 ) {
   try {
     const id = params.id;
-    const reservation = await SupabaseService.getReservationById(id);
+    const reservation = await FirebaseService.getReservationById(id);
 
     if (!reservation) {
       return NextResponse.json(
@@ -34,7 +34,7 @@ export async function PATCH(
     const id = params.id;
     const updates = await request.json();
 
-    const updatedReservation = await SupabaseService.updateReservation(
+    const updatedReservation = await FirebaseService.updateReservation(
       id,
       updates
     );
@@ -65,7 +65,7 @@ export async function DELETE(
 ) {
   try {
     const id = params.id;
-    await SupabaseService.deleteReservation(id);
+    await FirebaseService.deleteReservation(id);
 
     return NextResponse.json({
       message: "Rezervasyon başarıyla silindi",

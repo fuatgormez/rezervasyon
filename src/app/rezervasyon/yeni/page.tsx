@@ -5,7 +5,66 @@ import { format, addDays, subDays } from "date-fns";
 import { tr } from "date-fns/locale";
 import Link from "next/link";
 import DatePicker from "@/components/DatePicker";
-import { mockTables, mockTableCategories } from "@/lib/supabase/tables";
+
+// Mock veri (daha sonra Firebase'den alınacak)
+const mockTables = [
+  {
+    id: "1",
+    name: "Masa 1",
+    status: "available",
+    capacity: 4,
+    category_id: "1",
+  },
+  {
+    id: "2",
+    name: "Masa 2",
+    status: "available",
+    capacity: 2,
+    category_id: "1",
+  },
+  {
+    id: "3",
+    name: "Masa 3",
+    status: "available",
+    capacity: 6,
+    category_id: "2",
+  },
+  {
+    id: "4",
+    name: "Masa 4",
+    status: "available",
+    capacity: 8,
+    category_id: "2",
+  },
+  {
+    id: "5",
+    name: "Masa 5",
+    status: "available",
+    capacity: 4,
+    category_id: "3",
+  },
+];
+
+const mockTableCategories = [
+  {
+    id: "1",
+    name: "İç Mekan",
+    color: "rgba(59, 130, 246, 0.8)",
+    background_color: "#EFF6FF",
+  },
+  {
+    id: "2",
+    name: "Bahçe",
+    color: "rgba(16, 185, 129, 0.8)",
+    background_color: "#ECFDF5",
+  },
+  {
+    id: "3",
+    name: "Teras",
+    color: "rgba(245, 158, 11, 0.8)",
+    background_color: "#FEF3C7",
+  },
+];
 
 export default function NewReservationPage() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());

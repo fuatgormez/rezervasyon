@@ -1,4 +1,6 @@
-import { SupabaseService } from "@/services/supabase.service";
+"use client";
+
+import { FirebaseService } from "@/services/firebase.service";
 import type { Reservation } from "@/models/types";
 import { format } from "date-fns";
 
@@ -9,7 +11,7 @@ export class ReservationController {
     date: string,
     time: string,
     additionalData: any = {}
-  ): Promise<Reservation> {
+  ): Promise<any> {
     try {
       console.log("Controller: Rezervasyon oluşturuluyor", {
         userId,
@@ -19,20 +21,8 @@ export class ReservationController {
         ...additionalData,
       });
 
-      // Şirketin var olduğunu kontrol et
-      const company = await SupabaseService.getCompanyById(companyId);
-      if (!company) {
-        throw new Error("Şirket bulunamadı");
-      }
-
-      // Kullanıcının var olduğunu kontrol et
-      const user = await SupabaseService.getUser(userId);
-      if (!user) {
-        throw new Error("User not found");
-      }
-
-      // Rezervasyon oluştur
-      const reservation = await SupabaseService.createReservation({
+      // Rezervasyon verilerini hazırla
+      const reservationData = {
         user_id: userId,
         company_id: companyId,
         date,
@@ -45,7 +35,12 @@ export class ReservationController {
         notes: additionalData.notes || "",
         table_id: additionalData.table_id || null,
         end_time: additionalData.end_time || null,
-      });
+      };
+
+      // Firebase ile rezervasyon oluştur
+      const reservation = await FirebaseService.createReservation(
+        reservationData
+      );
 
       return reservation;
     } catch (error) {
@@ -56,25 +51,26 @@ export class ReservationController {
 
   static async updateReservationStatus(
     reservationId: string,
-    status: Reservation["status"]
+    status: string
   ): Promise<void> {
-    await SupabaseService.updateReservationStatus(reservationId, status);
+    await FirebaseService.updateReservationStatus(reservationId, status);
   }
 
   static async getCompanyReservations(
     companyId: string,
     date?: Date
-  ): Promise<Reservation[]> {
+  ): Promise<any[]> {
     try {
-      const reservations = await SupabaseService.getCompanyReservations(
-        companyId
-      );
+      let reservations;
 
       if (date) {
         const formattedDate = format(date, "yyyy-MM-dd");
-        return reservations.filter(
-          (reservation) => reservation.date === formattedDate
+        reservations = await FirebaseService.getCompanyReservations(
+          companyId,
+          formattedDate
         );
+      } else {
+        reservations = await FirebaseService.getCompanyReservations(companyId);
       }
 
       return reservations;
@@ -88,20 +84,18 @@ export class ReservationController {
     companyId: string,
     startDate: Date,
     endDate: Date
-  ): Promise<Reservation[]> {
+  ): Promise<any[]> {
     try {
-      const reservations = await SupabaseService.getCompanyReservations(
-        companyId
-      );
-
       const formattedStartDate = format(startDate, "yyyy-MM-dd");
       const formattedEndDate = format(endDate, "yyyy-MM-dd");
 
-      return reservations.filter(
-        (reservation) =>
-          reservation.date >= formattedStartDate &&
-          reservation.date <= formattedEndDate
+      const reservations = await FirebaseService.getReservationsByDateRange(
+        companyId,
+        formattedStartDate,
+        formattedEndDate
       );
+
+      return reservations;
     } catch (error) {
       console.error("Tarih aralığı rezervasyonlarını getirme hatası:", error);
       return [];

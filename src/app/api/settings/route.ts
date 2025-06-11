@@ -1,19 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase/client";
+import { db } from "@/config/firebase";
+import { doc, getDoc, updateDoc, setDoc } from "firebase/firestore";
+
+// Ayarlar için koleksiyon ve belge ID'si
+const SETTINGS_DOC_ID = "system_settings";
 
 // GET - Sistem ayarlarını getir
 export async function GET() {
   try {
-    const { data: settings, error } = await supabase
-      .from("settings")
-      .select("*")
-      .single();
+    const settingsRef = doc(db, "settings", SETTINGS_DOC_ID);
+    const settingsSnap = await getDoc(settingsRef);
 
-    if (error) {
-      throw error;
+    if (!settingsSnap.exists()) {
+      // Ayarlar bulunamadıysa varsayılan ayarları oluştur
+      const defaultSettings = {
+        workingHours: {
+          start: "09:00",
+          end: "23:00",
+        },
+        minPayment: 0,
+        isSystemActive: true,
+        createdAt: new Date().toISOString(),
+      };
+
+      await setDoc(settingsRef, defaultSettings);
+      return NextResponse.json(defaultSettings);
     }
 
-    return NextResponse.json(settings);
+    return NextResponse.json(settingsSnap.data());
   } catch (error) {
     console.error("Ayarlar getirilirken hata:", error);
     return NextResponse.json(
@@ -43,18 +57,20 @@ export async function POST(req: NextRequest) {
     }
 
     // Ayarları güncelle
-    const { data: settings, error } = await supabase
-      .from("settings")
-      .update(data)
-      .eq("id", 1)
-      .select()
-      .single();
+    const settingsRef = doc(db, "settings", SETTINGS_DOC_ID);
 
-    if (error) {
-      throw error;
-    }
+    // Güncelleme zamanını ekle
+    const updatedData = {
+      ...data,
+      updatedAt: new Date().toISOString(),
+    };
 
-    return NextResponse.json(settings, { status: 200 });
+    await updateDoc(settingsRef, updatedData);
+
+    // Güncel ayarları getir
+    const updatedSettingsSnap = await getDoc(settingsRef);
+
+    return NextResponse.json(updatedSettingsSnap.data(), { status: 200 });
   } catch (error) {
     console.error("Ayarlar güncellenirken hata:", error);
     return NextResponse.json(

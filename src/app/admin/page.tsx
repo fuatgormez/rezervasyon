@@ -31,9 +31,21 @@ import Draggable from "react-draggable";
 import { Resizable, ResizeCallbackData } from "react-resizable";
 import "react-resizable/css/styles.css";
 import DraggableReservationCard from "@/components/reservation/DraggableReservationCard";
-import { supabase } from "@/lib/supabase/client";
 import StaffAssignmentForm from "@/components/StaffAssignmentForm";
-import { db } from "@/lib/supabase/client";
+import { db } from "@/config/firebase"; // Firebase Realtime Database referansını kullan
+import {
+  ref,
+  get,
+  set,
+  push,
+  update,
+  remove,
+  query as dbQuery,
+  orderByChild,
+  equalTo,
+  onValue,
+  child,
+} from "firebase/database";
 import { v4 as uuidv4 } from "uuid";
 
 // SweetAlert2 import
@@ -41,12 +53,9 @@ import Swal from "sweetalert2";
 
 // Bu componenti sadece tarayıcıda çalıştırılacak şekilde dinamik olarak import ediyoruz
 // SSG sırasında çalıştırılmaz
-const AdminPageContent = dynamic(
-  () => Promise.resolve({ default: AdminPageComponent }),
-  {
-    ssr: false,
-  }
-);
+const AdminPageContent = dynamic(() => Promise.resolve(AdminPageComponent), {
+  ssr: false,
+});
 
 // Masa kategorisi arayüzü
 interface TableCategoryType {
@@ -241,7 +250,7 @@ function AdminPageComponent() {
       .padStart(2, "0")}${newB.toString(16).padStart(2, "0")}`;
   };
 
-  // useEffect ile localStorage'dan kategorileri yükle
+  // useEffect ile Firebase'den kategorileri yükle
   useEffect(() => {
     // Netlify dağıtımı ve SSG aşamasında atlanacak
     if (
@@ -252,22 +261,32 @@ function AdminPageComponent() {
       return;
     }
 
-    // localStorage'dan tableSettings'i yükle
-    const savedTableSettings = localStorage.getItem("tableSettings");
-    if (savedTableSettings) {
+    // Kategorileri Firebase'den yükle
+    const loadCategories = async () => {
       try {
-        const parsedSettings = JSON.parse(savedTableSettings);
-        if (parsedSettings.categories && parsedSettings.categories.length > 0) {
-          setTableCategories(parsedSettings.categories);
-          console.log(
-            "Kategoriler localStorage'dan yüklendi:",
-            parsedSettings.categories
-          );
+        const categoriesCollection = collection(db, "table_categories");
+        const categoriesSnapshot = await getDocs(categoriesCollection);
+
+        if (!categoriesSnapshot.empty) {
+          const loadedCategories = categoriesSnapshot.docs.map((doc) => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              name: data.name || "",
+              color: data.color || "rgba(74, 108, 155, 0.8)",
+              borderColor: data.border_color || "#5880B3",
+              backgroundColor: data.background_color || "#f0f9ff",
+            };
+          });
+
+          setTableCategories(loadedCategories);
         }
       } catch (error) {
-        console.error("Kategori yükleme hatası:", error);
+        console.error("Kategoriler yüklenirken hata:", error);
       }
-    }
+    };
+
+    loadCategories();
   }, []);
 
   // useEffect ile sayfa yüklendikten sonra yeniden hesapla
@@ -1223,13 +1242,28 @@ function AdminPageComponent() {
   const [tables, setTables] = useState<TableType[]>([]);
 
   // Masaları yükleme fonksiyonu
-  const loadTables = () => {
+  const loadTables = async () => {
     try {
-      // localStorage'dan tabloları yükle
-      const savedTables = localStorage.getItem("tables");
-      if (savedTables) {
-        const parsedTables = JSON.parse(savedTables);
-        setTables(parsedTables);
+      // Realtime Database'den masaları yükle
+      const tablesRef = ref(db, "tables");
+      const tablesSnapshot = await get(tablesRef);
+
+      if (tablesSnapshot.exists()) {
+        const tablesData = tablesSnapshot.val();
+        const loadedTables = Object.entries(tablesData).map(
+          ([id, data]: [string, any]) => {
+            return {
+              id,
+              number: data.number || 0,
+              capacity: data.capacity || 2,
+              categoryId: data.category_id || "1",
+              status: data.status === "active" ? "Available" : "Unavailable",
+            } as TableType;
+          }
+        );
+
+        setTables(loadedTables);
+        console.log("Masalar Firebase'den yüklendi:", loadedTables.length);
       } else {
         // Varsayılan masa verileri
         const defaultTables: TableType[] = [
@@ -1331,8 +1365,19 @@ function AdminPageComponent() {
           },
         ];
 
-        setTables(defaultTables);
-        localStorage.setItem("tables", JSON.stringify(defaultTables));
+        // Varsayılan masaları Firebase'e kaydet
+        for (const table of defaultTables) {
+          await addDoc(collection(db, "tables"), {
+            number: table.number,
+            capacity: table.capacity,
+            category_id: table.categoryId,
+            status: table.status === "Available" ? "active" : "inactive",
+            createdAt: Timestamp.now(),
+          });
+        }
+
+        // Firebase'den tekrar yükle
+        loadTables();
       }
     } catch (error) {
       console.error("Masa verilerini yükleme hatası:", error);
@@ -1603,26 +1648,32 @@ function AdminPageComponent() {
         // Benzersiz ID oluştur
         const newId = `res-${Date.now()}`;
 
-        // Supabase için rezervasyon verilerini hazırla
+        // Firebase için rezervasyon verilerini hazırla
+        const startTime = new Date(updatedReservation.startTime);
+        const endTime = new Date(updatedReservation.endTime);
+
         const reservationData = {
-          id: newId,
           table_id: updatedReservation.tableId,
           customer_name: updatedReservation.customerName,
           guest_count: updatedReservation.guestCount,
-          start_time: updatedReservation.startTime,
-          end_time: updatedReservation.endTime,
+          start_time: Timestamp.fromDate(startTime),
+          end_time: Timestamp.fromDate(endTime),
           status: updatedReservation.status as
             | "confirmed"
             | "pending"
             | "cancelled"
             | "completed",
-          note: updatedReservation.note,
-          color: updatedReservation.color,
+          note: updatedReservation.note || "",
+          color: updatedReservation.color || "",
+          staff_ids: updatedReservation.staffIds || [],
+          created_at: Timestamp.now(),
+          updated_at: Timestamp.now(),
         };
 
-        // Supabase'e kaydet ve yanıtı al
-        const newReservationResponse = await db.reservations.create(
-          reservationData as any
+        // Firebase'e kaydet
+        const newReservationRef = await addDoc(
+          collection(db, "reservations"),
+          reservationData
         );
 
         // Yeni rezervasyon objesi - oluşturduğumuz ID ile
@@ -1849,8 +1900,27 @@ function AdminPageComponent() {
           color: updatedReservation.color,
         };
 
-        // Supabase'de güncelle
-        await db.reservations.update(updatedReservation.id, reservationData);
+        // Firebase'de güncelle
+        const startTime = new Date(updatedReservation.startTime);
+        const endTime = new Date(updatedReservation.endTime);
+
+        // Güncelleme verisini hazırla
+        const updateData = {
+          table_id: updatedReservation.tableId,
+          customer_name: updatedReservation.customerName,
+          guest_count: updatedReservation.guestCount,
+          start_time: Timestamp.fromDate(startTime),
+          end_time: Timestamp.fromDate(endTime),
+          status: updatedReservation.status,
+          note: updatedReservation.note || "",
+          color: updatedReservation.color || "",
+          staff_ids: updatedReservation.staffIds || [],
+          updated_at: Timestamp.now(),
+        };
+
+        // Firebase belgesini güncelle
+        const reservationRef = doc(db, "reservations", updatedReservation.id);
+        await updateDoc(reservationRef, updateData);
 
         // Ekranda görünen rezervasyonları güncelle (sadece seçilen güne ait olanları)
         const updatedReservations = reservations.map((res) => {
@@ -1904,8 +1974,9 @@ function AdminPageComponent() {
         return;
       }
 
-      // Supabase'den rezervasyonu sil
-      await db.reservations.delete(reservationId);
+      // Firebase'den rezervasyonu sil
+      const reservationRef = doc(db, "reservations", reservationId);
+      await deleteDoc(reservationRef);
 
       // Ekrandaki rezervasyonları güncelle (görünür olanları)
       const updatedReservations = reservations.filter(
@@ -2111,43 +2182,56 @@ function AdminPageComponent() {
     const formattedDate = format(date, "yyyy-MM-dd");
 
     try {
-      // Supabase API üzerinden rezervasyonları getir
+      // Firebase üzerinden rezervasyonları getir
       setIsLoading(true); // Yükleme durumunu göster
 
-      // startTime ile endTime aralığını belirle
-      const startDate = `${formattedDate}T00:00:00`;
-      const endDate = `${formattedDate}T23:59:59`;
+      // Başlangıç ve bitiş tarihlerini Date nesnesi olarak oluştur
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
+
+      const endOfDay = new Date(date);
+      endOfDay.setHours(23, 59, 59, 999);
 
       console.log(
         `FİLTRELEME İŞLEMİ: ${formattedDate} tarihli rezervasyonlar aranıyor...`
       );
 
-      // Supabase'den rezervasyonları al
-      const reservationsFromDB = await db.reservations.getByDateRange(
-        startDate,
-        endDate
+      // Firebase'den rezervasyonları al
+      const reservationsRef = collection(db, "reservations");
+      const reservationsQuery = query(
+        reservationsRef,
+        where("start_time", ">=", Timestamp.fromDate(startOfDay)),
+        where("start_time", "<=", Timestamp.fromDate(endOfDay))
       );
+
+      const reservationsSnapshot = await getDocs(reservationsQuery);
 
       console.log(
-        `Veritabanından ${reservationsFromDB.length} rezervasyon alındı`
+        `Veritabanından ${reservationsSnapshot.size} rezervasyon alındı`
       );
 
-      // Supabase'den gelen rezervasyonları lokal formata dönüştür
-      const formattedReservations = reservationsFromDB.map((dbRes: any) => ({
-        id: dbRes.id,
-        tableId: dbRes.table_id,
-        customerName: dbRes.customer_name,
-        guestCount: dbRes.guest_count,
-        startTime: dbRes.start_time,
-        endTime: dbRes.end_time,
-        status:
-          dbRes.status === "completed"
-            ? "confirmed"
-            : (dbRes.status as "confirmed" | "pending" | "cancelled"),
-        note: dbRes.note,
-        color: dbRes.color,
-        staffIds: [], // Varsayılan boş dizi
-      }));
+      // Firebase'den gelen rezervasyonları lokal formata dönüştür
+      const formattedReservations = reservationsSnapshot.docs.map((doc) => {
+        const dbRes = doc.data();
+        const startTime = dbRes.start_time?.toDate() || new Date();
+        const endTime = dbRes.end_time?.toDate() || new Date();
+
+        return {
+          id: doc.id,
+          tableId: dbRes.table_id || "",
+          customerName: dbRes.customer_name || "",
+          guestCount: dbRes.guest_count || 1,
+          startTime: startTime.toISOString(),
+          endTime: endTime.toISOString(),
+          status:
+            dbRes.status === "completed"
+              ? "confirmed"
+              : (dbRes.status as "confirmed" | "pending" | "cancelled"),
+          note: dbRes.note || "",
+          color: dbRes.color || "",
+          staffIds: dbRes.staff_ids || [], // Firebase'den gelen personel listesi
+        };
+      });
 
       // Hata ayıklama için alınan rezervasyonları göster
       console.log(

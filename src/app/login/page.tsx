@@ -2,38 +2,45 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase/client";
+import { useAuthContext } from "@/lib/firebase";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const { login } = useAuthContext();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoading(true);
+    setError(null);
+
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) throw error;
-
-      // Kullanıcı bilgilerini al
-      const { data: userData, error: userError } = await supabase
-        .from("users")
-        .select("*, companies(*), branches(*)")
-        .eq("id", data.user?.id)
-        .single();
-
-      if (userError) throw userError;
+      await login(email, password);
 
       // Başarılı giriş sonrası yönlendirme
       router.push("/dashboard");
       router.refresh();
     } catch (error: any) {
-      setError(error.message);
+      // Firebase hata mesajlarını Türkçeye çevir
+      let errorMessage = "Giriş yapılırken bir hata oluştu.";
+
+      if (error.code === "auth/user-not-found") {
+        errorMessage = "Bu e-posta adresiyle kayıtlı kullanıcı bulunamadı.";
+      } else if (error.code === "auth/wrong-password") {
+        errorMessage = "Hatalı şifre girdiniz.";
+      } else if (error.code === "auth/invalid-email") {
+        errorMessage = "Geçersiz e-posta adresi.";
+      } else if (error.code === "auth/too-many-requests") {
+        errorMessage =
+          "Çok fazla başarısız giriş denemesi. Lütfen daha sonra tekrar deneyin.";
+      }
+
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -87,9 +94,14 @@ export default function LoginPage() {
           <div>
             <button
               type="submit"
-              className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              disabled={loading}
+              className={`group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white ${
+                loading
+                  ? "bg-indigo-400 cursor-not-allowed"
+                  : "bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+              }`}
             >
-              Giriş Yap
+              {loading ? "Giriş Yapılıyor..." : "Giriş Yap"}
             </button>
           </div>
         </form>

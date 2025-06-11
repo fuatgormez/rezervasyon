@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import ToastProvider from "@/components/ToastProvider";
+import { AuthProvider } from "@/lib/firebase";
 
 export const metadata: Metadata = {
   title: "Rezervasyon Sistemi",
@@ -15,8 +16,10 @@ export default function RootLayout({
   return (
     <html lang="tr">
       <body>
-        {children}
-        <ToastProvider />
+        <AuthProvider>
+          {children}
+          <ToastProvider />
+        </AuthProvider>
       </body>
     </html>
   );

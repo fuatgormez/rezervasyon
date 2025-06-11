@@ -1,30 +1,36 @@
-import { supabase } from "@/lib/supabase/client";
+"use client";
+
+import { db } from "@/lib/firebase/config";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
 
 export class ReservationModel {
   static async update(id: string, data: Partial<any>) {
-    const { error } = await supabase
-      .from("reservations")
-      .update(data)
-      .eq("id", id);
-
-    if (error) {
+    try {
+      const reservationRef = doc(db, "reservations", id);
+      await updateDoc(reservationRef, data);
+      return true;
+    } catch (error) {
+      console.error("Rezervasyon güncelleme hatası:", error);
       throw error;
     }
-
-    return true;
   }
 
   static async getById(id: string) {
-    const { data, error } = await supabase
-      .from("reservations")
-      .select("*")
-      .eq("id", id)
-      .single();
+    try {
+      const reservationRef = doc(db, "reservations", id);
+      const docSnap = await getDoc(reservationRef);
 
-    if (error) {
+      if (docSnap.exists()) {
+        return {
+          id: docSnap.id,
+          ...docSnap.data(),
+        };
+      }
+
+      return null;
+    } catch (error) {
+      console.error("Rezervasyon getirme hatası:", error);
       throw error;
     }
-
-    return data;
   }
 }

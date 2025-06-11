@@ -1,32 +1,51 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase/client";
+import { db } from "@/config/firebase";
+import {
+  collection,
+  getDocs,
+  addDoc,
+  query,
+  where,
+  writeBatch,
+  doc,
+} from "firebase/firestore";
 
 // GET - Tüm masaları getir
 export async function GET() {
   try {
-    const { data: tables, error } = await supabase.from("tables").select("*");
+    // Firestore'dan tabloları çek
+    const tablesRef = collection(db, "tables");
+    const querySnapshot = await getDocs(tablesRef);
 
-    if (error) {
-      throw error;
-    }
+    const tables = querySnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
 
     // Eğer hiç masa yoksa, varsayılan masaları oluştur
     if (tables.length === 0) {
-      const defaultTables = Array.from({ length: 10 }, (_, i) => ({
-        id: `t${i + 1}`,
-        number: i + 1,
-        capacity: 4,
-        status: "available",
-      }));
+      const batch = writeBatch(db);
+      const createdTables = [];
 
-      const { data: createdTables, error: createError } = await supabase
-        .from("tables")
-        .insert(defaultTables)
-        .select();
+      // 10 adet varsayılan masa oluştur
+      for (let i = 0; i < 10; i++) {
+        const tableData = {
+          number: i + 1,
+          capacity: 4,
+          status: "available",
+        };
 
-      if (createError) {
-        throw createError;
+        const tableRef = doc(collection(db, "tables"));
+        batch.set(tableRef, tableData);
+
+        createdTables.push({
+          id: tableRef.id,
+          ...tableData,
+        });
       }
+
+      // Batch işlemini uygula
+      await batch.commit();
 
       return NextResponse.json({ tables: createdTables });
     }
@@ -46,16 +65,14 @@ export async function POST(request: NextRequest) {
   try {
     const data = await request.json();
 
-    // Yeni masa oluştur
-    const { data: newTable, error } = await supabase
-      .from("tables")
-      .insert(data)
-      .select()
-      .single();
+    // Firestore'a yeni masa ekle
+    const docRef = await addDoc(collection(db, "tables"), data);
 
-    if (error) {
-      throw error;
-    }
+    // Eklenen masayı getir
+    const newTable = {
+      id: docRef.id,
+      ...data,
+    };
 
     return NextResponse.json({
       message: "Table created successfully",
