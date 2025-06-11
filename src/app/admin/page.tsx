@@ -1884,7 +1884,7 @@ function AdminPageComponent() {
           }
         }
 
-        // Supabase için rezervasyon verilerini hazırla
+        // Firebase için rezervasyon verilerini hazırla
         const reservationData = {
           table_id: updatedReservation.tableId,
           customer_name: updatedReservation.customerName,
@@ -1895,7 +1895,7 @@ function AdminPageComponent() {
             | "confirmed"
             | "pending"
             | "cancelled"
-            | "completed", // Supabase'e uygun format
+            | "completed",
           note: updatedReservation.note,
           color: updatedReservation.color,
         };

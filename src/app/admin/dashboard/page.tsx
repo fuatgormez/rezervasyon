@@ -2,19 +2,21 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase/client";
+import { auth, db } from "@/lib/firebase/config";
+import { onAuthStateChanged } from "firebase/auth";
+import { ref, get, push, set, query, orderByChild } from "firebase/database";
 
 interface Company {
-  id: number;
+  id: string;
   name: string;
   status: string;
   created_at: string;
 }
 
 interface Branch {
-  id: number;
+  id: string;
   name: string;
-  company_id: number;
+  company_id: string;
   status: string;
   address: string;
 }
@@ -39,95 +41,124 @@ export default function AdminDashboard() {
   }, []);
 
   const checkAuth = async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      router.push("/admin/login");
-      return;
-    }
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        router.push("/admin/login");
+        return;
+      }
 
-    const { data: userData, error } = await supabase
-      .from("users")
-      .select("*")
-      .eq("id", user.id)
-      .single();
+      // Kullanıcının admin olup olmadığını kontrol et
+      const userRef = ref(db, `users/${user.uid}`);
+      const userSnapshot = await get(userRef);
 
-    if (error || !userData.is_super_admin) {
-      router.push("/admin/login");
-    }
+      if (!userSnapshot.exists() || !userSnapshot.val().is_super_admin) {
+        router.push("/admin/login");
+      }
+    });
   };
 
   const loadCompanies = async () => {
-    const { data, error } = await supabase
-      .from("companies")
-      .select("*")
-      .order("created_at", { ascending: false });
+    try {
+      const companiesRef = ref(db, "companies");
+      const companiesSnapshot = await get(companiesRef);
 
-    if (error) {
+      if (companiesSnapshot.exists()) {
+        const companiesData = companiesSnapshot.val();
+        const companiesArray = Object.keys(companiesData).map((key) => ({
+          id: key,
+          ...companiesData[key],
+        }));
+
+        // Oluşturulma tarihine göre sırala (yeniden eskiye)
+        companiesArray.sort(
+          (a, b) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+
+        setCompanies(companiesArray);
+      } else {
+        setCompanies([]);
+      }
+    } catch (error) {
+      console.error("Firmalar yüklenirken hata:", error);
       setError("Firmalar yüklenirken bir hata oluştu");
-      return;
     }
-
-    setCompanies(data || []);
   };
 
   const loadBranches = async () => {
-    const { data, error } = await supabase
-      .from("branches")
-      .select("*")
-      .order("created_at", { ascending: false });
+    try {
+      const branchesRef = ref(db, "branches");
+      const branchesSnapshot = await get(branchesRef);
 
-    if (error) {
+      if (branchesSnapshot.exists()) {
+        const branchesData = branchesSnapshot.val();
+        const branchesArray = Object.keys(branchesData).map((key) => ({
+          id: key,
+          ...branchesData[key],
+        }));
+
+        // Oluşturulma tarihine göre sırala (yeniden eskiye)
+        branchesArray.sort(
+          (a, b) =>
+            new Date(b.created_at || 0).getTime() -
+            new Date(a.created_at || 0).getTime()
+        );
+
+        setBranches(branchesArray);
+      } else {
+        setBranches([]);
+      }
+    } catch (error) {
+      console.error("Şubeler yüklenirken hata:", error);
       setError("Şubeler yüklenirken bir hata oluştu");
-      return;
     }
-
-    setBranches(data || []);
   };
 
   const handleAddCompany = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const { data, error } = await supabase
-        .from("companies")
-        .insert([{ name: newCompany.name, status: "active" }])
-        .select()
-        .single();
+      const companiesRef = ref(db, "companies");
+      const newCompanyRef = push(companiesRef);
 
-      if (error) throw error;
+      const companyData = {
+        name: newCompany.name,
+        status: "active",
+        created_at: new Date().toISOString(),
+      };
+
+      await set(newCompanyRef, companyData);
 
       setSuccess("Firma başarıyla eklendi");
       setNewCompany({ name: "" });
       loadCompanies();
     } catch (error: any) {
-      setError(error.message);
+      console.error("Firma eklenirken hata:", error);
+      setError(error.message || "Firma eklenirken bir hata oluştu");
     }
   };
 
   const handleAddBranch = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const { data, error } = await supabase
-        .from("branches")
-        .insert([
-          {
-            name: newBranch.name,
-            company_id: parseInt(newBranch.company_id),
-            address: newBranch.address,
-            status: "active",
-          },
-        ])
-        .select()
-        .single();
+      const branchesRef = ref(db, "branches");
+      const newBranchRef = push(branchesRef);
 
-      if (error) throw error;
+      const branchData = {
+        name: newBranch.name,
+        company_id: newBranch.company_id,
+        address: newBranch.address,
+        status: "active",
+        created_at: new Date().toISOString(),
+      };
+
+      await set(newBranchRef, branchData);
 
       setSuccess("Şube başarıyla eklendi");
       setNewBranch({ name: "", company_id: "", address: "" });
       loadBranches();
     } catch (error: any) {
-      setError(error.message);
+      console.error("Şube eklenirken hata:", error);
+      setError(error.message || "Şube eklenirken bir hata oluştu");
     }
   };
 
