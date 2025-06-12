@@ -8,10 +8,95 @@ import {
   serverTimestamp,
 } from "firebase/database";
 import { initializeApp } from "firebase/app";
-import { mockTableCategories, mockTables } from "@/models/tables";
 
 // API'nin dinamik olarak çalışmasını sağlar (önbellekleme yok)
 export const dynamic = "force-dynamic";
+
+// Varsayılan masa kategorileri
+const defaultTableCategories = [
+  {
+    name: "Teras",
+    color: "rgba(52, 152, 219, 0.8)",
+    borderColor: "#2980b9",
+    backgroundColor: "#f0f9ff", // Açık mavi arkaplan
+  },
+  {
+    name: "Bahçe",
+    color: "rgba(46, 204, 113, 0.8)",
+    borderColor: "#27ae60",
+    backgroundColor: "#f0fdf4", // Açık yeşil arkaplan
+  },
+  {
+    name: "İç Mekan",
+    color: "rgba(231, 76, 60, 0.8)",
+    borderColor: "#c0392b",
+    backgroundColor: "#fef2f2", // Açık kırmızı arkaplan
+  },
+];
+
+// Varsayılan masalar
+const defaultTables = [
+  {
+    number: 1,
+    capacity: 4,
+    category_id: "1", // Dinamik ID'ler için bu değer güncellenecek
+    status: "active",
+  },
+  {
+    number: 2,
+    capacity: 2,
+    category_id: "1",
+    status: "active",
+  },
+  {
+    number: 3,
+    capacity: 6,
+    category_id: "2",
+    status: "active",
+  },
+  {
+    number: 4,
+    capacity: 8,
+    category_id: "3",
+    status: "active",
+  },
+  {
+    number: 5,
+    capacity: 4,
+    category_id: "1",
+    status: "active",
+  },
+  {
+    number: 6,
+    capacity: 2,
+    category_id: "2",
+    status: "active",
+  },
+  {
+    number: 7,
+    capacity: 6,
+    category_id: "3",
+    status: "active",
+  },
+  {
+    number: 8,
+    capacity: 8,
+    category_id: "1",
+    status: "active",
+  },
+  {
+    number: 9,
+    capacity: 4,
+    category_id: "2",
+    status: "active",
+  },
+  {
+    number: 10,
+    capacity: 6,
+    category_id: "3",
+    status: "active",
+  },
+];
 
 // Firebase yapılandırması
 const firebaseConfig = {
@@ -44,6 +129,9 @@ export async function GET() {
     ];
 
     const results = [];
+
+    // Kategori ID'leri için referans objesi
+    const categoryIdMapping: Record<string, string> = {};
 
     // Koleksiyonları oluştur
     for (const col of collections) {
@@ -79,13 +167,18 @@ export async function GET() {
 
           // Eğer koleksiyon boşsa örnek veriler ekle
           if (!snapshot.exists()) {
-            for (const category of mockTableCategories) {
+            for (let i = 0; i < defaultTableCategories.length; i++) {
+              const category = defaultTableCategories[i];
               const newCategoryRef = push(categoriesRef);
+
+              // Yeni kategori ID'sini sakla
+              categoryIdMapping[`${i + 1}`] = newCategoryRef.key;
+
               await set(newCategoryRef, {
                 name: category.name,
                 color: category.color,
-                borderColor: category.border_color,
-                backgroundColor: category.background_color,
+                borderColor: category.borderColor,
+                backgroundColor: category.backgroundColor,
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
               });
@@ -93,6 +186,14 @@ export async function GET() {
             results.push(`${col.name} koleksiyonu örnek verilerle oluşturuldu`);
           } else {
             results.push(`${col.name} koleksiyonu zaten mevcut`);
+
+            // Mevcut kategori ID'lerini sakla
+            const categoriesData = snapshot.val();
+            let index = 1;
+            for (const key in categoriesData) {
+              categoryIdMapping[`${index}`] = key;
+              index++;
+            }
           }
         } else if (col.name === "tables") {
           // Örnek masalar oluştur
@@ -101,12 +202,17 @@ export async function GET() {
 
           // Eğer koleksiyon boşsa örnek veriler ekle
           if (!snapshot.exists()) {
-            for (const table of mockTables) {
+            for (const table of defaultTables) {
               const newTableRef = push(tablesRef);
+
+              // Kategori ID'sini dinamik olarak çöz
+              const mappedCategoryId =
+                categoryIdMapping[table.category_id] || table.category_id;
+
               await set(newTableRef, {
                 number: table.number,
                 capacity: table.capacity,
-                category_id: table.category_id,
+                category_id: mappedCategoryId, // Dinamik kategori ID'si kullan
                 status: table.status,
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),

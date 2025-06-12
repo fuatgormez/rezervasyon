@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import toast from "react-hot-toast";
-import { mockTables, mockTableCategories } from "@/models/tables";
 import type { Table } from "@/models/tables";
 import { db } from "@/config/firebase";
 import {
@@ -225,8 +224,11 @@ export default function SettingsPage() {
         setTablesList({ list: tables });
         console.log("Yüklenen masalar:", tables);
       } else {
-        // Gerçek veritabanında masa yoksa mock veri kullanabilirsiniz
-        setTablesList({ list: mockTables });
+        // Gerçek veritabanında masa yok
+        setTablesList({ list: [] });
+        toast.error(
+          "Hiç masa verisi bulunamadı. Yeni masa ekleyebilirsiniz veya /init-db sayfasını ziyaret edebilirsiniz."
+        );
       }
 
       // Firebase'den kategorileri getir

@@ -152,6 +152,8 @@ function AdminPageComponent() {
   );
   // Manuel kaydırma yapıldığını takip etmek için
   const [userHasScrolled, setUserHasScrolled] = useState<boolean>(false);
+  // Yeni eklenen rezervasyon ID'sini tutmak için
+  const [newReservationId, setNewReservationId] = useState<string | null>(null);
 
   const mainContentRef = useRef<HTMLDivElement>(null);
   const gridContainerRef = useRef<HTMLDivElement>(null);
@@ -1265,119 +1267,13 @@ function AdminPageComponent() {
         setTables(loadedTables);
         console.log("Masalar Firebase'den yüklendi:", loadedTables.length);
       } else {
-        // Varsayılan masa verileri
-        const defaultTables: TableType[] = [
-          // TERAS kategorisindeki masalar
-          {
-            id: uuidv4(),
-            number: 1,
-            capacity: 2,
-            categoryId: "1",
-            status: "Available",
-          },
-          {
-            id: uuidv4(),
-            number: 2,
-            capacity: 4,
-            categoryId: "1",
-            status: "Available",
-          },
-          {
-            id: uuidv4(),
-            number: 3,
-            capacity: 6,
-            categoryId: "1",
-            status: "Available",
-          },
-          {
-            id: uuidv4(),
-            number: 4,
-            capacity: 8,
-            categoryId: "1",
-            status: "Available",
-          },
-          {
-            id: uuidv4(),
-            number: 5,
-            capacity: 2,
-            categoryId: "1",
-            status: "Available",
-          },
-
-          // BAHÇE kategorisindeki masalar
-          {
-            id: uuidv4(),
-            number: 6,
-            capacity: 2,
-            categoryId: "2",
-            status: "Available",
-          },
-          {
-            id: uuidv4(),
-            number: 7,
-            capacity: 4,
-            categoryId: "2",
-            status: "Available",
-          },
-          {
-            id: uuidv4(),
-            number: 8,
-            capacity: 6,
-            categoryId: "2",
-            status: "Available",
-          },
-          {
-            id: uuidv4(),
-            number: 9,
-            capacity: 8,
-            categoryId: "2",
-            status: "Available",
-          },
-
-          // İÇ SALON kategorisindeki masalar
-          {
-            id: uuidv4(),
-            number: 10,
-            capacity: 2,
-            categoryId: "3",
-            status: "Available",
-          },
-          {
-            id: uuidv4(),
-            number: 11,
-            capacity: 4,
-            categoryId: "3",
-            status: "Available",
-          },
-          {
-            id: uuidv4(),
-            number: 12,
-            capacity: 6,
-            categoryId: "3",
-            status: "Available",
-          },
-          {
-            id: uuidv4(),
-            number: 13,
-            capacity: 8,
-            categoryId: "3",
-            status: "Available",
-          },
-        ];
-
-        // Varsayılan masaları Firebase'e kaydet
-        for (const table of defaultTables) {
-          await addDoc(collection(db, "tables"), {
-            number: table.number,
-            capacity: table.capacity,
-            category_id: table.categoryId,
-            status: table.status === "Available" ? "active" : "inactive",
-            createdAt: Timestamp.now(),
-          });
-        }
-
-        // Firebase'den tekrar yükle
-        loadTables();
+        console.log(
+          "Hiç masa verisi bulunamadı. /init-db sayfasına gidin veya masaları ekleyin."
+        );
+        setTables([]);
+        toast.error(
+          "Hiç masa verisi bulunamadı. Lütfen önce /init-db sayfasını ziyaret edin veya ayarlar sayfasından masaları ekleyin."
+        );
       }
     } catch (error) {
       console.error("Masa verilerini yükleme hatası:", error);
@@ -1645,10 +1541,7 @@ function AdminPageComponent() {
           return;
         }
 
-        // Benzersiz ID oluştur
-        const newId = `res-${Date.now()}`;
-
-        // Firebase için rezervasyon verilerini hazırla
+        // Firebase Realtime Database için rezervasyon verilerini hazırla
         const startTime = new Date(updatedReservation.startTime);
         const endTime = new Date(updatedReservation.endTime);
 
@@ -1656,8 +1549,8 @@ function AdminPageComponent() {
           table_id: updatedReservation.tableId,
           customer_name: updatedReservation.customerName,
           guest_count: updatedReservation.guestCount,
-          start_time: Timestamp.fromDate(startTime),
-          end_time: Timestamp.fromDate(endTime),
+          start_time: startTime.toISOString(),
+          end_time: endTime.toISOString(),
           status: updatedReservation.status as
             | "confirmed"
             | "pending"
@@ -1666,15 +1559,14 @@ function AdminPageComponent() {
           note: updatedReservation.note || "",
           color: updatedReservation.color || "",
           staff_ids: updatedReservation.staffIds || [],
-          created_at: Timestamp.now(),
-          updated_at: Timestamp.now(),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
         };
 
-        // Firebase'e kaydet
-        const newReservationRef = await addDoc(
-          collection(db, "reservations"),
-          reservationData
-        );
+        // Firebase Realtime Database'e kaydet
+        const reservationsRef = ref(db, "reservations");
+        const newReservationKey = push(reservationsRef, reservationData).key;
+        const newId = newReservationKey || `res-${Date.now()}`;
 
         // Yeni rezervasyon objesi - oluşturduğumuz ID ile
         const newReservation = {
@@ -1720,8 +1612,8 @@ function AdminPageComponent() {
           return;
         }
 
-        // Yeni eklenen rezervasyon ID'sini referansa ata (animasyon için)
-        newReservationRef.current = newId;
+        // Yeni eklenen rezervasyon ID'sini animasyon için saklayalım
+        setNewReservationId(newId);
 
         // Ekranda görünen rezervasyonları güncelle (sadece seçilen güne ait olanları)
         const updatedReservations = [...reservations, newReservation];
@@ -1750,7 +1642,7 @@ function AdminPageComponent() {
             setTimeout(() => {
               reservationElement.classList.remove("highlight-new-reservation");
               // Referansı temizle
-              newReservationRef.current = null;
+              setNewReservationId(null);
             }, 5000); // 5 saniye sonra animasyonu kaldır
           }
         }, 300);
@@ -1900,7 +1792,7 @@ function AdminPageComponent() {
           color: updatedReservation.color,
         };
 
-        // Firebase'de güncelle
+        // Firebase Realtime Database'de güncelle
         const startTime = new Date(updatedReservation.startTime);
         const endTime = new Date(updatedReservation.endTime);
 
@@ -1909,18 +1801,18 @@ function AdminPageComponent() {
           table_id: updatedReservation.tableId,
           customer_name: updatedReservation.customerName,
           guest_count: updatedReservation.guestCount,
-          start_time: Timestamp.fromDate(startTime),
-          end_time: Timestamp.fromDate(endTime),
+          start_time: startTime.toISOString(),
+          end_time: endTime.toISOString(),
           status: updatedReservation.status,
           note: updatedReservation.note || "",
           color: updatedReservation.color || "",
           staff_ids: updatedReservation.staffIds || [],
-          updated_at: Timestamp.now(),
+          updated_at: new Date().toISOString(),
         };
 
-        // Firebase belgesini güncelle
-        const reservationRef = doc(db, "reservations", updatedReservation.id);
-        await updateDoc(reservationRef, updateData);
+        // Firebase Realtime Database belgesini güncelle
+        const reservationRef = ref(db, `reservations/${updatedReservation.id}`);
+        await update(reservationRef, updateData);
 
         // Ekranda görünen rezervasyonları güncelle (sadece seçilen güne ait olanları)
         const updatedReservations = reservations.map((res) => {
@@ -1974,9 +1866,9 @@ function AdminPageComponent() {
         return;
       }
 
-      // Firebase'den rezervasyonu sil
-      const reservationRef = doc(db, "reservations", reservationId);
-      await deleteDoc(reservationRef);
+      // Firebase Realtime Database'den rezervasyonu sil
+      const reservationRef = ref(db, `reservations/${reservationId}`);
+      await remove(reservationRef);
 
       // Ekrandaki rezervasyonları güncelle (görünür olanları)
       const updatedReservations = reservations.filter(
@@ -2196,42 +2088,55 @@ function AdminPageComponent() {
         `FİLTRELEME İŞLEMİ: ${formattedDate} tarihli rezervasyonlar aranıyor...`
       );
 
-      // Firebase'den rezervasyonları al
-      const reservationsRef = collection(db, "reservations");
-      const reservationsQuery = query(
-        reservationsRef,
-        where("start_time", ">=", Timestamp.fromDate(startOfDay)),
-        where("start_time", "<=", Timestamp.fromDate(endOfDay))
-      );
+      // Realtime Database için tarih formatını dönüştür (ISO string)
+      const startDateString = startOfDay.toISOString();
+      const endDateString = endOfDay.toISOString();
 
-      const reservationsSnapshot = await getDocs(reservationsQuery);
+      // Realtime Database'den rezervasyonları sorgula
+      const reservationsRef = ref(db, "reservations");
+
+      // Tüm rezervasyonları getir, filtrelemeyi istemci tarafında yapacağız
+      const reservationsSnapshot = await get(reservationsRef);
+
+      console.log(`Veritabanından rezervasyonlar alındı, filtreleniyor...`);
+
+      const formattedReservations: ReservationType[] = [];
+
+      if (reservationsSnapshot.exists()) {
+        // Tüm rezervasyonları al
+        const reservationsData = reservationsSnapshot.val();
+
+        // Rezervasyonları döngüye al ve tarihe göre filtrele
+        Object.entries(reservationsData).forEach(
+          ([id, data]: [string, any]) => {
+            const startTime = new Date(data.start_time);
+            const endTime = new Date(data.end_time);
+
+            // Sadece seçilen tarih ile aynı olan rezervasyonları filtrele
+            if (startTime >= startOfDay && startTime <= endOfDay) {
+              formattedReservations.push({
+                id,
+                tableId: data.table_id || "",
+                customerName: data.customer_name || "",
+                guestCount: data.guest_count || 1,
+                startTime: startTime.toISOString(),
+                endTime: endTime.toISOString(),
+                status:
+                  data.status === "completed"
+                    ? "confirmed"
+                    : (data.status as "confirmed" | "pending" | "cancelled"),
+                note: data.note || "",
+                color: data.color || "",
+                staffIds: data.staff_ids || [],
+              });
+            }
+          }
+        );
+      }
 
       console.log(
-        `Veritabanından ${reservationsSnapshot.size} rezervasyon alındı`
+        `Filtreleme sonrası ${formattedReservations.length} rezervasyon bulundu`
       );
-
-      // Firebase'den gelen rezervasyonları lokal formata dönüştür
-      const formattedReservations = reservationsSnapshot.docs.map((doc) => {
-        const dbRes = doc.data();
-        const startTime = dbRes.start_time?.toDate() || new Date();
-        const endTime = dbRes.end_time?.toDate() || new Date();
-
-        return {
-          id: doc.id,
-          tableId: dbRes.table_id || "",
-          customerName: dbRes.customer_name || "",
-          guestCount: dbRes.guest_count || 1,
-          startTime: startTime.toISOString(),
-          endTime: endTime.toISOString(),
-          status:
-            dbRes.status === "completed"
-              ? "confirmed"
-              : (dbRes.status as "confirmed" | "pending" | "cancelled"),
-          note: dbRes.note || "",
-          color: dbRes.color || "",
-          staffIds: dbRes.staff_ids || [], // Firebase'den gelen personel listesi
-        };
-      });
 
       // Hata ayıklama için alınan rezervasyonları göster
       console.log(
@@ -2293,6 +2198,7 @@ function AdminPageComponent() {
     } catch (error) {
       console.error("Rezervasyonları filtreleme hatası:", error);
       toast.error("Rezervasyon verileri yüklenirken bir hata oluştu.");
+      setIsLoading(false); // Hata durumunda yükleme göstergesini kapat
     }
   };
 
