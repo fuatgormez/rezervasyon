@@ -1,24 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useAuth } from "@/lib/firebase/hooks";
 import { useRouter } from "next/navigation";
-import { useAuthContext } from "@/lib/firebase";
+import { useState } from "react";
 
-interface LogoutButtonProps {
-  className?: string;
-}
-
-export default function LogoutButton({ className = "" }: LogoutButtonProps) {
-  const [loading, setLoading] = useState(false);
-  const { logout } = useAuthContext();
+export default function LogoutButton() {
+  const { user, logout } = useAuth();
   const router = useRouter();
+  const [loading, setLoading] = useState(false);
 
   const handleLogout = async () => {
-    setLoading(true);
     try {
+      setLoading(true);
       await logout();
-      router.push("/login");
-      router.refresh();
+      // Çıkış sonrası sayfayı yenile ve login sayfasına yönlendir
+      window.location.href = "/login";
     } catch (error) {
       console.error("Çıkış yapılırken hata oluştu:", error);
     } finally {
@@ -26,13 +22,26 @@ export default function LogoutButton({ className = "" }: LogoutButtonProps) {
     }
   };
 
+  const handleLogin = () => {
+    router.push("/login");
+  };
+
+  if (!user) {
+    return (
+      <button
+        onClick={handleLogin}
+        className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+      >
+        Giriş Yap
+      </button>
+    );
+  }
+
   return (
     <button
       onClick={handleLogout}
       disabled={loading}
-      className={`px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 ${className} ${
-        loading ? "opacity-70 cursor-not-allowed" : ""
-      }`}
+      className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
     >
       {loading ? "Çıkış Yapılıyor..." : "Çıkış Yap"}
     </button>

@@ -7,7 +7,7 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signOut,
-  User,
+  User as FirebaseUser,
 } from "firebase/auth";
 import {
   ref,
@@ -22,6 +22,10 @@ import {
   equalTo,
   onValue,
 } from "firebase/database";
+import { userService } from "@/services/userService";
+import { User, UserRole } from "@/types/user";
+import Cookies from "js-cookie";
+import { useRouter } from "next/navigation";
 
 // Kullanıcı rolleri için tip tanımlaması
 export type UserRole = "user" | "admin" | "super_admin";
@@ -39,195 +43,184 @@ export interface UserProfile {
 
 // Kullanıcı oturumu hook'u
 export function useAuth() {
+  const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setUser(user);
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      try {
+        if (firebaseUser) {
+          // Auth token'ı al ve cookie'ye kaydet
+          const token = await firebaseUser.getIdToken();
+          Cookies.set("auth-token", token, { expires: 7 }); // 7 gün geçerli
 
-      if (user) {
-        try {
-          // Kullanıcı profil bilgilerini Realtime Database'den al
-          const userRef = ref(db, `users/${user.uid}`);
-          const snapshot = await get(userRef);
-
-          if (snapshot.exists()) {
-            const userData = snapshot.val();
-            setUserProfile({
-              id: user.uid,
-              email: user.email || userData.email || "",
-              name: userData.name || "",
-              // Geriye dönük uyumluluk - eski is_super_admin özelliğini kontrol et
-              role:
-                userData.role ||
-                (userData.is_super_admin ? "super_admin" : "user"),
-              created_at: userData.created_at || userData.createdAt,
-              updated_at: userData.updated_at || userData.updatedAt,
-            });
+          // Firestore'dan kullanıcı bilgilerini al
+          const userData = await userService.getUser(firebaseUser.uid);
+          if (userData) {
+            setUser(userData);
+            // Son giriş zamanını güncelle
+            await userService.updateLastLogin(userData.uid);
           } else {
-            // Kullanıcı var ama profil yok, varsayılan profil oluştur
-            setUserProfile({
-              id: user.uid,
-              email: user.email || "",
-              name: "",
-              role: "user",
-            });
+            console.error(
+              "Kullanıcı Firestore'da bulunamadı:",
+              firebaseUser.uid
+            );
+            setError("Kullanıcı bilgileri bulunamadı");
+            // Kullanıcı bilgileri bulunamazsa çıkış yap
+            await handleLogout();
           }
-        } catch (error) {
-          console.error("Kullanıcı profili alınırken hata:", error);
+        } else {
+          // Kullanıcı çıkış yaptığında cookie'yi sil
+          Cookies.remove("auth-token");
+          setUser(null);
         }
-      } else {
-        setUserProfile(null);
+      } catch (err) {
+        console.error("Auth state change error:", err);
+        setError("Kullanıcı bilgileri alınamadı");
+        // Hata durumunda çıkış yap
+        await handleLogout();
+      } finally {
+        setLoading(false);
       }
-
-      setLoading(false);
     });
 
     return () => unsubscribe();
   }, []);
 
+  const handleLogout = async () => {
+    try {
+      // Önce cookie'yi sil
+      Cookies.remove("auth-token");
+      // Sonra Firebase oturumunu kapat
+      await signOut(auth);
+      // Son olarak state'i temizle
+      setUser(null);
+      router.push("/login");
+      router.refresh();
+    } catch (err) {
+      console.error("Logout error:", err);
+      setError("Çıkış yapılırken bir hata oluştu");
+    }
+  };
+
+  const register = async (
+    email: string,
+    password: string,
+    displayName: string,
+    role: UserRole = "user"
+  ) => {
+    try {
+      setError(null);
+      console.log("Kayıt işlemi başlatılıyor...");
+
+      // Firebase Auth ile kullanıcı oluştur
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
+      console.log(
+        "Firebase Auth kullanıcısı oluşturuldu:",
+        userCredential.user.uid
+      );
+
+      // Auth token'ı al ve cookie'ye kaydet
+      const token = await userCredential.user.getIdToken();
+      Cookies.set("auth-token", token, { expires: 7 });
+
+      // Firestore'da kullanıcı profilini oluştur
+      const newUser: User = {
+        uid: userCredential.user.uid,
+        email: email,
+        displayName: displayName,
+        role: role,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        lastLoginAt: new Date(),
+        isActive: true,
+      };
+
+      await userService.createUser(newUser);
+      console.log("Firestore kullanıcı profili oluşturuldu");
+
+      return userCredential.user;
+    } catch (err: any) {
+      console.error("Register error:", err);
+      let errorMessage = "Kayıt işlemi başarısız oldu";
+
+      if (err.code === "auth/email-already-in-use") {
+        errorMessage = "Bu e-posta adresi zaten kullanımda";
+      } else if (err.code === "auth/invalid-email") {
+        errorMessage = "Geçersiz e-posta adresi";
+      } else if (err.code === "auth/weak-password") {
+        errorMessage = "Şifre çok zayıf";
+      }
+
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    }
+  };
+
   const login = async (email: string, password: string) => {
     try {
+      setError(null);
+      console.log("Giriş işlemi başlatılıyor...");
+
       const userCredential = await signInWithEmailAndPassword(
         auth,
         email,
         password
       );
+      console.log("Firebase Auth girişi başarılı:", userCredential.user.uid);
 
-      // Kullanıcı profil bilgilerini Realtime Database'den al
-      const userRef = ref(db, `users/${userCredential.user.uid}`);
-      const snapshot = await get(userRef);
+      // Auth token'ı al ve cookie'ye kaydet
+      const token = await userCredential.user.getIdToken();
+      Cookies.set("auth-token", token, { expires: 7 });
 
-      if (snapshot.exists()) {
-        const userData = snapshot.val();
-        const profile = {
-          id: userCredential.user.uid,
-          email: userCredential.user.email || userData.email || "",
-          name: userData.name || "",
-          role:
-            userData.role || (userData.is_super_admin ? "super_admin" : "user"),
-          created_at: userData.created_at || userData.createdAt,
-          updated_at: userData.updated_at || userData.updatedAt,
-        };
+      const userData = await userService.getUser(userCredential.user.uid);
+      console.log("Firestore kullanıcı bilgileri alındı:", userData);
 
-        setUserProfile(profile);
-        return { user: userCredential.user, profile };
+      if (userData) {
+        setUser(userData);
+        await userService.updateLastLogin(userData.uid);
+        console.log("Son giriş zamanı güncellendi");
+      } else {
+        throw new Error("Kullanıcı bilgileri bulunamadı");
       }
 
-      return { user: userCredential.user, profile: null };
-    } catch (error) {
-      console.error("Giriş yapılırken hata:", error);
-      throw error;
-    }
-  };
+      return userCredential.user;
+    } catch (err: any) {
+      console.error("Login error:", err);
+      let errorMessage = "Giriş başarısız oldu";
 
-  const register = async (email: string, password: string, userData: any) => {
-    try {
-      const credentials = await createUserWithEmailAndPassword(
-        auth,
-        email,
-        password
-      );
-
-      // Rol belirleme - varsayılan olarak "user"
-      const role = userData.role || "user";
-
-      // Kullanıcı profil verilerini Realtime Database'e kaydet
-      const userProfile = {
-        ...userData,
-        email,
-        role,
-        is_super_admin: role === "super_admin", // Geriye dönük uyumluluk için
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-
-      await set(ref(db, `users/${credentials.user.uid}`), userProfile);
-
-      setUserProfile({
-        id: credentials.user.uid,
-        email,
-        name: userData.name || "",
-        role,
-        created_at: userProfile.created_at,
-        updated_at: userProfile.updated_at,
-      });
-
-      return { user: credentials.user, profile: userProfile };
-    } catch (error) {
-      console.error("Kayıt olunurken hata:", error);
-      throw error;
-    }
-  };
-
-  const updateProfile = async (userId: string, data: Partial<UserProfile>) => {
-    try {
-      const userRef = ref(db, `users/${userId}`);
-
-      // Güncellenecek verileri hazırla
-      const updateData = {
-        ...data,
-        // Geriye dönük uyumluluk için is_super_admin güncelleme
-        ...(data.role && { is_super_admin: data.role === "super_admin" }),
-        updated_at: new Date().toISOString(),
-      };
-
-      await dbUpdate(userRef, updateData);
-
-      // Mevcut profil bilgisini güncelle
-      if (userProfile && userProfile.id === userId) {
-        setUserProfile({
-          ...userProfile,
-          ...data,
-          updated_at: updateData.updated_at,
-        });
+      if (
+        err.code === "auth/user-not-found" ||
+        err.code === "auth/wrong-password"
+      ) {
+        errorMessage = "E-posta veya şifre hatalı";
+      } else if (err.code === "auth/invalid-email") {
+        errorMessage = "Geçersiz e-posta adresi";
       }
 
-      return true;
-    } catch (error) {
-      console.error("Profil güncellenirken hata:", error);
-      return false;
+      setError(errorMessage);
+      throw new Error(errorMessage);
     }
   };
 
-  const logout = async () => {
-    try {
-      await signOut(auth);
-      setUserProfile(null);
-    } catch (error) {
-      console.error("Çıkış yapılırken hata:", error);
-      throw error;
-    }
-  };
-
-  // Kullanıcının belirli bir role sahip olup olmadığını kontrol et
-  const hasRole = (requiredRole: UserRole): boolean => {
-    if (!userProfile) return false;
-
-    const roleHierarchy = {
-      user: 1,
-      admin: 2,
-      super_admin: 3,
-    };
-
-    const userRoleLevel = roleHierarchy[userProfile.role] || 0;
-    const requiredRoleLevel = roleHierarchy[requiredRole] || 0;
-
-    // Kullanıcının rol seviyesi gereken rol seviyesinden büyük veya eşitse erişim var
-    return userRoleLevel >= requiredRoleLevel;
-  };
+  const isAdmin = () => user?.role === "admin" || user?.role === "super_admin";
+  const isSuperAdmin = () => user?.role === "super_admin";
 
   return {
     user,
-    userProfile,
     loading,
-    login,
+    error,
     register,
-    logout,
-    updateProfile,
-    hasRole,
+    login,
+    logout: handleLogout,
+    isAdmin,
+    isSuperAdmin,
   };
 }
 

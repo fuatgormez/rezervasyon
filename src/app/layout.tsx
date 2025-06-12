@@ -1,7 +1,9 @@
-import type { Metadata } from "next";
+import { Inter } from "next/font/google";
 import "./globals.css";
-import ToastProvider from "@/components/ToastProvider";
-import { AuthProvider } from "@/lib/firebase";
+import { Metadata } from "next";
+import ClientLayout from "./ClientLayout";
+
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Rezervasyon Sistemi",
@@ -15,11 +17,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="tr">
-      <body>
-        <AuthProvider>
-          {children}
-          <ToastProvider />
-        </AuthProvider>
+      <body className={inter.className}>
+        <ClientLayout>{children}</ClientLayout>
       </body>
     </html>
   );
