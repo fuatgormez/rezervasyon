@@ -210,29 +210,9 @@ function AdminPageComponent() {
   }, []);
 
   // Masa kategorileri
-  const [tableCategories, setTableCategories] = useState<TableCategoryType[]>([
-    {
-      id: "1",
-      name: "TERAS",
-      color: "rgba(74, 108, 155, 0.8)",
-      borderColor: "#5880B3",
-      backgroundColor: "#f0f9ff",
-    },
-    {
-      id: "2",
-      name: "BAHÇE",
-      color: "rgba(85, 138, 112, 0.8)",
-      borderColor: "#509F6D",
-      backgroundColor: "#f0fdf4",
-    },
-    {
-      id: "3",
-      name: "İÇ SALON",
-      color: "rgba(166, 97, 97, 0.8)",
-      borderColor: "#A06363",
-      backgroundColor: "#fef2f2",
-    },
-  ]);
+  const [tableCategories, setTableCategories] = useState<TableCategoryType[]>(
+    []
+  );
 
   // HEX rengini açık bir versiyona çevirme (açıklık ekleyerek)
   const getLighterColor = (hexColor: string, factor: number = 0.15): string => {
@@ -263,32 +243,99 @@ function AdminPageComponent() {
       return;
     }
 
-    // Kategorileri Firebase'den yükle
+    // Kategorileri Firebase Realtime Database'den yükle
     const loadCategories = async () => {
       try {
-        const categoriesCollection = collection(db, "table_categories");
-        const categoriesSnapshot = await getDocs(categoriesCollection);
+        console.log("Kategoriler yükleniyor...");
+        const categoriesRef = ref(db, "table_categories");
+        const categoriesSnapshot = await get(categoriesRef);
 
-        if (!categoriesSnapshot.empty) {
-          const loadedCategories = categoriesSnapshot.docs.map((doc) => {
-            const data = doc.data();
-            return {
-              id: doc.id,
-              name: data.name || "",
-              color: data.color || "rgba(74, 108, 155, 0.8)",
-              borderColor: data.border_color || "#5880B3",
-              backgroundColor: data.background_color || "#f0f9ff",
-            };
-          });
+        if (categoriesSnapshot.exists()) {
+          const categoriesData = categoriesSnapshot.val();
+          console.log("Firebase'den gelen kategori verileri:", categoriesData);
+
+          const loadedCategories = Object.entries(categoriesData).map(
+            ([id, data]: [string, any]) => {
+              return {
+                id,
+                name: data.name || "",
+                color: data.color || "rgba(74, 108, 155, 0.8)",
+                borderColor: data.borderColor || data.border_color || "#5880B3",
+                backgroundColor:
+                  data.backgroundColor || data.background_color || "#f0f9ff",
+              };
+            }
+          );
 
           setTableCategories(loadedCategories);
+          console.log("Kategoriler Firebase'den yüklendi:", loadedCategories);
+        } else {
+          console.log("Hiç kategori verisi bulunamadı.");
+          // Hata durumunda varsayılan kategorileri kullan
+          setTableCategories([
+            {
+              id: "default1",
+              name: "TERAS11",
+              color: "rgba(74, 108, 155, 0.8)",
+              borderColor: "#5880B3",
+              backgroundColor: "#f0f9ff",
+            },
+            {
+              id: "default2",
+              name: "BAHÇE",
+              color: "rgba(85, 138, 112, 0.8)",
+              borderColor: "#509F6D",
+              backgroundColor: "#f0fdf4",
+            },
+            {
+              id: "default3",
+              name: "İÇ SALON",
+              color: "rgba(166, 97, 97, 0.8)",
+              borderColor: "#A06363",
+              backgroundColor: "#fef2f2",
+            },
+          ]);
+
+          toast.error(
+            "Kategori verileri yüklenemedi. Lütfen önce /api/init-db sayfasını ziyaret edin."
+          );
         }
       } catch (error) {
         console.error("Kategoriler yüklenirken hata:", error);
+        // Hata durumunda varsayılan kategorileri kullan
+        setTableCategories([
+          {
+            id: "default1",
+            name: "TERAS",
+            color: "rgba(74, 108, 155, 0.8)",
+            borderColor: "#5880B3",
+            backgroundColor: "#f0f9ff",
+          },
+          {
+            id: "default2",
+            name: "BAHÇE",
+            color: "rgba(85, 138, 112, 0.8)",
+            borderColor: "#509F6D",
+            backgroundColor: "#f0fdf4",
+          },
+          {
+            id: "default3",
+            name: "İÇ SALON",
+            color: "rgba(166, 97, 97, 0.8)",
+            borderColor: "#A06363",
+            backgroundColor: "#fef2f2",
+          },
+        ]);
+
+        toast.error("Kategori verileri yüklenirken bir hata oluştu.");
       }
     };
 
     loadCategories();
+    loadTables();
+
+    // Mevcut tarihin rezervasyonlarını yükle
+    filterReservationsByDate(selectedDate);
   }, []);
 
   // useEffect ile sayfa yüklendikten sonra yeniden hesapla

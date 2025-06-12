@@ -23,51 +23,211 @@ import {
   onValue,
 } from "firebase/database";
 
+// Kullanıcı rolleri için tip tanımlaması
+export type UserRole = "user" | "admin" | "super_admin";
+
+// Kullanıcı profili arayüzü
+export interface UserProfile {
+  id: string;
+  email: string;
+  name: string;
+  role: UserRole;
+  is_super_admin?: boolean; // Geriye dönük uyumluluk için
+  created_at?: string;
+  updated_at?: string;
+}
+
 // Kullanıcı oturumu hook'u
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setUser(user);
+
+      if (user) {
+        try {
+          // Kullanıcı profil bilgilerini Realtime Database'den al
+          const userRef = ref(db, `users/${user.uid}`);
+          const snapshot = await get(userRef);
+
+          if (snapshot.exists()) {
+            const userData = snapshot.val();
+            setUserProfile({
+              id: user.uid,
+              email: user.email || userData.email || "",
+              name: userData.name || "",
+              // Geriye dönük uyumluluk - eski is_super_admin özelliğini kontrol et
+              role:
+                userData.role ||
+                (userData.is_super_admin ? "super_admin" : "user"),
+              created_at: userData.created_at || userData.createdAt,
+              updated_at: userData.updated_at || userData.updatedAt,
+            });
+          } else {
+            // Kullanıcı var ama profil yok, varsayılan profil oluştur
+            setUserProfile({
+              id: user.uid,
+              email: user.email || "",
+              name: "",
+              role: "user",
+            });
+          }
+        } catch (error) {
+          console.error("Kullanıcı profili alınırken hata:", error);
+        }
+      } else {
+        setUserProfile(null);
+      }
+
       setLoading(false);
     });
 
     return () => unsubscribe();
   }, []);
 
-  const login = (email: string, password: string) => {
-    return signInWithEmailAndPassword(auth, email, password);
+  const login = async (email: string, password: string) => {
+    try {
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
+
+      // Kullanıcı profil bilgilerini Realtime Database'den al
+      const userRef = ref(db, `users/${userCredential.user.uid}`);
+      const snapshot = await get(userRef);
+
+      if (snapshot.exists()) {
+        const userData = snapshot.val();
+        const profile = {
+          id: userCredential.user.uid,
+          email: userCredential.user.email || userData.email || "",
+          name: userData.name || "",
+          role:
+            userData.role || (userData.is_super_admin ? "super_admin" : "user"),
+          created_at: userData.created_at || userData.createdAt,
+          updated_at: userData.updated_at || userData.updatedAt,
+        };
+
+        setUserProfile(profile);
+        return { user: userCredential.user, profile };
+      }
+
+      return { user: userCredential.user, profile: null };
+    } catch (error) {
+      console.error("Giriş yapılırken hata:", error);
+      throw error;
+    }
   };
 
   const register = async (email: string, password: string, userData: any) => {
-    const credentials = await createUserWithEmailAndPassword(
-      auth,
-      email,
-      password
-    );
+    try {
+      const credentials = await createUserWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
 
-    // Kullanıcı profil verilerini Realtime Database'e kaydet
-    await set(ref(db, `users/${credentials.user.uid}`), {
-      ...userData,
-      email,
-      createdAt: new Date().toISOString(),
-    });
+      // Rol belirleme - varsayılan olarak "user"
+      const role = userData.role || "user";
 
-    return credentials;
+      // Kullanıcı profil verilerini Realtime Database'e kaydet
+      const userProfile = {
+        ...userData,
+        email,
+        role,
+        is_super_admin: role === "super_admin", // Geriye dönük uyumluluk için
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      await set(ref(db, `users/${credentials.user.uid}`), userProfile);
+
+      setUserProfile({
+        id: credentials.user.uid,
+        email,
+        name: userData.name || "",
+        role,
+        created_at: userProfile.created_at,
+        updated_at: userProfile.updated_at,
+      });
+
+      return { user: credentials.user, profile: userProfile };
+    } catch (error) {
+      console.error("Kayıt olunurken hata:", error);
+      throw error;
+    }
   };
 
-  const logout = () => {
-    return signOut(auth);
+  const updateProfile = async (userId: string, data: Partial<UserProfile>) => {
+    try {
+      const userRef = ref(db, `users/${userId}`);
+
+      // Güncellenecek verileri hazırla
+      const updateData = {
+        ...data,
+        // Geriye dönük uyumluluk için is_super_admin güncelleme
+        ...(data.role && { is_super_admin: data.role === "super_admin" }),
+        updated_at: new Date().toISOString(),
+      };
+
+      await dbUpdate(userRef, updateData);
+
+      // Mevcut profil bilgisini güncelle
+      if (userProfile && userProfile.id === userId) {
+        setUserProfile({
+          ...userProfile,
+          ...data,
+          updated_at: updateData.updated_at,
+        });
+      }
+
+      return true;
+    } catch (error) {
+      console.error("Profil güncellenirken hata:", error);
+      return false;
+    }
+  };
+
+  const logout = async () => {
+    try {
+      await signOut(auth);
+      setUserProfile(null);
+    } catch (error) {
+      console.error("Çıkış yapılırken hata:", error);
+      throw error;
+    }
+  };
+
+  // Kullanıcının belirli bir role sahip olup olmadığını kontrol et
+  const hasRole = (requiredRole: UserRole): boolean => {
+    if (!userProfile) return false;
+
+    const roleHierarchy = {
+      user: 1,
+      admin: 2,
+      super_admin: 3,
+    };
+
+    const userRoleLevel = roleHierarchy[userProfile.role] || 0;
+    const requiredRoleLevel = roleHierarchy[requiredRole] || 0;
+
+    // Kullanıcının rol seviyesi gereken rol seviyesinden büyük veya eşitse erişim var
+    return userRoleLevel >= requiredRoleLevel;
   };
 
   return {
     user,
+    userProfile,
     loading,
     login,
     register,
     logout,
+    updateProfile,
+    hasRole,
   };
 }
 
@@ -132,7 +292,8 @@ export function useFirebase<T>(path: string) {
 
       await set(newRef, {
         ...data,
-        createdAt: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       });
 
       return { id, ...data };
@@ -148,7 +309,7 @@ export function useFirebase<T>(path: string) {
       const dataRef = ref(db, `${path}/${id}`);
       await dbUpdate(dataRef, {
         ...data,
-        updatedAt: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       });
       return true;
     } catch (err: any) {

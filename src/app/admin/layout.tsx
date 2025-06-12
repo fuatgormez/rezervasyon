@@ -27,212 +27,221 @@ export default function AdminLayout({
       await logout();
       // Çıkış başarılı, login sayfasına yönlendirme Next.js useEffect içinde yapılacak
     } catch (error) {
-      console.error("Çıkış yapılırken hata oluştu:", error);
+      console.error("Çıkış yapılırken hata:", error);
     }
   };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-screen bg-gray-100">
-      <header className="bg-white shadow-sm">
-        <div className="container mx-auto px-4">
-          <div className="flex items-center justify-between py-3">
-            <div className="flex items-center">
-              <Link href="/admin">
-                <div className="text-xl font-bold text-blue-600">
-                  Rezervasyon Panel
-                </div>
-              </Link>
-            </div>
+    <div className="flex flex-col h-screen">
+      <header className="bg-white shadow-sm z-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex justify-between items-center">
+          <div className="flex items-center">
+            <Link href="/admin" className="text-xl font-bold text-blue-600">
+              Rezervasyon
+            </Link>
 
-            {/* Desktop Menü */}
-            <div className="hidden md:flex items-center space-x-2">
-              <Link href="/admin">
-                <div
-                  className={`px-3 py-2 rounded-md text-sm font-medium ${
-                    pathname === "/admin"
-                      ? "bg-blue-500 text-white"
-                      : "text-gray-600 hover:bg-blue-50 hover:text-blue-600"
+            <nav className="hidden md:flex items-center gap-4 ml-6 text-sm">
+              <Link
+                href="/admin/dashboard"
+                className={`${
+                  pathname?.includes("/admin/dashboard")
+                    ? "font-bold text-blue-600"
+                    : "text-gray-600 hover:text-blue-500"
+                }`}
+              >
+                Dashboard
+              </Link>
+              <Link
+                href="/admin"
+                className={`${
+                  pathname === "/admin"
+                    ? "font-bold text-blue-600"
+                    : "text-gray-600 hover:text-blue-500"
+                }`}
+              >
+                Rezervasyonlar
+              </Link>
+              <Link
+                href="/admin/tables"
+                className={`${
+                  pathname?.includes("/admin/tables")
+                    ? "font-bold text-blue-600"
+                    : "text-gray-600 hover:text-blue-500"
+                }`}
+              >
+                Masalar
+              </Link>
+              <Link
+                href="/admin/settings"
+                className={`${
+                  pathname?.includes("/admin/settings") &&
+                  !pathname?.includes("/admin/settings/users")
+                    ? "font-bold text-blue-600"
+                    : "text-gray-600 hover:text-blue-500"
+                }`}
+              >
+                Ayarlar
+              </Link>
+              {userProfile?.role === "admin" ||
+              userProfile?.role === "super_admin" ? (
+                <Link
+                  href="/admin/settings/users"
+                  className={`${
+                    pathname?.includes("/admin/settings/users")
+                      ? "font-bold text-blue-600"
+                      : "text-gray-600 hover:text-blue-500"
                   }`}
                 >
-                  Ana Sayfa
-                </div>
+                  Kullanıcılar
+                </Link>
+              ) : null}
+            </nav>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <div className="hidden md:block text-sm text-gray-700">
+              {userProfile?.name || user?.email || "Kullanıcı"}
+              {userProfile?.role && (
+                <span className="ml-2 px-2 py-1 text-xs rounded-full bg-gray-100">
+                  {userProfile.role === "super_admin"
+                    ? "Süper Admin"
+                    : userProfile.role === "admin"
+                    ? "Admin"
+                    : "Kullanıcı"}
+                </span>
+              )}
+            </div>
+            <button
+              onClick={handleLogout}
+              className="text-sm text-red-600 hover:text-red-800"
+            >
+              Çıkış
+            </button>
+
+            {/* Mobil menü butonu */}
+            <button
+              className="md:hidden p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100"
+              onClick={() => setShowMobileMenu(!showMobileMenu)}
+            >
+              <svg
+                className="h-6 w-6"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                {showMobileMenu ? (
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                ) : (
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 6h16M4 12h16m-7 6h7"
+                  />
+                )}
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Mobil menü */}
+        {showMobileMenu && (
+          <div className="md:hidden px-4 pt-2 pb-3 space-y-1 bg-gray-50 border-t">
+            <Link
+              href="/admin/dashboard"
+              className={`block px-3 py-2 rounded-md text-base ${
+                pathname?.includes("/admin/dashboard")
+                  ? "font-medium text-blue-600 bg-blue-50"
+                  : "font-normal text-gray-600 hover:bg-gray-100"
+              }`}
+              onClick={() => setShowMobileMenu(false)}
+            >
+              Dashboard
+            </Link>
+            <Link
+              href="/admin"
+              className={`block px-3 py-2 rounded-md text-base ${
+                pathname === "/admin"
+                  ? "font-medium text-blue-600 bg-blue-50"
+                  : "font-normal text-gray-600 hover:bg-gray-100"
+              }`}
+              onClick={() => setShowMobileMenu(false)}
+            >
+              Rezervasyonlar
+            </Link>
+            <Link
+              href="/admin/tables"
+              className={`block px-3 py-2 rounded-md text-base ${
+                pathname?.includes("/admin/tables")
+                  ? "font-medium text-blue-600 bg-blue-50"
+                  : "font-normal text-gray-600 hover:bg-gray-100"
+              }`}
+              onClick={() => setShowMobileMenu(false)}
+            >
+              Masalar
+            </Link>
+            <Link
+              href="/admin/settings"
+              className={`block px-3 py-2 rounded-md text-base ${
+                pathname?.includes("/admin/settings") &&
+                !pathname?.includes("/admin/settings/users")
+                  ? "font-medium text-blue-600 bg-blue-50"
+                  : "font-normal text-gray-600 hover:bg-gray-100"
+              }`}
+              onClick={() => setShowMobileMenu(false)}
+            >
+              Ayarlar
+            </Link>
+            {userProfile?.role === "admin" ||
+            userProfile?.role === "super_admin" ? (
+              <Link
+                href="/admin/settings/users"
+                className={`block px-3 py-2 rounded-md text-base ${
+                  pathname?.includes("/admin/settings/users")
+                    ? "font-medium text-blue-600 bg-blue-50"
+                    : "font-normal text-gray-600 hover:bg-gray-100"
+                }`}
+                onClick={() => setShowMobileMenu(false)}
+              >
+                Kullanıcılar
               </Link>
-              <Link href="/admin/settings">
-                <div
-                  className={`px-3 py-2 rounded-md text-sm font-medium ${
-                    pathname === "/admin/settings"
-                      ? "bg-blue-500 text-white"
-                      : "text-gray-600 hover:bg-blue-50 hover:text-blue-600"
-                  }`}
-                >
-                  Ayarlar
-                </div>
-              </Link>
-              <Link href="/admin/tables">
-                <div
-                  className={`px-3 py-2 rounded-md text-sm font-medium ${
-                    pathname === "/admin/tables"
-                      ? "bg-blue-500 text-white"
-                      : "text-gray-600 hover:bg-blue-50 hover:text-blue-600"
-                  }`}
-                >
-                  Masalar
-                </div>
-              </Link>
-              <Link href="/admin/simple-dashboard">
-                <div
-                  className={`px-3 py-2 rounded-md text-sm font-medium ${
-                    pathname === "/admin/simple-dashboard"
-                      ? "bg-blue-500 text-white"
-                      : "text-gray-600 hover:bg-blue-50 hover:text-blue-600"
-                  }`}
-                >
-                  Basit Panel
-                </div>
-              </Link>
-              <Link href="/init-db">
-                <div
-                  className={`px-3 py-2 rounded-md text-sm font-medium ${
-                    pathname === "/init-db"
-                      ? "bg-blue-500 text-white"
-                      : "text-gray-600 hover:bg-blue-50 hover:text-blue-600"
-                  }`}
-                >
-                  Veritabanı Başlat
-                </div>
-              </Link>
-              <Link href="/init-user">
-                <div
-                  className={`px-3 py-2 rounded-md text-sm font-medium ${
-                    pathname === "/init-user"
-                      ? "bg-blue-500 text-white"
-                      : "text-gray-600 hover:bg-blue-50 hover:text-blue-600"
-                  }`}
-                >
-                  Süper Admin
-                </div>
-              </Link>
+            ) : null}
+            <div className="pt-2 border-t border-gray-200">
+              <div className="px-3 py-2 text-sm text-gray-500">
+                {userProfile?.name || user?.email || "Kullanıcı"}
+                {userProfile?.role && (
+                  <span className="ml-2 px-2 py-1 text-xs rounded-full bg-gray-200">
+                    {userProfile.role === "super_admin"
+                      ? "Süper Admin"
+                      : userProfile.role === "admin"
+                      ? "Admin"
+                      : "Kullanıcı"}
+                  </span>
+                )}
+              </div>
               <button
                 onClick={handleLogout}
-                className="ml-2 px-3 py-2 bg-red-500 text-white rounded-md text-sm font-medium hover:bg-red-600"
+                className="mt-1 block w-full text-left px-3 py-2 text-base text-red-600 hover:bg-gray-100"
               >
                 Çıkış
               </button>
             </div>
-
-            {/* Mobil menü düğmesi */}
-            <div className="md:hidden flex items-center">
-              <button
-                onClick={() => setShowMobileMenu(!showMobileMenu)}
-                className="text-gray-500 focus:outline-none"
-              >
-                <svg
-                  className="h-6 w-6"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    d="M4 6H20M4 12H20M4 18H20"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
-              <span className="text-sm text-gray-600 ml-2">
-                {userProfile?.name || "Admin"}
-              </span>
-            </div>
           </div>
-
-          {/* Mobil Menü */}
-          {showMobileMenu && (
-            <div className="md:hidden py-2 border-t border-gray-200">
-              <Link href="/admin">
-                <div
-                  className={`block px-4 py-2 rounded-md text-base font-medium ${
-                    pathname === "/admin"
-                      ? "bg-blue-500 text-white"
-                      : "text-gray-600 hover:bg-blue-50 hover:text-blue-600"
-                  }`}
-                >
-                  Ana Sayfa
-                </div>
-              </Link>
-              <Link href="/admin/settings">
-                <div
-                  className={`block px-4 py-2 rounded-md text-base font-medium ${
-                    pathname === "/admin/settings"
-                      ? "bg-blue-500 text-white"
-                      : "text-gray-600 hover:bg-blue-50 hover:text-blue-600"
-                  }`}
-                >
-                  Ayarlar
-                </div>
-              </Link>
-              <Link href="/admin/tables">
-                <div
-                  className={`block px-4 py-2 rounded-md text-base font-medium ${
-                    pathname === "/admin/tables"
-                      ? "bg-blue-500 text-white"
-                      : "text-gray-600 hover:bg-blue-50 hover:text-blue-600"
-                  }`}
-                >
-                  Masalar
-                </div>
-              </Link>
-              <Link href="/admin/simple-dashboard">
-                <div
-                  className={`block px-4 py-2 rounded-md text-base font-medium ${
-                    pathname === "/admin/simple-dashboard"
-                      ? "bg-blue-500 text-white"
-                      : "text-gray-600 hover:bg-blue-50 hover:text-blue-600"
-                  }`}
-                >
-                  Basit Panel
-                </div>
-              </Link>
-              <Link href="/init-db">
-                <div
-                  className={`block px-4 py-2 rounded-md text-base font-medium ${
-                    pathname === "/init-db"
-                      ? "bg-blue-500 text-white"
-                      : "text-gray-600 hover:bg-blue-50 hover:text-blue-600"
-                  }`}
-                >
-                  Veritabanı Başlat
-                </div>
-              </Link>
-              <Link href="/init-user">
-                <div
-                  className={`block px-4 py-2 rounded-md text-base font-medium ${
-                    pathname === "/init-user"
-                      ? "bg-blue-500 text-white"
-                      : "text-gray-600 hover:bg-blue-50 hover:text-blue-600"
-                  }`}
-                >
-                  Süper Admin
-                </div>
-              </Link>
-              <button
-                onClick={handleLogout}
-                className="w-full text-left px-4 py-2 mt-2 bg-red-500 text-white rounded-md text-base font-medium hover:bg-red-600"
-              >
-                Çıkış Yap
-              </button>
-            </div>
-          )}
-        </div>
+        )}
       </header>
 
       <main className="flex-1 overflow-auto bg-gray-50 p-4">{children}</main>

@@ -23,7 +23,8 @@ const DEFAULT_ADMIN = {
   email: "admin@example.com",
   password: "Admin123!",
   name: "Süper Admin",
-  is_super_admin: true,
+  role: "super_admin",
+  is_super_admin: true, // Geriye dönük uyumluluk için
 };
 
 export async function GET(request: Request) {
@@ -65,8 +66,10 @@ export async function GET(request: Request) {
     await set(userRef, {
       name: DEFAULT_ADMIN.name,
       email: DEFAULT_ADMIN.email,
+      role: DEFAULT_ADMIN.role,
       is_super_admin: DEFAULT_ADMIN.is_super_admin,
       created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     });
 
     return new NextResponse(
@@ -77,6 +80,7 @@ export async function GET(request: Request) {
           id: userId,
           email: DEFAULT_ADMIN.email,
           name: DEFAULT_ADMIN.name,
+          role: DEFAULT_ADMIN.role,
         },
       }),
       { status: 200, headers: { "content-type": "application/json" } }
