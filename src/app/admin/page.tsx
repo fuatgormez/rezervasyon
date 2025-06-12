@@ -1303,10 +1303,10 @@ function AdminPageComponent() {
           ([id, data]: [string, any]) => {
             return {
               id,
-              number: data.number || 0,
+              number: data.number || parseInt(id.replace("table", "")) || 0,
               capacity: data.capacity || 2,
-              categoryId: data.category_id || "1",
-              status: data.status === "active" ? "Available" : "Unavailable",
+              categoryId: data.category || "salon",
+              status: data.isActive ? "Available" : "Unavailable",
             } as TableType;
           }
         );
