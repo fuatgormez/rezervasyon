@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { format } from "date-fns";
 import { tr } from "date-fns/locale";
+import CurrentTimeLine from "@/components/CurrentTimeLine";
 
 interface TimeGridProps {
   date: Date;
@@ -19,6 +20,7 @@ export default function TimeGrid({
 }: TimeGridProps) {
   const hourRange = Array.from({ length: 14 }, (_, i) => i + 9); // 09:00 - 22:00
   const [hoveredCell, setHoveredCell] = useState<string | null>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
 
   // Rezervasyonların olduğu saat-masa hücrelerini belirle
   const getReservationForCell = (time: string, tableId: string) => {
@@ -108,11 +110,16 @@ export default function TimeGrid({
   };
 
   return (
-    <div className="overflow-x-auto">
-      <table className="min-w-full border-collapse">
-        <thead>{renderHeaderRow()}</thead>
-        <tbody>{renderTimeRows()}</tbody>
-      </table>
+    <div className="relative">
+      <div ref={gridRef} className="grid grid-cols-24 gap-1 h-24 border">
+        <div className="overflow-x-auto">
+          <table className="min-w-full border-collapse">
+            <thead>{renderHeaderRow()}</thead>
+            <tbody>{renderTimeRows()}</tbody>
+          </table>
+        </div>
+      </div>
+      <CurrentTimeLine gridRef={gridRef} />
     </div>
   );
 }

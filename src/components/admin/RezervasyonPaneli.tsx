@@ -432,74 +432,6 @@ export default function RezervasyonPaneli() {
     setActiveCategory(categoryId);
   };
 
-  // Kategori başlığı oluşturma
-  const renderCategoryTabs = () => {
-    return (
-      <div className="bg-white rounded-lg shadow mb-4 p-2 overflow-hidden">
-        <h3 className="text-sm font-medium text-gray-500 ml-2 mb-2">
-          Masa Kategorileri
-        </h3>
-        <div className="flex flex-wrap gap-2 p-2">
-          <button
-            className={`px-4 py-2 rounded-lg flex items-center space-x-2 whitespace-nowrap transition-all ${
-              activeCategory === ""
-                ? "bg-blue-50 text-blue-600 shadow-sm border border-blue-200"
-                : "bg-gray-50 hover:bg-gray-100"
-            }`}
-            onClick={handleShowAllTables}
-          >
-            <span>Tüm Masalar</span>
-            <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">
-              {tables.length}
-            </span>
-          </button>
-
-          {categories.map((category) => (
-            <button
-              key={category.id}
-              className={`px-4 py-2 rounded-lg flex items-center space-x-2 whitespace-nowrap transition-all ${
-                activeCategory === category.id
-                  ? "shadow-sm border"
-                  : "bg-gray-50 hover:bg-gray-100"
-              }`}
-              style={
-                activeCategory === category.id
-                  ? {
-                      backgroundColor: `${category.backgroundColor}`,
-                      color: `${category.color}`,
-                      borderColor: `${category.borderColor || category.color}`,
-                    }
-                  : {}
-              }
-              onClick={() => changeCategory(category.id)}
-            >
-              <span
-                className="w-3 h-3 rounded-full"
-                style={{ backgroundColor: category.color }}
-              ></span>
-              <span>{category.name}</span>
-              <span
-                className="text-xs px-2 py-0.5 rounded-full"
-                style={{
-                  backgroundColor:
-                    activeCategory === category.id
-                      ? `${category.color}20`
-                      : "rgba(229, 231, 235, 1)",
-                  color:
-                    activeCategory === category.id
-                      ? category.color
-                      : "rgba(75, 85, 99, 1)",
-                }}
-              >
-                {tables.filter((t) => t.categoryId === category.id).length}
-              </span>
-            </button>
-          ))}
-        </div>
-      </div>
-    );
-  };
-
   // Düz masa listesi oluştur - kategorilere göre gruplama olmadan
   const flatTablesList = useMemo(() => {
     // Kategori sırasına göre düz liste oluştur
@@ -1233,9 +1165,6 @@ export default function RezervasyonPaneli() {
             </div>
           ) : (
             <div className="flex flex-col space-y-4">
-              {/* Kategori sekmeleri - Üste taşındı */}
-              {renderCategoryTabs()}
-
               {/* Masa durumu özeti */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                 <div className="bg-white rounded-lg shadow p-4 border-l-4 border-blue-500">

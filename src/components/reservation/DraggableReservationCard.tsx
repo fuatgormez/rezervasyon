@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import Draggable, { DraggableData, DraggableEvent } from "react-draggable";
 import toast from "react-hot-toast";
+import ReservationConfirmModal from "../ui/ReservationConfirmModal";
 
 // Reservation türü
 interface ReservationType {
@@ -84,6 +85,12 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
   // Son adım indexini tut (her adımda bir kez güncelleme için)
   const [lastStep, setLastStep] = useState<number>(0);
 
+  const [showModal, setShowModal] = useState(false);
+  const [pendingUpdate, setPendingUpdate] = useState<null | {
+    updated: ReservationType;
+    original: ReservationType;
+  }>(null);
+
   // Rezervasyonun geçmiş olup olmadığını kontrol et
   const isPastReservation = isReservationPast
     ? isReservationPast(reservation.startTime)
@@ -162,6 +169,22 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
       console.error("Zaman dönüşümü hatası:", error, "Orijinal değer:", time);
       return 0; // Hata durumunda varsayılan değer
     }
+  };
+
+  // Dakikayı en yakın 15'lik periyoda özel olarak yuvarla
+  const snapToCustom15 = (minutes: number) => {
+    const hour = Math.floor(minutes / 60);
+    const min = minutes % 60;
+    let snappedMin = 0;
+    if (min <= 7) snappedMin = 0;
+    else if (min <= 22) snappedMin = 15;
+    else if (min <= 37) snappedMin = 30;
+    else if (min <= 52) snappedMin = 45;
+    else {
+      // 53 ve sonrası bir sonraki saat başı
+      return (hour + 1) * 60;
+    }
+    return hour * 60 + snappedMin;
   };
 
   // Sürüklemeye başladığında
@@ -248,46 +271,38 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
 
     // Zaman hesaplama - sürükleme mesafesine göre zaman güncelleme
     const cellWidthMinutes = 60;
-    const minuteStep = 15; // 15 dakikalık adımlarla hareket edilecek
-    let minuteOffsetRaw = (offsetX / cellWidth) * cellWidthMinutes;
-    let minuteOffset = Math.round(minuteOffsetRaw / minuteStep) * minuteStep;
+    let minuteOffsetRaw = (data.x / cellWidth) * cellWidthMinutes;
+    let newStartMinutes =
+      convertTimeToMinutes(initialStartTime) + minuteOffsetRaw;
+    newStartMinutes = snapToCustom15(newStartMinutes);
+    const duration =
+      convertTimeToMinutes(initialEndTime) -
+      convertTimeToMinutes(initialStartTime);
+    let newEndMinutes = newStartMinutes + duration;
+    // Bitişi snapleme! Sadece başlangıcı snaple, bitişi süreye göre ayarla
+    let newStartTime = convertMinutesToTime(newStartMinutes);
+    let newEndTime = convertMinutesToTime(newEndMinutes);
 
-    // Yeni başlangıç ve bitiş zamanlarını hesapla
-    try {
-      const startMinutes = convertTimeToMinutes(initialStartTime);
-      const endMinutes = convertTimeToMinutes(initialEndTime);
-      const duration = endMinutes - startMinutes;
+    // Orijinal formatta tarih kısmı varsa, koru
+    if (initialStartTime.includes("T")) {
+      const datePart = initialStartTime.split("T")[0];
+      newStartTime = `${datePart}T${newStartTime}`;
 
-      const newStartMinutes = startMinutes + minuteOffset;
-      const newEndMinutes = newStartMinutes + duration;
+      const endDatePart = initialEndTime.split("T")[0];
+      newEndTime = `${endDatePart}T${newEndTime}`;
+    } else if (initialStartTime.includes(" ")) {
+      const datePart = initialStartTime.split(" ")[0];
+      newStartTime = `${datePart} ${newStartTime}`;
 
-      // Yeni zamanları ayarla
-      let newStartTime = convertMinutesToTime(newStartMinutes);
-      let newEndTime = convertMinutesToTime(newEndMinutes);
-
-      // Orijinal formatta tarih kısmı varsa, koru
-      if (initialStartTime.includes("T")) {
-        const datePart = initialStartTime.split("T")[0];
-        newStartTime = `${datePart}T${newStartTime}`;
-
-        const endDatePart = initialEndTime.split("T")[0];
-        newEndTime = `${endDatePart}T${newEndTime}`;
-      } else if (initialStartTime.includes(" ")) {
-        const datePart = initialStartTime.split(" ")[0];
-        newStartTime = `${datePart} ${newStartTime}`;
-
-        const endDatePart = initialEndTime.split(" ")[0];
-        newEndTime = `${endDatePart} ${newEndTime}`;
-      }
-
-      draggedReservation.startTime = newStartTime;
-      draggedReservation.endTime = newEndTime;
-
-      // Sürükleme sırasında sürekli güncelle
-      setDraggedReservation({ ...draggedReservation });
-    } catch (error) {
-      console.error("Zaman dönüşümü hatası:", error);
+      const endDatePart = initialEndTime.split(" ")[0];
+      newEndTime = `${endDatePart} ${newEndTime}`;
     }
+
+    draggedReservation.startTime = newStartTime;
+    draggedReservation.endTime = newEndTime;
+
+    // Sürükleme sırasında sürekli güncelle
+    setDraggedReservation({ ...draggedReservation });
   };
 
   // Sürükleme tamamlandığında
@@ -327,124 +342,41 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
 
     if (hasConflict) {
       toast.error("Bu masa ve saatte çakışma var!");
-
-      // Orijinal değerlere geri dön ve güncelleme yapma
       setIsDragging(false);
       setDraggedReservation(null);
       return;
     }
 
-    // Orijinal rezervasyon bilgilerini kopyala (eski durum)
     const originalReservation = { ...reservation };
-
-    // Masa değişimi olmasa bile mutlaka güncelleme yap
-    // Böylece zaman değişiklikleri de kaydedilir
-    if (hasMasaChanged && !hasTimeChanged) {
-      // Sadece masa değişikliği - onay gerektirmez
-      if (!draggedReservation.tableId) {
-        draggedReservation.tableId = initialTableId;
-        toast.error("Masa bilgisi bulunamadı, orijinal masa korunuyor");
-      }
-
-      // Direkt olarak güncelle, onay kutusu gösterme
-      onReservationUpdate({ ...draggedReservation }, originalReservation);
-      toast.success("Rezervasyon başarıyla taşındı!");
-
-      // Temizlik
+    if (hasTimeChanged || hasMasaChanged) {
+      setPendingUpdate({
+        updated: { ...draggedReservation },
+        original: originalReservation,
+      });
+      setShowModal(true);
       setIsDragging(false);
       setDraggedReservation(null);
-    } else if (hasTimeChanged) {
-      // Saat değişikliği var, onay gerekir
-      if (showConfirmation) {
-        // Zamanları okunaklı formata çevirelim
-        const formatTimeForDisplay = (timeStr: string): string => {
-          if (timeStr.includes("T")) {
-            return timeStr.split("T")[1].substring(0, 5);
-          } else if (timeStr.includes(" ")) {
-            return timeStr.split(" ")[1].substring(0, 5);
-          }
-          return timeStr;
-        };
-
-        const oldTimeDisplay = `${formatTimeForDisplay(
-          initialStartTime
-        )} - ${formatTimeForDisplay(initialEndTime)}`;
-        const newTimeDisplay = `${formatTimeForDisplay(
-          draggedReservation.startTime
-        )} - ${formatTimeForDisplay(draggedReservation.endTime)}`;
-
-        // Onay popup'ı göster
-        showConfirmation(
-          "Rezervasyon Zamanı Değiştirilecek",
-          `<strong>${draggedReservation.customerName}</strong> isimli müşterinin rezervasyon zamanını değiştirmek istediğinize emin misiniz?<br/><br/>
-          <div style="text-align: left; padding: 10px; background: #f8f9fa; border-radius: 5px; margin-bottom: 10px;">
-            <div><strong>Eski Zaman:</strong> ${oldTimeDisplay}</div>
-            <div><strong>Yeni Zaman:</strong> ${newTimeDisplay}</div>
-            <div><strong>Masa:</strong> ${draggedReservation.tableId}</div>
-            <div><strong>Kişi Sayısı:</strong> ${draggedReservation.guestCount}</div>
-          </div>`,
-          () => {
-            console.log(
-              "DraggableReservationCard -> Onay fonksiyonu çalıştırılıyor"
-            );
-            console.log(
-              "Rezervasyon:",
-              draggedReservation.id,
-              draggedReservation.customerName
-            );
-            console.log(
-              "Güncellenen zaman:",
-              draggedReservation.startTime,
-              draggedReservation.endTime
-            );
-
-            try {
-              // Onaylandı, güncelleme yap
-              onReservationUpdate(
-                { ...draggedReservation },
-                originalReservation
-              );
-              toast.success("Rezervasyon zamanı güncellendi!");
-            } catch (error) {
-              console.error("Rezervasyon güncellenirken hata:", error);
-              toast.error("Rezervasyon güncellenirken bir hata oluştu");
-            } finally {
-              // Temizlik
-              setIsDragging(false);
-              setDraggedReservation(null);
-            }
-          },
-          () => {
-            console.log(
-              "DraggableReservationCard -> İptal fonksiyonu çalıştırılıyor"
-            );
-
-            try {
-              // İptal edildi, orijinal duruma geri dön
-              toast.success("İşlem iptal edildi");
-            } catch (error) {
-              console.error("İptal işlemi sırasında hata:", error);
-            } finally {
-              // Temizlik
-              setIsDragging(false);
-              setDraggedReservation(null);
-            }
-          }
-        );
-      } else {
-        // Onay popup'ı yoksa direkt güncelle
-        onReservationUpdate({ ...draggedReservation }, originalReservation);
-        toast.success("Rezervasyon zamanları güncellendi!");
-
-        // Temizlik
-        setIsDragging(false);
-        setDraggedReservation(null);
-      }
-    } else {
-      // Başka değişiklik yoksa, güncelleme yapma
-      setIsDragging(false);
-      setDraggedReservation(null);
+      return;
     }
+    setIsDragging(false);
+    setDraggedReservation(null);
+  };
+
+  // Modal onaylandığında
+  const handleConfirm = () => {
+    if (pendingUpdate) {
+      onReservationUpdate(pendingUpdate.updated, pendingUpdate.original);
+      toast.success("Rezervasyon güncellendi!");
+    }
+    setShowModal(false);
+    setPendingUpdate(null);
+  };
+
+  // Modal iptal edildiğinde
+  const handleCancel = () => {
+    setShowModal(false);
+    setPendingUpdate(null);
+    toast("İşlem iptal edildi");
   };
 
   // Mouse hareketi ile kartı uzat/kısalt
@@ -453,31 +385,33 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
     function onMouseMove(e: MouseEvent) {
       if (resizeStartX === null || resizeStartWidth === null) return;
       const cellWidthMinutes = 60;
-      const minuteStep = 15; // 15 dakikalık adımlarla hareket edilecek
-      const pxPerStep = cellWidth * (minuteStep / cellWidthMinutes); // 15 dakikalık adımın px karşılığı
+      const minuteStep = 15;
+      const pxPerStep = cellWidth * (minuteStep / cellWidthMinutes);
       let diffX = e.clientX - resizeStartX;
-      let step = Math.round(diffX / pxPerStep);
-      if (step === lastStep) return; // Aynı adımda kalıyorsak güncelleme yapma
-      setLastStep(step);
+      let minuteOffsetRaw = (diffX / cellWidth) * cellWidthMinutes;
+      let step = Math.round(minuteOffsetRaw / minuteStep);
       let newWidth = resizeStartWidth;
       let newLeft = leftPx;
       let newStart = resizeStartTime;
       let newEnd = resizeEndTime;
       if (resizeDir === "left") {
-        // Sola çekince (step negatif): sola uzama, sağa çekince (step pozitif): sağa daralma
         newWidth = resizeStartWidth - step * pxPerStep;
         newLeft = (resizeStartLeft ?? leftPx) + step * pxPerStep;
-        // Minimum genişlik kontrolü
         if (newWidth < cellWidth) {
-          // Sağdan daralma sınırı
-          newLeft += newWidth - cellWidth; // left'i sağa kaydır
+          newLeft += newWidth - cellWidth;
           newWidth = cellWidth;
           step = Math.floor((resizeStartWidth - cellWidth) / pxPerStep);
         }
-        // Saat güncelle - 15 dakikalık adımlar
-        const startMins =
+        let startMins =
           convertTimeToMinutes(resizeStartTime) + step * minuteStep;
+        startMins = snapToCustom15(startMins);
+        // Süreyi koru
+        const duration =
+          convertTimeToMinutes(resizeEndTime) -
+          convertTimeToMinutes(resizeStartTime);
+        let endMins = startMins + duration;
         newStart = convertMinutesToTime(startMins);
+        newEnd = convertMinutesToTime(endMins);
       } else if (resizeDir === "right") {
         newWidth = resizeStartWidth + step * pxPerStep;
         if (newWidth < cellWidth) {
@@ -485,8 +419,10 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
           step = Math.floor((cellWidth - resizeStartWidth) / pxPerStep);
         }
         newLeft = leftPx;
-        // Saat güncelle - 15 dakikalık adımlar
-        const endMins = convertTimeToMinutes(resizeEndTime) + step * minuteStep;
+        // Sadece bitişi snaple, başlangıcı sabit tut
+        let endMins = convertTimeToMinutes(resizeEndTime) + step * minuteStep;
+        endMins = snapToCustom15(endMins);
+        newStart = resizeStartTime;
         newEnd = convertMinutesToTime(endMins);
       }
       setWidthPx(newWidth);
@@ -575,120 +511,129 @@ const DraggableReservationCard: React.FC<DraggableReservationCardProps> = ({
   };
 
   return (
-    <Draggable
-      defaultClassName="reservation-draggable"
-      defaultClassNameDragging="reservation-dragging"
-      onStart={handleDragStart}
-      onDrag={handleDrag}
-      onStop={handleDragStop}
-      position={{ x: 0, y: 0 }}
-      grid={[cellWidth / 4, cellHeight]}
-      cancel={isPastReservation ? ".reservation-card" : ".resize-handle"}
-      disabled={isPastReservation} // Geçmiş rezervasyonların taşınmasını devre dışı bırak
-      enableUserSelectHack={false} // Mobil cihazlarda sürükleme sorununu çözer
-      scale={1} // Tam ölçek (zoom durumunda bile doğru çalışması için)
-    >
-      <div
-        id={`reservation-${reservation.id}`}
-        className={`absolute rounded-md pointer-events-auto flex items-center overflow-visible shadow-md hover:shadow-lg transition-all duration-100 reservation-card ${
-          isDragging
-            ? "cursor-grabbing z-50"
-            : isPastReservation
-            ? "cursor-pointer z-5"
-            : "cursor-grab z-5"
-        }`}
-        style={{
-          left: resizeDir ? `${leftPx}px` : position.left,
-          width: resizeDir ? `${widthPx}px` : position.width,
-          top: "1px",
-          height: `calc(${cellHeight}px - 2px)`,
-          ...getCardStyle(),
-          minWidth: "80px",
-          touchAction: "none", // Mobil cihazlarda dokunmatik olayların önceliğini sürüklemeye ver
-        }}
-        data-reservation-id={reservation.id}
-        data-table-id={reservation.tableId}
-        data-time={`${reservation.startTime}-${reservation.endTime}`}
-        data-past={isPastReservation.toString()}
-        onClick={(e) => {
-          if (!isDragging) {
-            e.stopPropagation();
-            // Sidebar'ı sadece tıklama ile aç, hover özelliğini kaldırdık
-            onReservationClick(reservation);
-          }
-        }}
+    <>
+      <Draggable
+        defaultClassName="reservation-draggable"
+        defaultClassNameDragging="reservation-dragging"
+        onStart={handleDragStart}
+        onDrag={handleDrag}
+        onStop={handleDragStop}
+        position={{ x: 0, y: 0 }}
+        grid={[cellWidth / 4, cellHeight]}
+        cancel={isPastReservation ? ".reservation-card" : ".resize-handle"}
+        disabled={isPastReservation} // Geçmiş rezervasyonların taşınmasını devre dışı bırak
+        enableUserSelectHack={false} // Mobil cihazlarda sürükleme sorununu çözer
+        scale={1} // Tam ölçek (zoom durumunda bile doğru çalışması için)
       >
-        {/* Sol tutamaç - Genişletme işlemi için - sadece geçmiş olmayan rezervasyonlarda göster */}
-        {!isPastReservation && (
-          <div
-            className="resize-handle absolute left-0 top-0 h-full w-4 cursor-ew-resize hover:bg-white hover:bg-opacity-20 z-10"
-            onMouseDown={(e) => {
+        <div
+          id={`reservation-${reservation.id}`}
+          className={`absolute rounded-md pointer-events-auto flex items-center overflow-visible shadow-md hover:shadow-lg transition-all duration-100 reservation-card ${
+            isDragging
+              ? "cursor-grabbing z-50"
+              : isPastReservation
+              ? "cursor-pointer z-5"
+              : "cursor-grab z-5"
+          }`}
+          style={{
+            left: resizeDir ? `${leftPx}px` : position.left,
+            width: resizeDir ? `${widthPx}px` : position.width,
+            top: "1px",
+            height: `calc(${cellHeight}px - 2px)`,
+            ...getCardStyle(),
+            minWidth: "80px",
+            touchAction: "none", // Mobil cihazlarda dokunmatik olayların önceliğini sürüklemeye ver
+          }}
+          data-reservation-id={reservation.id}
+          data-table-id={reservation.tableId}
+          data-time={`${reservation.startTime}-${reservation.endTime}`}
+          data-past={isPastReservation.toString()}
+          onClick={(e) => {
+            if (!isDragging) {
               e.stopPropagation();
-              setResizeDir("left");
-              setResizeStartX(e.clientX);
-              setResizeStartWidth(widthPx);
-              setResizeStartLeft(leftPx);
-              setResizeStartTime(reservation.startTime);
-              setResizeEndTime(reservation.endTime);
-              setDraggedReservation({ ...reservation });
-            }}
-          ></div>
-        )}
+              // Sidebar'ı sadece tıklama ile aç, hover özelliğini kaldırdık
+              onReservationClick(reservation);
+            }
+          }}
+        >
+          {/* Sol tutamaç - Genişletme işlemi için - sadece geçmiş olmayan rezervasyonlarda göster */}
+          {!isPastReservation && (
+            <div
+              className="resize-handle absolute left-0 top-0 h-full w-4 cursor-ew-resize hover:bg-white hover:bg-opacity-20 z-10"
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                setResizeDir("left");
+                setResizeStartX(e.clientX);
+                setResizeStartWidth(widthPx);
+                setResizeStartLeft(leftPx);
+                setResizeStartTime(reservation.startTime);
+                setResizeEndTime(reservation.endTime);
+                setDraggedReservation({ ...reservation });
+              }}
+            ></div>
+          )}
 
-        <div className="px-3 py-0 text-xs truncate max-w-full text-white h-full flex flex-col justify-center">
-          {cellHeight < 50 ? (
-            // Yükseklik 50px'den küçükse yan yana gösterim
-            <div className="flex items-center justify-between">
-              <div className="font-semibold whitespace-nowrap overflow-hidden text-ellipsis text-white">
-                {reservation.customerName
-                  .split(" ")
-                  .map((word) => word.charAt(0).toUpperCase())
-                  .join("")}
-              </div>
-              <div className="text-white text-[11px] flex items-center ml-2">
-                <span className="bg-white bg-opacity-30 px-1 rounded text-[10px] text-white">
-                  {reservation.guestCount}
-                </span>
-              </div>
-            </div>
-          ) : (
-            // Normal gösterim (50px ve üzeri)
-            <>
-              <div className="font-semibold whitespace-nowrap overflow-hidden text-ellipsis text-white">
-                {reservation.customerName}
-                {isPastReservation && (
-                  <span className="ml-1 text-[10px] text-white bg-red-600 px-1 rounded-sm">
-                    Geçmiş
+          <div className="px-3 py-0 text-xs truncate max-w-full text-white h-full flex flex-col justify-center">
+            {cellHeight < 50 ? (
+              // Yükseklik 50px'den küçükse yan yana gösterim
+              <div className="flex items-center justify-between">
+                <div className="font-semibold whitespace-nowrap overflow-hidden text-ellipsis text-white">
+                  {reservation.customerName
+                    .split(" ")
+                    .map((word) => word.charAt(0).toUpperCase())
+                    .join("")}
+                </div>
+                <div className="text-white text-[11px] flex items-center ml-2">
+                  <span className="bg-white bg-opacity-30 px-1 rounded text-[10px] text-white">
+                    {reservation.guestCount}
                   </span>
-                )}
+                </div>
               </div>
-              <div className="text-white text-[11px] flex items-center mt-1">
-                <span className="bg-white bg-opacity-30 px-1 rounded text-[10px] text-white">
-                  {reservation.guestCount} kişi
-                </span>
-              </div>
-            </>
+            ) : (
+              // Normal gösterim (50px ve üzeri)
+              <>
+                <div className="font-semibold whitespace-nowrap overflow-hidden text-ellipsis text-white">
+                  {reservation.customerName}
+                  {isPastReservation && (
+                    <span className="ml-1 text-[10px] text-white bg-red-600 px-1 rounded-sm">
+                      Geçmiş
+                    </span>
+                  )}
+                </div>
+                <div className="text-white text-[11px] flex items-center mt-1">
+                  <span className="bg-white bg-opacity-30 px-1 rounded text-[10px] text-white">
+                    {reservation.guestCount} kişi
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Sağ tutamaç - Genişletme işlemi için - sadece geçmiş olmayan rezervasyonlarda göster */}
+          {!isPastReservation && (
+            <div
+              className="resize-handle absolute right-0 top-0 h-full w-4 cursor-ew-resize hover:bg-white hover:bg-opacity-20 z-10"
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                setResizeDir("right");
+                setResizeStartX(e.clientX);
+                setResizeStartWidth(widthPx);
+                setResizeStartLeft(leftPx);
+                setResizeStartTime(reservation.startTime);
+                setResizeEndTime(reservation.endTime);
+                setDraggedReservation({ ...reservation });
+              }}
+            ></div>
           )}
         </div>
-
-        {/* Sağ tutamaç - Genişletme işlemi için - sadece geçmiş olmayan rezervasyonlarda göster */}
-        {!isPastReservation && (
-          <div
-            className="resize-handle absolute right-0 top-0 h-full w-4 cursor-ew-resize hover:bg-white hover:bg-opacity-20 z-10"
-            onMouseDown={(e) => {
-              e.stopPropagation();
-              setResizeDir("right");
-              setResizeStartX(e.clientX);
-              setResizeStartWidth(widthPx);
-              setResizeStartLeft(leftPx);
-              setResizeStartTime(reservation.startTime);
-              setResizeEndTime(reservation.endTime);
-              setDraggedReservation({ ...reservation });
-            }}
-          ></div>
-        )}
-      </div>
-    </Draggable>
+      </Draggable>
+      <ReservationConfirmModal
+        open={showModal}
+        onConfirm={handleConfirm}
+        onCancel={handleCancel}
+        reservation={pendingUpdate?.updated}
+        original={pendingUpdate?.original}
+      />
+    </>
   );
 };
 
