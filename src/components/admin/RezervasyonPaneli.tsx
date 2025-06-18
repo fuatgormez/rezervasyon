@@ -37,6 +37,9 @@ import toast from "react-hot-toast";
 
 // Zaman aralıkları
 const timeSlots = [
+  "07:00",
+  "08:00",
+  "09:00",
   "10:00",
   "11:00",
   "12:00",
@@ -52,6 +55,9 @@ const timeSlots = [
   "22:00",
   "23:00",
   "00:00",
+  "01:00",
+  "02:00",
+  "03:00",
 ];
 
 // Dakika cinsinden zaman hesaplama
