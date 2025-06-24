@@ -34,44 +34,26 @@ import {
 import { db } from "@/lib/firebase/config";
 import { ref, get, onValue, set, update, remove } from "firebase/database";
 import toast from "react-hot-toast";
+import DraggableReservationCard from "../reservation/DraggableReservationCard";
 
-// Zaman aralıkları
-const timeSlots = [
-  "07:00",
-  "08:00",
-  "09:00",
-  "10:00",
-  "11:00",
-  "12:00",
-  "13:00",
-  "14:00",
-  "15:00",
-  "16:00",
-  "17:00",
-  "18:00",
-  "19:00",
-  "20:00",
-  "21:00",
-  "22:00",
-  "23:00",
-  "00:00",
-  "01:00",
-  "02:00",
-  "03:00",
-];
+// Time slots
+const timeSlots: string[] = [];
+for (let hour = 7; hour <= 27; hour++) {
+  // 27 = 03:00 (ertesi gün)
+  const h = (hour % 24).toString().padStart(2, "0");
+  timeSlots.push(`${h}:00`);
+}
 
-// Dakika cinsinden zaman hesaplama
+// Helper functions
 const getTimeInMinutes = (timeString: string) => {
   const [hours, minutes] = timeString.split(":").map(Number);
   return hours * 60 + minutes;
 };
 
-// Zaman dilimini dakika cinsinden hesaplama
 const getTimeDifference = (start: string, end: string) => {
   return getTimeInMinutes(end) - getTimeInMinutes(start);
 };
 
-// Zamanı formatlama
 const formatTime = (minutes: number) => {
   const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;
@@ -80,7 +62,6 @@ const formatTime = (minutes: number) => {
     .padStart(2, "0")}`;
 };
 
-// Bir zaman dilimine dakika ekleme
 const addTimeMinutes = (time: string, minutesToAdd: number) => {
   const totalMinutes = getTimeInMinutes(time) + minutesToAdd;
   return formatTime(totalMinutes);
@@ -114,8 +95,8 @@ interface Category {
   backgroundColor: string;
 }
 
-export default function RezervasyonPaneli() {
-  // State tanımlamaları
+export default function ReservationPanel() {
+  // State declarations
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -128,12 +109,9 @@ export default function RezervasyonPaneli() {
     useState<Reservation | null>(null);
   const [draggingReservation, setDraggingReservation] =
     useState<Reservation | null>(null);
-  const [isFullScreenMode, setIsFullScreenMode] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [showAllTables, setShowAllTables] = useState(false);
-  const [filteredTables, setFilteredTables] = useState<Table[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [formErrors, setFormErrors] = useState<{ [key: string]: string }>({});
   const [resizingReservation, setResizingReservation] = useState<{
     id: string;
@@ -144,41 +122,34 @@ export default function RezervasyonPaneli() {
     time: string;
   } | null>(null);
 
-  // Referanslar
+  // Refs
   const calendarRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLDivElement>(null);
 
-  // Form değerleri
+  // Form values
   const [formValues, setFormValues] = useState<Partial<Reservation>>({
     customerName: "",
     guestCount: 2,
     tableId: "",
     startTime: "19:00",
     endTime: "21:00",
-    status: "confirmed" as "confirmed" | "pending" | "cancelled",
+    status: "confirmed",
     note: "",
     date: format(new Date(), "yyyy-MM-dd"),
   });
 
-  // Verileri yükle
+  // Load data
   useEffect(() => {
     const loadData = async () => {
       try {
         setLoading(true);
-        console.log("Veri yükleme başladı...");
 
-        // Kategorileri yükle
+        // Load categories
         const categoriesRef = ref(db, "table_categories");
-        console.log("Kategoriler için referans oluşturuldu:", categoriesRef);
         const categoriesSnapshot = await get(categoriesRef);
-        console.log(
-          "Kategori snapshot:",
-          categoriesSnapshot.exists() ? "Veri var" : "Veri yok"
-        );
 
         if (categoriesSnapshot.exists()) {
           const categoriesData = categoriesSnapshot.val();
-          console.log("Kategori verileri:", categoriesData);
           const loadedCategories = Object.entries(categoriesData).map(
             ([id, data]: [string, any]) => ({
               id,
@@ -189,28 +160,19 @@ export default function RezervasyonPaneli() {
             })
           );
           setCategories(loadedCategories);
-          console.log("Yüklenen kategoriler:", loadedCategories.length);
 
-          // İlk kategoriyi varsayılan olarak seç
+          // Set first category as default if none is selected
           if (loadedCategories.length > 0 && !activeCategory) {
             setActiveCategory(loadedCategories[0].id);
           }
-        } else {
-          console.log("Kategori verisi bulunamadı!");
         }
 
-        // Masaları yükle
+        // Load tables
         const tablesRef = ref(db, "tables");
-        console.log("Masalar için referans oluşturuldu:", tablesRef);
         const tablesSnapshot = await get(tablesRef);
-        console.log(
-          "Masa snapshot:",
-          tablesSnapshot.exists() ? "Veri var" : "Veri yok"
-        );
 
         if (tablesSnapshot.exists()) {
           const tablesData = tablesSnapshot.val();
-          console.log("Masa verileri:", tablesData);
           const loadedTables = Object.entries(tablesData).map(
             ([id, data]: [string, any]) => ({
               id,
@@ -221,72 +183,15 @@ export default function RezervasyonPaneli() {
             })
           );
           setTables(loadedTables);
-          console.log("Yüklenen masalar:", loadedTables.length);
-        } else {
-          console.log("Masa verisi bulunamadı!");
-
-          // Örnek masalar oluştur (debug için)
-          const dummyTables = [
-            {
-              id: "table1",
-              number: 1,
-              capacity: 4,
-              categoryId: "salon",
-              status: "Available",
-            },
-            {
-              id: "table2",
-              number: 2,
-              capacity: 2,
-              categoryId: "salon",
-              status: "Available",
-            },
-            {
-              id: "table3",
-              number: 3,
-              capacity: 6,
-              categoryId: "bahce",
-              status: "Available",
-            },
-            {
-              id: "table4",
-              number: 4,
-              capacity: 4,
-              categoryId: "bahce",
-              status: "Available",
-            },
-            {
-              id: "table5",
-              number: 5,
-              capacity: 8,
-              categoryId: "teras",
-              status: "Available",
-            },
-          ];
-          setTables(dummyTables);
-          toast.success("Örnek masa verileri gösteriliyor (test için)");
-          console.log("Örnek masalar oluşturuldu:", dummyTables.length);
         }
 
-        // Rezervasyonları yükle
+        // Load reservations
         const reservationsRef = ref(db, "reservations");
-        console.log(
-          "Rezervasyonlar için referans oluşturuldu:",
-          reservationsRef
-        );
-
         onValue(reservationsRef, (snapshot) => {
-          console.log(
-            "Rezervasyon snapshot:",
-            snapshot.exists() ? "Veri var" : "Veri yok"
-          );
-
           if (snapshot.exists()) {
             const reservationsData = snapshot.val();
-            console.log("Rezervasyon verileri:", reservationsData);
             const loadedReservations = Object.entries(reservationsData)
               .filter(([_, data]: [string, any]) => {
-                // Seçili tarihteki rezervasyonları filtrele
                 const reservationDate =
                   data.date || format(new Date(), "yyyy-MM-dd");
                 const selectedDateStr = format(selectedDate, "yyyy-MM-dd");
@@ -304,88 +209,13 @@ export default function RezervasyonPaneli() {
                 date: data.date || format(new Date(), "yyyy-MM-dd"),
               }));
             setReservations(loadedReservations);
-            console.log("Yüklenen rezervasyonlar:", loadedReservations.length);
-          } else {
-            console.log("Rezervasyon verisi bulunamadı!");
-            setReservations([]);
           }
         });
 
         setLoading(false);
       } catch (err) {
-        console.error("Veri yükleme hatası:", err);
-        toast.error(
-          "Veriler yüklenirken bir hata oluştu. Detaylar için konsola bakın."
-        );
-
-        // Dummy veri ile devam et
-        const dummyCategories = [
-          {
-            id: "salon",
-            name: "Salon",
-            color: "#4f46e5",
-            borderColor: "#3730a3",
-            backgroundColor: "#eef2ff",
-          },
-          {
-            id: "bahce",
-            name: "Bahçe",
-            color: "#16a34a",
-            borderColor: "#166534",
-            backgroundColor: "#dcfce7",
-          },
-          {
-            id: "vip",
-            name: "VIP",
-            color: "#b91c1c",
-            borderColor: "#7f1d1d",
-            backgroundColor: "#fee2e2",
-          },
-        ];
-
-        const dummyTables = [
-          {
-            id: "table1",
-            number: 1,
-            capacity: 4,
-            categoryId: "salon",
-            status: "Available",
-          },
-          {
-            id: "table2",
-            number: 2,
-            capacity: 2,
-            categoryId: "salon",
-            status: "Available",
-          },
-          {
-            id: "table3",
-            number: 3,
-            capacity: 6,
-            categoryId: "bahce",
-            status: "Available",
-          },
-          {
-            id: "table4",
-            number: 4,
-            capacity: 4,
-            categoryId: "bahce",
-            status: "Available",
-          },
-          {
-            id: "table5",
-            number: 5,
-            capacity: 8,
-            categoryId: "vip",
-            status: "Available",
-          },
-        ];
-
-        setCategories(dummyCategories);
-        setTables(dummyTables);
-        setReservations([]);
-
-        toast.success("Örnek veriler gösteriliyor (test için)");
+        console.error("Data loading error:", err);
+        toast.error("Error loading data. Check console for details.");
         setLoading(false);
       }
     };
@@ -393,7 +223,7 @@ export default function RezervasyonPaneli() {
     loadData();
   }, [selectedDate, activeCategory]);
 
-  // Takvim dışında bir yere tıklandığında takvimi kapat
+  // Close calendar when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -410,22 +240,19 @@ export default function RezervasyonPaneli() {
     };
   }, []);
 
-  // Önceki güne git
+  // Navigation functions
   const goToPreviousDay = () => {
     setSelectedDate((prevDate) => subDays(prevDate, 1));
   };
 
-  // Sonraki güne git
   const goToNextDay = () => {
     setSelectedDate((prevDate) => addDays(prevDate, 1));
   };
 
-  // Bugüne git
   const goToToday = () => {
     setSelectedDate(new Date());
   };
 
-  // Gün seçimi
   const handleDaySelect = (day: Date | undefined) => {
     if (day) {
       setSelectedDate(day);
@@ -433,23 +260,19 @@ export default function RezervasyonPaneli() {
     }
   };
 
-  // Kategori değiştirme
   const changeCategory = (categoryId: string | null) => {
     setActiveCategory(categoryId);
   };
 
-  // Düz masa listesi oluştur - kategorilere göre gruplama olmadan
+  // Create flat table list grouped by categories
   const flatTablesList = useMemo(() => {
-    // Kategori sırasına göre düz liste oluştur
     const flatList: { table: Table; category: Category }[] = [];
 
-    // Kategori gruplarını ve masaları ekle
     categories.forEach((category) => {
       const tablesInCategory = tables.filter(
         (t) => t.categoryId === category.id
       );
 
-      // Her kategori için masaları ekle
       tablesInCategory.forEach((table) => {
         flatList.push({
           table,
@@ -458,7 +281,7 @@ export default function RezervasyonPaneli() {
       });
     });
 
-    // Kategorisi bilinmeyen masaları ekle
+    // Add tables with unknown categories
     const unknownCategoryTables = tables.filter(
       (table) => !categories.some((c) => c.id === table.categoryId)
     );
@@ -468,7 +291,7 @@ export default function RezervasyonPaneli() {
         table,
         category: {
           id: "unknown",
-          name: "Diğer",
+          name: "Other",
           color: "#6b7280",
           borderColor: "#4b5563",
           backgroundColor: "#f3f4f6",
@@ -479,12 +302,10 @@ export default function RezervasyonPaneli() {
     return flatList;
   }, [tables, categories]);
 
-  // Masaları kategoriye göre grupla
+  // Group tables by category
   const groupedByCategoryTables = useMemo(() => {
-    // Kategori grupları oluştur
     const grouped: Record<string, { category: Category; tables: Table[] }> = {};
 
-    // Kategorileri sırayla ekle
     categories.forEach((category) => {
       grouped[category.id] = {
         category,
@@ -492,7 +313,7 @@ export default function RezervasyonPaneli() {
       };
     });
 
-    // Kategorisi bilinmeyen masaları kontrol et
+    // Handle tables with unknown categories
     const unknownCategoryTables = tables.filter(
       (table) => !categories.some((c) => c.id === table.categoryId)
     );
@@ -500,7 +321,7 @@ export default function RezervasyonPaneli() {
     if (unknownCategoryTables.length > 0) {
       const unknownCategory = {
         id: "unknown",
-        name: "Diğer",
+        name: "Other",
         color: "#6b7280",
         borderColor: "#4b5563",
         backgroundColor: "#f3f4f6",
@@ -515,37 +336,7 @@ export default function RezervasyonPaneli() {
     return grouped;
   }, [tables, categories]);
 
-  // Filtrelenmiş masaları göster
-  useEffect(() => {
-    if (activeCategory && activeCategory !== "") {
-      setFilteredTables(
-        tables.filter((table) => table.categoryId === activeCategory)
-      );
-    } else if (showAllTables) {
-      setFilteredTables(tables);
-    } else {
-      setFilteredTables([]);
-    }
-  }, [activeCategory, tables, showAllTables]);
-
-  // Masaları kategoriye göre filtrele
-  const displayedTables = useMemo(() => {
-    if (activeCategory && activeCategory !== "") {
-      return flatTablesList.filter(
-        ({ table }) => table.categoryId === activeCategory
-      );
-    }
-
-    if (searchTerm) {
-      return flatTablesList.filter(({ table }) =>
-        table.number.toString().includes(searchTerm)
-      );
-    }
-
-    return showAllTables ? flatTablesList : [];
-  }, [activeCategory, flatTablesList, searchTerm, showAllTables]);
-
-  // Zaman dilimi içindeki rezervasyonu bul
+  // Get reservation at specific time for a table
   const getReservationAtTime = (tableId: string, time: string) => {
     return reservations.find(
       (res) =>
@@ -555,12 +346,11 @@ export default function RezervasyonPaneli() {
     );
   };
 
-  // Zaman hücresine tıklama
+  // Handle cell click
   const handleCellClick = (tableId: string, time: string) => {
     const existingReservation = getReservationAtTime(tableId, time);
 
     if (existingReservation) {
-      // Mevcut rezervasyonu düzenle
       setEditingReservation(existingReservation);
       setFormValues({
         customerName: existingReservation.customerName,
@@ -572,8 +362,7 @@ export default function RezervasyonPaneli() {
         note: existingReservation.note || "",
       });
     } else {
-      // Yeni rezervasyon oluştur
-      const endTime = addTimeMinutes(time, 90); // Varsayılan 1.5 saat süre
+      const endTime = addTimeMinutes(time, 90); // Default 1.5 hour duration
       setEditingReservation(null);
       setFormValues({
         customerName: "",
@@ -589,7 +378,7 @@ export default function RezervasyonPaneli() {
     setIsReservationModalOpen(true);
   };
 
-  // Rezervasyon Kaydet
+  // Save reservation
   const handleSaveReservation = async () => {
     try {
       const {
@@ -603,22 +392,19 @@ export default function RezervasyonPaneli() {
       } = formValues;
 
       if (!customerName || !tableId || !startTime || !endTime) {
-        toast.error("Lütfen gerekli alanları doldurun");
+        toast.error("Please fill in required fields");
         return;
       }
 
       const reservationDate = format(selectedDate, "yyyy-MM-dd");
 
-      // Çakışma kontrolü
+      // Check for overlapping reservations
       const isOverlapping = reservations.some((res) => {
-        // Düzenlenen rezervasyonu kontrol dışı tut
         if (editingReservation && res.id === editingReservation.id)
           return false;
-
         if (res.tableId !== tableId || res.date !== reservationDate)
           return false;
 
-        // Zaman çakışması kontrolü
         const newStart = getTimeInMinutes(startTime);
         const newEnd = getTimeInMinutes(endTime);
         const resStart = getTimeInMinutes(res.startTime);
@@ -628,9 +414,7 @@ export default function RezervasyonPaneli() {
       });
 
       if (isOverlapping) {
-        toast.error(
-          "Bu masa için seçilen zaman diliminde başka bir rezervasyon bulunuyor"
-        );
+        toast.error("There's another reservation at this time slot");
         return;
       }
 
@@ -646,42 +430,40 @@ export default function RezervasyonPaneli() {
       };
 
       if (editingReservation) {
-        // Mevcut rezervasyonu güncelle
         const reservationRef = ref(db, `reservations/${editingReservation.id}`);
         await update(reservationRef, reservationData);
-        toast.success("Rezervasyon güncellendi");
+        toast.success("Reservation updated");
       } else {
-        // Yeni rezervasyon oluştur
         const newReservationRef = ref(db, "reservations");
         const newReservation = { ...reservationData };
         const newReservationKey = newReservation.tableId + "_" + Date.now();
         await set(ref(db, `reservations/${newReservationKey}`), newReservation);
-        toast.success("Rezervasyon oluşturuldu");
+        toast.success("Reservation created");
       }
 
       setIsReservationModalOpen(false);
     } catch (error) {
-      console.error("Rezervasyon kaydedilirken hata:", error);
-      toast.error("Rezervasyon kaydedilirken bir hata oluştu");
+      console.error("Error saving reservation:", error);
+      toast.error("Error saving reservation");
     }
   };
 
-  // Rezervasyon Sil
+  // Delete reservation
   const handleDeleteReservation = async () => {
     if (!editingReservation) return;
 
     try {
       const reservationRef = ref(db, `reservations/${editingReservation.id}`);
       await remove(reservationRef);
-      toast.success("Rezervasyon silindi");
+      toast.success("Reservation deleted");
       setIsReservationModalOpen(false);
     } catch (error) {
-      console.error("Rezervasyon silinirken hata:", error);
-      toast.error("Rezervasyon silinirken bir hata oluştu");
+      console.error("Error deleting reservation:", error);
+      toast.error("Error deleting reservation");
     }
   };
 
-  // Sürükle bırak işlemleri
+  // Drag and drop handlers
   const handleDragStart = (reservation: Reservation) => {
     setDraggingReservation(reservation);
   };
@@ -713,7 +495,6 @@ export default function RezervasyonPaneli() {
       );
       const duration = endIndex - startIndex;
 
-      // Hedef zaman dilimini hesapla
       const newStartIndex = timeSlots.findIndex((slot) => slot === time);
       const newStartTime = time;
       const newEndIndex = Math.min(
@@ -722,7 +503,7 @@ export default function RezervasyonPaneli() {
       );
       const newEndTime = timeSlots[newEndIndex];
 
-      // Çakışma kontrolü
+      // Check for overlaps
       const isOverlapping = reservations.some((res) => {
         if (res.id === originalReservation.id) return false;
         if (res.tableId !== tableId) return false;
@@ -737,11 +518,10 @@ export default function RezervasyonPaneli() {
       });
 
       if (isOverlapping) {
-        toast.error("Bu zaman diliminde başka bir rezervasyon var");
+        toast.error("There's another reservation at this time");
         return;
       }
 
-      // Rezervasyonu güncelle
       const updatedReservation = {
         ...originalReservation,
         tableId,
@@ -753,14 +533,14 @@ export default function RezervasyonPaneli() {
       await update(reservationRef, updatedReservation);
 
       setDraggingReservation(null);
-      toast.success("Rezervasyon taşındı");
+      toast.success("Reservation moved");
     } catch (error) {
-      console.error("Rezervasyon taşıma hatası:", error);
-      toast.error("Rezervasyon taşınırken bir hata oluştu");
+      console.error("Error moving reservation:", error);
+      toast.error("Error moving reservation");
     }
   };
 
-  // Rezervasyon yeniden boyutlandırma başlatma
+  // Resize handlers
   const handleResizeStart = (
     e: React.MouseEvent,
     reservationId: string,
@@ -769,19 +549,16 @@ export default function RezervasyonPaneli() {
     e.stopPropagation();
     setResizingReservation({ id: reservationId, direction });
 
-    // Kullanıcıya bilgi ver
-    const actionText = direction === "start" ? "başlangıç" : "bitiş";
     toast.success(
-      `Rezervasyon ${actionText} zamanını değiştirmek için, zamanı seçin ve tıklayın`,
+      `Click on a time to change the ${direction} time of the reservation`,
       {
         duration: 3000,
         position: "bottom-center",
-        id: "resize-toast", // Aynı ID'yi kullanarak önceki toast'ın üzerine yazma
+        id: "resize-toast",
       }
     );
   };
 
-  // Rezervasyon yeniden boyutlandırma bitirme
   const handleResizeEnd = async (time: string) => {
     if (!resizingReservation) return;
 
@@ -805,15 +582,13 @@ export default function RezervasyonPaneli() {
         newEndTime = time;
       }
 
-      // Geçerli zaman kontrolü
       if (getTimeInMinutes(newStartTime) >= getTimeInMinutes(newEndTime)) {
-        toast.error("Başlangıç zamanı bitiş zamanından önce olmalıdır", {
+        toast.error("Start time must be before end time", {
           id: "resize-error",
         });
         return;
       }
 
-      // Çakışma kontrolü
       const isOverlapping = reservations.some((res) => {
         if (res.id === reservation.id) return false;
         if (res.tableId !== reservation.tableId) return false;
@@ -828,13 +603,12 @@ export default function RezervasyonPaneli() {
       });
 
       if (isOverlapping) {
-        toast.error("Bu zaman diliminde başka bir rezervasyon var", {
+        toast.error("There's another reservation at this time", {
           id: "resize-error",
         });
         return;
       }
 
-      // Rezervasyonu güncelle
       const updatedReservation = {
         ...reservation,
         startTime: newStartTime,
@@ -844,12 +618,12 @@ export default function RezervasyonPaneli() {
       const reservationRef = ref(db, `reservations/${reservation.id}`);
       await update(reservationRef, updatedReservation);
 
-      toast.success("Rezervasyon süresi güncellendi", {
+      toast.success("Reservation time updated", {
         id: "resize-success",
       });
     } catch (error) {
-      console.error("Rezervasyon boyutlandırma hatası:", error);
-      toast.error("Rezervasyon boyutlandırılırken bir hata oluştu", {
+      console.error("Error resizing reservation:", error);
+      toast.error("Error resizing reservation", {
         id: "resize-error",
       });
     } finally {
@@ -858,18 +632,27 @@ export default function RezervasyonPaneli() {
     }
   };
 
-  // Boyutlandırma işlemi iptal
   const handleCancelResize = () => {
     setResizingReservation(null);
     setHoveredCell(null);
     toast.dismiss("resize-toast");
   };
 
-  // Klavye olaylarını dinle - Esc tuşu ile boyutlandırmayı iptal et
+  // Keyboard event listeners
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" && resizingReservation) {
         handleCancelResize();
+      }
+
+      if (isReservationModalOpen) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          handleSaveReservation();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          setIsReservationModalOpen(false);
+        }
       }
     };
 
@@ -877,129 +660,13 @@ export default function RezervasyonPaneli() {
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [resizingReservation]);
+  }, [resizingReservation, isReservationModalOpen]);
 
-  // Rezervasyon render
-  const renderReservation = (reservation: Reservation, tableIndex: number) => {
-    const startIndex = timeSlots.findIndex(
-      (slot) => slot === reservation.startTime
-    );
-    const endIndex = timeSlots.findIndex(
-      (slot) => slot === reservation.endTime
-    );
-    const duration = endIndex - startIndex;
-
-    if (startIndex === -1) return null;
-
-    // Rezervasyon tipi belirle
-    let statusColor = "#00BCD4"; // Default mavi - Walk-in
-    let statusText = "WALK-IN";
-    let statusBadge = "WA";
-
-    if (reservation.status === "confirmed") {
-      if (reservation.customerName.toLowerCase().includes("walk")) {
-        statusColor = "#00BCD4"; // Mavi - Walk-in
-        statusText = "WALK-IN";
-        statusBadge = "WA";
-      } else {
-        statusColor = "#E91E63"; // Pembe - Normal rezervasyon
-        statusText = reservation.customerName;
-        statusBadge = "RE";
-      }
-    } else if (reservation.status === "pending") {
-      statusColor = "#FFC107"; // Sarı - Beklemede
-      statusText = "PENDING";
-      statusBadge = "PE";
-    } else if (reservation.status === "cancelled") {
-      statusColor = "#F44336"; // Kırmızı - İptal
-      statusText = "CANCELLED";
-      statusBadge = "CA";
+  // reservations dizisini konsola yazdır
+  useEffect(() => {
+    if (typeof window !== "undefined") {
     }
-
-    // Boyutlandırma işlemi yapılıyorsa ve bu rezervasyon boyutlandırılıyorsa
-    const isResizing =
-      resizingReservation && resizingReservation.id === reservation.id;
-
-    return (
-      <div
-        className={`absolute top-0 rounded-sm overflow-hidden z-10 flex items-center ${
-          isResizing ? "ring-2 ring-blue-500" : "cursor-move"
-        }`}
-        style={{
-          left: `${startIndex * 60}px`, // 60px is time slot width
-          width: `${duration * 60}px`,
-          height: "30px",
-          backgroundColor: statusColor,
-          transition: isResizing ? "none" : "all 0.1s ease",
-        }}
-        draggable={!isResizing}
-        onDragStart={() => !isResizing && handleDragStart(reservation)}
-      >
-        {/* Sol resize handle */}
-        <div
-          className={`absolute left-0 top-0 bottom-0 w-4 cursor-w-resize bg-gradient-to-r from-black to-transparent opacity-10 hover:opacity-40 z-20 transition-opacity ${
-            isResizing && resizingReservation?.direction === "start"
-              ? "opacity-40"
-              : ""
-          }`}
-          onMouseDown={(e) => handleResizeStart(e, reservation.id, "start")}
-        />
-
-        {/* Masa numarası */}
-        <div className="bg-black bg-opacity-20 h-full px-1 flex items-center justify-center">
-          <span className="text-white text-xs font-medium">
-            {reservation.guestCount}
-          </span>
-        </div>
-
-        {/* Rezervasyon bilgisi */}
-        <div className="flex-1 px-2 truncate">
-          <span className="text-white text-xs uppercase font-medium truncate">
-            {statusText}
-          </span>
-        </div>
-
-        {/* Rezervasyon durumu */}
-        <div className="bg-black bg-opacity-20 h-full px-1 flex items-center justify-center">
-          <span className="text-white text-xs font-medium">{statusBadge}</span>
-        </div>
-
-        {/* İptal işareti - Opsiyonel */}
-        {reservation.status === "cancelled" && (
-          <div className="absolute right-1 top-1/2 transform -translate-y-1/2 text-white">
-            <X className="w-3 h-3" />
-          </div>
-        )}
-
-        {/* Sağ resize handle */}
-        <div
-          className={`absolute right-0 top-0 bottom-0 w-4 cursor-e-resize bg-gradient-to-l from-black to-transparent opacity-10 hover:opacity-40 z-20 transition-opacity ${
-            isResizing && resizingReservation?.direction === "end"
-              ? "opacity-40"
-              : ""
-          }`}
-          onMouseDown={(e) => handleResizeStart(e, reservation.id, "end")}
-        />
-      </div>
-    );
-  };
-
-  // Tüm masaları veya kategori masalarını göster
-  const handleShowAllTables = () => {
-    console.log("Tüm masaları göster fonksiyonu çağrıldı");
-    setActiveCategory("");
-
-    // Eğer kategori seçili değilse, tüm masaları göster
-    if (activeCategory !== "") {
-      // Bu sadece state değişimini görmek için
-      setTimeout(() => {
-        console.log("Tüm masalar gösteriliyor, aktif kategori temizlendi:", {
-          activeCategory: "",
-          tableSayisi: tables.length,
-        });
-      }, 0);
-    }
-  };
+  }, [reservations]);
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-gray-50 text-gray-800">
@@ -1007,7 +674,7 @@ export default function RezervasyonPaneli() {
       <div className="flex justify-between items-center bg-white p-4 border-b border-gray-200 shadow-sm">
         <div className="flex items-center space-x-6">
           <div className="text-2xl font-bold text-blue-600">
-            Rezervasyon Yönetimi
+            Reservation Management
           </div>
           <div className="flex space-x-4">
             <Link
@@ -1020,25 +687,25 @@ export default function RezervasyonPaneli() {
               href="/admin/settings"
               className="px-4 py-2 rounded-lg hover:bg-gray-100"
             >
-              Sistem Ayarları
+              Settings
             </Link>
             <Link
               href="/admin/staff"
               className="px-4 py-2 rounded-lg hover:bg-gray-100"
             >
-              Garson Yönetimi
+              Staff Management
             </Link>
             <Link
               href="/admin/customers"
               className="px-4 py-2 rounded-lg hover:bg-gray-100"
             >
-              Müşteri Yönetimi
+              Customer Management
             </Link>
             <Link
               href="/reservation"
               className="px-4 py-2 rounded-lg hover:bg-gray-100"
             >
-              Rezervasyon
+              Reservation
             </Link>
           </div>
         </div>
@@ -1047,11 +714,11 @@ export default function RezervasyonPaneli() {
             href="/init-db"
             className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
           >
-            Veritabanı Başlat
+            Initialize DB
           </Link>
           <button className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center space-x-1">
             <LogOut className="w-4 h-4" />
-            <span>Çıkış</span>
+            <span>Logout</span>
           </button>
         </div>
       </div>
@@ -1064,11 +731,11 @@ export default function RezervasyonPaneli() {
             onClick={goToToday}
           >
             <Calendar className="w-4 h-4" />
-            <span>Bugün</span>
+            <span>Today</span>
           </button>
           <div className="flex items-center space-x-2">
             <button
-              aria-label="Önceki gün"
+              aria-label="Previous day"
               className="p-2 rounded-lg hover:bg-gray-100"
               onClick={goToPreviousDay}
             >
@@ -1081,7 +748,7 @@ export default function RezervasyonPaneli() {
             >
               {format(selectedDate, "dd MMMM yyyy", { locale: tr })}
 
-              {/* DatePicker Alanı */}
+              {/* DatePicker */}
               {isCalendarOpen && (
                 <div className="absolute z-10 mt-2 bg-white shadow-lg rounded-lg p-2 border">
                   <DayPicker
@@ -1101,14 +768,14 @@ export default function RezervasyonPaneli() {
                           className="text-sm text-blue-600 hover:text-blue-800"
                           type="button"
                         >
-                          Bugün
+                          Today
                         </button>
                         <button
                           onClick={() => setIsCalendarOpen(false)}
                           className="text-sm text-gray-600 hover:text-gray-800"
                           type="button"
                         >
-                          Kapat
+                          Close
                         </button>
                       </div>
                     }
@@ -1117,7 +784,7 @@ export default function RezervasyonPaneli() {
               )}
             </div>
             <button
-              aria-label="Sonraki gün"
+              aria-label="Next day"
               className="p-2 rounded-lg hover:bg-gray-100"
               onClick={goToNextDay}
             >
@@ -1133,7 +800,7 @@ export default function RezervasyonPaneli() {
             <Search className="absolute left-3 top-3 text-gray-500 w-4 h-4" />
             <input
               type="text"
-              placeholder="Ara..."
+              placeholder="Search..."
               className="pl-10 pr-4 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
@@ -1157,12 +824,12 @@ export default function RezervasyonPaneli() {
             }}
           >
             <PlusCircle className="w-4 h-4" />
-            <span>Yeni Rezervasyon</span>
+            <span>New Reservation</span>
           </button>
         </div>
       </div>
 
-      {/* Ana içerik - Rezervasyon alanı */}
+      {/* Main content - Reservation area */}
       <div className="flex flex-1 overflow-hidden">
         <div className="flex-1 overflow-auto p-4">
           {loading ? (
@@ -1171,17 +838,17 @@ export default function RezervasyonPaneli() {
             </div>
           ) : (
             <div className="flex flex-col space-y-4">
-              {/* Masa durumu özeti */}
+              {/* Table status summary */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                 <div className="bg-white rounded-lg shadow p-4 border-l-4 border-blue-500">
                   <h3 className="text-sm font-medium text-gray-500 mb-1">
-                    Toplam Masa
+                    Total Tables
                   </h3>
-                  <p className="text-2xl font-bold">{displayedTables.length}</p>
+                  <p className="text-2xl font-bold">{flatTablesList.length}</p>
                 </div>
                 <div className="bg-white rounded-lg shadow p-4 border-l-4 border-green-500">
                   <h3 className="text-sm font-medium text-gray-500 mb-1">
-                    Onaylı Rezervasyon
+                    Confirmed Reservations
                   </h3>
                   <p className="text-2xl font-bold">
                     {
@@ -1198,7 +865,7 @@ export default function RezervasyonPaneli() {
                 </div>
                 <div className="bg-white rounded-lg shadow p-4 border-l-4 border-yellow-500">
                   <h3 className="text-sm font-medium text-gray-500 mb-1">
-                    Bekleyen Rezervasyon
+                    Pending Reservations
                   </h3>
                   <p className="text-2xl font-bold">
                     {
@@ -1215,7 +882,7 @@ export default function RezervasyonPaneli() {
                 </div>
                 <div className="bg-white rounded-lg shadow p-4 border-l-4 border-red-500">
                   <h3 className="text-sm font-medium text-gray-500 mb-1">
-                    İptal Edilen
+                    Cancelled
                   </h3>
                   <p className="text-2xl font-bold">
                     {
@@ -1232,28 +899,27 @@ export default function RezervasyonPaneli() {
                 </div>
               </div>
 
-              {/* Rezervasyon tablosu - Formitable tarzı - Resimde gösterilen yapıya uygun */}
+              {/* Reservation table */}
               <div className="bg-white text-gray-800 rounded-lg shadow overflow-hidden">
-                {/* Üst kısım - Saat başlıkları ve doluluk sayıları */}
-                <div className="sticky top-0 z-30 bg-gray-50 flex border-b border-gray-200">
-                  {/* Sol köşe - "Sitzend" gibi başlık */}
-                  <div className="min-w-[130px] py-2 px-3 text-left text-xs font-medium uppercase tracking-wider bg-gray-50 border-r border-gray-200 flex justify-between items-center">
-                    <span>Sitzend</span>
-                    <span className="text-gray-400">›</span>
+                {/* Top section - Time headers */}
+                <div className="sticky top-0 z-30 bg-red-500 flex border-b border-gray-200">
+                  <div className="min-w-[130px] py-2 px-3 text-left text-xs font-medium uppercase tracking-wider bg-red-500 border-r border-gray-200 flex justify-between items-center sticky left-0 z-40">
+                    <span>🍕 Table </span>
+                    <span className="text-white">›</span>
                   </div>
 
-                  {/* Saat başlıkları */}
+                  {/* Time slots */}
                   {timeSlots.map((time) => (
                     <div
                       key={time}
-                      className="min-w-[60px] py-2 px-1 text-center text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-200"
+                      className="min-w-[60px] py-2 px-1 text-center text-xs font-medium text-white uppercase tracking-wider border-r border-gray-200 bg-red-500"
                     >
                       {time}
                     </div>
                   ))}
                 </div>
 
-                {/* Boyutlandırma işlemi yapılıyorsa iptal butonu göster */}
+                {/* Cancel resize button */}
                 {resizingReservation && (
                   <div className="absolute top-2 right-2 z-50">
                     <button
@@ -1261,14 +927,14 @@ export default function RezervasyonPaneli() {
                       onClick={handleCancelResize}
                     >
                       <X className="w-4 h-4 mr-1" />
-                      İptal
+                      Cancel
                     </button>
                   </div>
                 )}
 
-                {/* Ana içerik - Kategoriler ve masalar */}
+                {/* Main content - Categories and tables */}
                 <div className="flex flex-col relative">
-                  {/* Şu anki zaman çizgisi göstergesi - Sadece masa listesi içinde görünecek */}
+                  {/* Current time indicator */}
                   <div
                     className="absolute top-0 bottom-0 w-[2px] bg-red-500 z-30 pointer-events-none"
                     style={{
@@ -1291,10 +957,44 @@ export default function RezervasyonPaneli() {
                     }}
                   ></div>
 
+                  {/* Test için gridde sabit bir kart render et */}
+                  <DraggableReservationCard
+                    key="test-card"
+                    reservation={{
+                      id: "test-card",
+                      tableId: "1",
+                      customerName: "TEST",
+                      guestCount: 2,
+                      startTime: "14:00",
+                      endTime: "15:00",
+                      status: "confirmed",
+                      note: "",
+                    }}
+                    cellWidth={60}
+                    cellHeight={30}
+                    position={{
+                      left: `${
+                        timeSlots.findIndex((slot) => slot === "14:00") * 60
+                      }px`,
+                      width: `${60}px`,
+                    }}
+                    categoryColor="#f87171"
+                    categoryBorderColor="#b91c1c"
+                    tables={tables}
+                    currentTableId="1"
+                    timeSlots={timeSlots}
+                    onReservationClick={() => {}}
+                    onReservationHover={() => {}}
+                    onReservationLeave={() => {}}
+                    onReservationUpdate={() => {}}
+                    hasTableConflict={() => false}
+                    isReservationPast={() => false}
+                  />
+
                   {Object.entries(groupedByCategoryTables).map(
                     ([categoryId, { category, tables }]) => (
                       <div key={categoryId} className="category-group">
-                        {/* Kategori başlığı */}
+                        {/* Category header */}
                         <div
                           className="px-3 py-2 font-medium text-white uppercase tracking-wider text-sm border-b border-gray-200"
                           style={{
@@ -1304,16 +1004,14 @@ export default function RezervasyonPaneli() {
                           {category.name}
                         </div>
 
-                        {/* Bu kategorideki masalar */}
+                        {/* Tables in this category */}
                         {tables.map((table) => {
-                          // Masa için mevcut rezervasyonları bul
                           const tableReservations = reservations.filter(
                             (r) => r.tableId === table.id
                           );
                           const hasActiveReservation =
                             tableReservations.length > 0;
 
-                          // Masanın minimum ve maksimum kişi sayısını göster
                           const capacityText =
                             table.capacity === 1
                               ? "1 - 1"
@@ -1326,7 +1024,7 @@ export default function RezervasyonPaneli() {
                               className="flex border-b border-gray-200"
                               key={table.id}
                             >
-                              {/* Masa bilgisi */}
+                              {/* Table info */}
                               <div
                                 className={`min-w-[130px] h-[30px] py-1 px-3 flex justify-between items-center cursor-pointer hover:bg-gray-50 ${
                                   formValues.tableId === table.id
@@ -1353,8 +1051,9 @@ export default function RezervasyonPaneli() {
                                 </div>
                               </div>
 
-                              {/* Zaman hücreleri ve rezervasyonlar */}
+                              {/* Time cells and reservations */}
                               <div className="flex-1 flex relative">
+                                {/* Grid cells */}
                                 {timeSlots.map((time, timeIndex) => (
                                   <div
                                     key={`${table.id}-${time}`}
@@ -1367,6 +1066,8 @@ export default function RezervasyonPaneli() {
                                         ? "hover:bg-blue-100"
                                         : "hover:bg-gray-100"
                                     }`}
+                                    data-table-id={table.id}
+                                    data-time={time}
                                     onClick={() =>
                                       resizingReservation
                                         ? handleResizeEnd(time)
@@ -1386,66 +1087,141 @@ export default function RezervasyonPaneli() {
                                       handleDrop(e, table.id, time)
                                     }
                                   >
-                                    {/* Sadece boyutlandırma işlemi sırasında ve fare üzerine geldiğinde göster */}
-                                    {resizingReservation &&
-                                      hoveredCell?.tableId === table.id &&
-                                      hoveredCell?.time === time && (
-                                        <div
-                                          className="absolute inset-0 bg-blue-100 flex items-center justify-center border border-blue-300 z-10"
-                                          onClick={() => handleResizeEnd(time)}
-                                        >
-                                          <div className="text-blue-700 text-xs font-medium flex items-center">
-                                            {resizingReservation.direction ===
-                                            "start" ? (
-                                              <>
-                                                <svg
-                                                  xmlns="http://www.w3.org/2000/svg"
-                                                  className="h-3 w-3 mr-1"
-                                                  fill="none"
-                                                  viewBox="0 0 24 24"
-                                                  stroke="currentColor"
-                                                >
-                                                  <path
-                                                    strokeLinecap="round"
-                                                    strokeLinejoin="round"
-                                                    strokeWidth={2}
-                                                    d="M11 17l-5-5m0 0l5-5m-5 5h12"
-                                                  />
-                                                </svg>
-                                                <span>Başlat</span>
-                                              </>
-                                            ) : (
-                                              <>
-                                                <span>Bitir</span>
-                                                <svg
-                                                  xmlns="http://www.w3.org/2000/svg"
-                                                  className="h-3 w-3 ml-1"
-                                                  fill="none"
-                                                  viewBox="0 0 24 24"
-                                                  stroke="currentColor"
-                                                >
-                                                  <path
-                                                    strokeLinecap="round"
-                                                    strokeLinejoin="round"
-                                                    strokeWidth={2}
-                                                    d="M13 7l5 5m0 0l-5 5m5-5H6"
-                                                  />
-                                                </svg>
-                                              </>
-                                            )}
-                                          </div>
-                                        </div>
-                                      )}
+                                    {/* Reservations - Only render in the starting time slot */}
+                                    {timeIndex === 0 && (
+                                      <div className="absolute inset-0 pointer-events-none">
+                                        {reservations
+                                          .filter(
+                                            (reservation) =>
+                                              `${reservation.tableId}` ===
+                                              `${table.id}`
+                                          )
+                                          .map((reservation) => {
+                                            const normalize = (t: string) => {
+                                              if (!t) return "";
+                                              const [h, m] = t.split(":");
+                                              return `${(h || "").padStart(
+                                                2,
+                                                "0"
+                                              )}:${(m || "00").padStart(
+                                                2,
+                                                "0"
+                                              )}`;
+                                            };
+
+                                            const startIdx =
+                                              timeSlots.findIndex(
+                                                (slot) =>
+                                                  normalize(slot) ===
+                                                  normalize(
+                                                    reservation.startTime
+                                                  )
+                                              );
+                                            const endIdx = timeSlots.findIndex(
+                                              (slot) =>
+                                                normalize(slot) ===
+                                                normalize(reservation.endTime)
+                                            );
+
+                                            if (
+                                              startIdx === -1 ||
+                                              endIdx === -1 ||
+                                              endIdx <= startIdx
+                                            ) {
+                                              return null;
+                                            }
+
+                                            return (
+                                              <div
+                                                key={`${reservation.id}-${table.id}`}
+                                                className="absolute rounded-lg pointer-events-auto overflow-hidden shadow-lg hover:shadow-xl transition-all duration-200 cursor-grab hover:scale-102"
+                                                style={{
+                                                  left: `${startIdx * 60}px`,
+                                                  width: `${
+                                                    (endIdx - startIdx) * 60
+                                                  }px`,
+                                                  height: "26px",
+                                                  top: "2px",
+                                                  backgroundColor: "#f87171",
+                                                  borderColor: "#b91c1c",
+                                                  minWidth: "100px",
+                                                  touchAction: "none",
+                                                  backdropFilter: "blur(4px)",
+                                                  boxShadow:
+                                                    "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
+                                                  zIndex: 5,
+                                                }}
+                                                draggable
+                                                onDragStart={() =>
+                                                  handleDragStart(reservation)
+                                                }
+                                                onClick={() =>
+                                                  handleCellClick(
+                                                    table.id,
+                                                    reservation.startTime
+                                                  )
+                                                }
+                                              >
+                                                {/* Modern gradient overlay */}
+                                                <div className="absolute inset-0 bg-gradient-to-r from-black/20 to-transparent pointer-events-none" />
+
+                                                {/* Ana içerik */}
+                                                <div className="relative z-10 h-full flex flex-col justify-center px-3 py-1">
+                                                  {/* Kompakt gösterim */}
+                                                  <div className="flex items-center justify-between">
+                                                    <div className="flex items-center space-x-2">
+                                                      <div className="w-2 h-2 rounded-full bg-white/80 flex-shrink-0" />
+                                                      <div className="font-semibold text-white text-xs truncate">
+                                                        {reservation.customerName ||
+                                                          "İsimsiz"}
+                                                      </div>
+                                                    </div>
+                                                    <div className="flex items-center space-x-1">
+                                                      <span className="bg-white/20 backdrop-blur-sm px-1.5 py-0.5 rounded text-[10px] text-white font-medium">
+                                                        {reservation.guestCount}
+                                                      </span>
+                                                    </div>
+                                                  </div>
+                                                </div>
+
+                                                {/* Sürükleme göstergesi */}
+                                                <div className="absolute top-1 right-1 w-2 h-2 bg-white/30 rounded-full pointer-events-none" />
+
+                                                {/* Resize handle'ları */}
+                                                {/* Sol resize handle (başlangıç zamanı) */}
+                                                <div
+                                                  className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-white/20 transition-colors"
+                                                  onMouseDown={(e) => {
+                                                    e.stopPropagation();
+                                                    handleResizeStart(
+                                                      e,
+                                                      reservation.id,
+                                                      "start"
+                                                    );
+                                                  }}
+                                                  title="Başlangıç zamanını değiştir"
+                                                />
+
+                                                {/* Sağ resize handle (bitiş zamanı) */}
+                                                <div
+                                                  className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-white/20 transition-colors"
+                                                  onMouseDown={(e) => {
+                                                    e.stopPropagation();
+                                                    handleResizeStart(
+                                                      e,
+                                                      reservation.id,
+                                                      "end"
+                                                    );
+                                                  }}
+                                                  title="Bitiş zamanını değiştir"
+                                                />
+                                              </div>
+                                            );
+                                          })}
+                                      </div>
+                                    )}
                                   </div>
                                 ))}
-
-                                {/* Rezervasyonlar */}
-                                {tableReservations.map((reservation) =>
-                                  renderReservation(
-                                    reservation,
-                                    tables.indexOf(table)
-                                  )
-                                )}
                               </div>
                             </div>
                           );
@@ -1456,11 +1232,9 @@ export default function RezervasyonPaneli() {
                 </div>
               </div>
 
-              {displayedTables.length === 0 && (
+              {flatTablesList.length === 0 && (
                 <div className="bg-white rounded-lg shadow-md p-8 text-center">
-                  <p className="text-gray-500 mb-4">
-                    Herhangi bir masa bulunamadı.
-                  </p>
+                  <p className="text-gray-500 mb-4">No tables found.</p>
                 </div>
               )}
             </div>
@@ -1468,15 +1242,13 @@ export default function RezervasyonPaneli() {
         </div>
       </div>
 
-      {/* Rezervasyon Ekleme/Düzenleme Modalı */}
+      {/* Add/Edit Reservation Modal */}
       {isReservationModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
             <div className="flex justify-between items-center p-4 border-b border-gray-200">
               <h3 className="text-lg font-medium text-gray-900">
-                {editingReservation
-                  ? "Rezervasyon Düzenle"
-                  : "Yeni Rezervasyon"}
+                {editingReservation ? "Edit Reservation" : "New Reservation"}
               </h3>
               <button
                 className="text-gray-400 hover:text-gray-500"
@@ -1489,7 +1261,7 @@ export default function RezervasyonPaneli() {
             <div className="p-4 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Müşteri Adı
+                  Customer Name
                 </label>
                 <input
                   type="text"
@@ -1501,14 +1273,14 @@ export default function RezervasyonPaneli() {
                       customerName: e.target.value,
                     })
                   }
-                  placeholder="Müşteri adı"
+                  placeholder="Customer name"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Kişi Sayısı
+                    Guest Count
                   </label>
                   <input
                     type="number"
@@ -1526,7 +1298,7 @@ export default function RezervasyonPaneli() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Masa
+                    Table
                   </label>
                   <select
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -1535,16 +1307,16 @@ export default function RezervasyonPaneli() {
                       setFormValues({ ...formValues, tableId: e.target.value })
                     }
                   >
-                    <option value="">Masa Seçin</option>
+                    <option value="">Select Table</option>
                     {tables.map((table) => {
                       const category = categories.find(
                         (c) => c.id === table.categoryId
                       );
                       return (
                         <option key={table.id} value={table.id}>
-                          Masa {table.number} -{" "}
-                          {category?.name || "Kategori Yok"} ({table.capacity}{" "}
-                          kişilik)
+                          Table {table.number} -{" "}
+                          {category?.name || "No Category"} ({table.capacity}{" "}
+                          seats)
                         </option>
                       );
                     })}
@@ -1555,7 +1327,7 @@ export default function RezervasyonPaneli() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Başlangıç Saati
+                    Start Time
                   </label>
                   <select
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -1577,7 +1349,7 @@ export default function RezervasyonPaneli() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Bitiş Saati
+                    End Time
                   </label>
                   <select
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -1604,7 +1376,7 @@ export default function RezervasyonPaneli() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Durum
+                  Status
                 </label>
                 <select
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -1619,15 +1391,15 @@ export default function RezervasyonPaneli() {
                     })
                   }
                 >
-                  <option value="confirmed">Onaylandı</option>
-                  <option value="pending">Beklemede</option>
-                  <option value="cancelled">İptal Edildi</option>
+                  <option value="confirmed">Confirmed</option>
+                  <option value="pending">Pending</option>
+                  <option value="cancelled">Cancelled</option>
                 </select>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Not
+                  Note
                 </label>
                 <textarea
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -1636,7 +1408,7 @@ export default function RezervasyonPaneli() {
                     setFormValues({ ...formValues, note: e.target.value })
                   }
                   rows={3}
-                  placeholder="Rezervasyon hakkında not ekleyin"
+                  placeholder="Add a note about the reservation"
                 />
               </div>
             </div>
@@ -1647,21 +1419,29 @@ export default function RezervasyonPaneli() {
                   className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
                   onClick={handleDeleteReservation}
                 >
-                  Sil
+                  Delete
                 </button>
               )}
               <button
                 className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
                 onClick={() => setIsReservationModalOpen(false)}
               >
-                İptal
+                Cancel (Esc)
               </button>
               <button
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                 onClick={handleSaveReservation}
               >
-                Kaydet
+                Save (Enter)
               </button>
+            </div>
+
+            {/* Shortcut info */}
+            <div className="px-4 pb-4 text-center">
+              <p className="text-xs text-gray-500">
+                💡 <strong>Enter</strong> to save, <strong>Esc</strong> to
+                cancel
+              </p>
             </div>
           </div>
         </div>

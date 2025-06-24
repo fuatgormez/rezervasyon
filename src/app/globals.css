@@ -20,6 +20,84 @@ body {
   .container-main {
     @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
   }
+
+  /* Rezervasyon kartı stilleri */
+  .reservation-card {
+    @apply transition-all duration-200 ease-out;
+    touch-action: none;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+  }
+
+  .reservation-card:hover {
+    @apply shadow-xl;
+    transform: translateY(-1px);
+  }
+
+  .reservation-card.reservation-dragging {
+    @apply shadow-2xl;
+    transform: scale(1.02) rotate(1deg);
+    z-index: 9999;
+  }
+
+  .reservation-content {
+    @apply transition-all duration-150;
+  }
+
+  .reservation-content:hover {
+    @apply bg-white bg-opacity-10;
+  }
+
+  /* Mobil dokunmatik iyileştirmeler */
+  @media (max-width: 768px) {
+    .reservation-card {
+      min-height: 40px;
+      border-radius: 8px;
+    }
+
+    .reservation-card:hover {
+      transform: none;
+    }
+
+    .reservation-card.reservation-dragging {
+      transform: scale(1.05);
+    }
+  }
+
+  /* Tablet optimizasyonları */
+  @media (min-width: 769px) and (max-width: 1024px) {
+    .reservation-card {
+      min-height: 35px;
+    }
+  }
+
+  /* Modern scrollbar stilleri */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: rgba(156, 163, 175, 0.5);
+    border-radius: 3px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(156, 163, 175, 0.7);
+  }
 }
 
 /* DatePicker özel stilleri - React-day-picker için tam stiller */
@@ -200,11 +278,15 @@ body {
   @apply bg-blue-600 text-white hover:bg-blue-700;
 }
 
+.btn-secondary {
+  @apply bg-gray-600 text-white hover:bg-gray-700;
+}
+
 .btn-outline {
   @apply border border-gray-300 text-gray-700 hover:bg-gray-50;
 }
 
-/* Animasyonlar */
+/* Animasyon stilleri */
 .fade-enter {
   opacity: 0;
 }
@@ -223,25 +305,18 @@ body {
   transition: opacity 200ms ease-in;
 }
 
-/* Navigasyon okları için stil */
+/* DatePicker navigasyon butonları */
 button[aria-label="Önceki gün"],
 button[aria-label="Sonraki gün"] {
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: #f3f4f6;
-  color: #4b5563;
-  border-radius: 9999px;
-  transition: all 0.2s;
+  background-color: transparent;
   border: none;
-  outline: none;
   cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 0.25rem;
+  transition: background-color 0.15s ease-in-out;
 }
 
 button[aria-label="Önceki gün"]:hover,
 button[aria-label="Sonraki gün"]:hover {
-  background-color: #e5e7eb;
-  color: #1f2937;
+  background-color: #f3f4f6;
 }
