@@ -43,6 +43,7 @@ for (let hour = 7; hour <= 27; hour++) {
   const h = (hour % 24).toString().padStart(2, "0");
   timeSlots.push(`${h}:00`);
 }
+console.log("Time slots:", timeSlots);
 
 // Helper functions
 const getTimeInMinutes = (timeString: string) => {
@@ -1126,19 +1127,30 @@ export default function ReservationPanel() {
                                           .filter(
                                             (reservation) =>
                                               `${reservation.tableId}` ===
-                                              `${table.id}`
+                                                `${table.id}` &&
+                                              reservation.date ===
+                                                format(
+                                                  selectedDate,
+                                                  "yyyy-MM-dd"
+                                                )
                                           )
                                           .map((reservation) => {
                                             const normalize = (t: string) => {
                                               if (!t) return "";
                                               const [h, m] = t.split(":");
-                                              return `${(h || "").padStart(
-                                                2,
-                                                "0"
-                                              )}:${(m || "00").padStart(
-                                                2,
-                                                "0"
-                                              )}`;
+                                              const hours = parseInt(h || "0");
+                                              const minutes = parseInt(
+                                                m || "0"
+                                              );
+
+                                              // Round to nearest hour
+                                              const roundedHours =
+                                                minutes >= 30
+                                                  ? hours + 1
+                                                  : hours;
+                                              return `${roundedHours
+                                                .toString()
+                                                .padStart(2, "0")}:00`;
                                             };
 
                                             const startIdx =
@@ -1155,11 +1167,26 @@ export default function ReservationPanel() {
                                                 normalize(reservation.endTime)
                                             );
 
+                                            console.log("Rezervasyon render:", {
+                                              id: reservation.id,
+                                              tableId: table.id,
+                                              startTime: reservation.startTime,
+                                              endTime: reservation.endTime,
+                                              startIdx,
+                                              endIdx,
+                                              customerName:
+                                                reservation.customerName,
+                                            });
+
                                             if (
                                               startIdx === -1 ||
                                               endIdx === -1 ||
                                               endIdx <= startIdx
                                             ) {
+                                              console.log(
+                                                "Rezervasyon render edilmiyor:",
+                                                { startIdx, endIdx }
+                                              );
                                               return null;
                                             }
 
