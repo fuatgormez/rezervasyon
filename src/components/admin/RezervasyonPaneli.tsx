@@ -208,18 +208,10 @@ export default function ReservationPanel() {
           if (snapshot.exists()) {
             const reservationsData = snapshot.val();
             const selectedDateStr = format(selectedDate, "yyyy-MM-dd");
-            console.log("🔍 Debug: Selected date:", selectedDateStr);
-            console.log("🔍 Debug: All reservations data:", reservationsData);
-
             const loadedReservations = Object.entries(reservationsData)
               .filter(([_, data]: [string, any]) => {
                 const reservationDate =
                   data.date || format(new Date(), "yyyy-MM-dd");
-                console.log(
-                  `🔍 Debug: Reservation date: ${reservationDate}, Selected date: ${selectedDateStr}, Match: ${
-                    reservationDate === selectedDateStr
-                  }`
-                );
                 return reservationDate === selectedDateStr;
               })
               .map(([id, data]: [string, any]) => ({
@@ -233,10 +225,8 @@ export default function ReservationPanel() {
                 note: data.note || "",
                 date: data.date || format(new Date(), "yyyy-MM-dd"),
               }));
-            console.log("🔍 Debug: Filtered reservations:", loadedReservations);
             setReservations(loadedReservations);
           } else {
-            console.log("🔍 Debug: No reservations found in Firebase");
             setReservations([]);
           }
         });
@@ -367,25 +357,16 @@ export default function ReservationPanel() {
 
   // Get reservation at specific time for a table
   const getReservationAtTime = (tableId: string, time: string) => {
-    console.log(
-      `🔍 getReservationAtTime called: tableId=${tableId}, time=${time}`
-    );
-    console.log(`🔍 Available reservations:`, reservations);
-
-    const found = reservations.find(
+    return reservations.find(
       (res) =>
         res.tableId === tableId &&
         getTimeInMinutes(res.startTime) <= getTimeInMinutes(time) &&
         getTimeInMinutes(res.endTime) > getTimeInMinutes(time)
     );
-
-    console.log(`🔍 Found reservation:`, found);
-    return found;
   };
 
   // Handle card click - directly with reservation object
   const handleCardClick = (reservation: Reservation) => {
-    console.log(`🎯 handleCardClick called with reservation:`, reservation);
     setEditingReservation(reservation);
     setFormValues({
       customerName: reservation.customerName,
@@ -401,14 +382,9 @@ export default function ReservationPanel() {
 
   // Handle cell click
   const handleCellClick = (tableId: string, time: string) => {
-    console.log(`🎯 handleCellClick called: tableId=${tableId}, time=${time}`);
     const existingReservation = getReservationAtTime(tableId, time);
 
     if (existingReservation) {
-      console.log(
-        `🎯 Found existing reservation, editing:`,
-        existingReservation
-      );
       setEditingReservation(existingReservation);
       setFormValues({
         customerName: existingReservation.customerName,
@@ -420,7 +396,6 @@ export default function ReservationPanel() {
         note: existingReservation.note || "",
       });
     } else {
-      console.log(`🎯 No existing reservation found, creating new one`);
       const endTime = addTimeMinutes(time, 60); // Default 1 hour duration
       setEditingReservation(null);
       setFormValues({
@@ -722,13 +697,16 @@ export default function ReservationPanel() {
     reservationId: string,
     direction: "start" | "end"
   ) => {
+    console.log(
+      `🔧 handleDragResizeStart called: ${reservationId}, direction: ${direction}`
+    );
     e.stopPropagation();
     e.preventDefault();
 
     const reservation = reservations.find((r) => r.id === reservationId);
     if (!reservation) return;
 
-    setDragResizing({
+    const dragData = {
       id: reservationId,
       direction,
       startX: e.clientX,
@@ -736,15 +714,155 @@ export default function ReservationPanel() {
       endTime: reservation.endTime,
       originalStartTime: reservation.startTime,
       originalEndTime: reservation.endTime,
-    });
+    };
+
+    setDragResizing(dragData);
+
+    console.log(`🔧 Event listeners added, startX: ${e.clientX}`);
+
+    // Preview verilerini local olarak tut
+    let currentPreview = {
+      startTime: dragData.originalStartTime,
+      endTime: dragData.originalEndTime,
+    };
+
+    // Closure içinde handler'ları tanımla
+    const handleMove = (e: MouseEvent) => {
+      console.log(
+        `🔧 handleDragResizeMove: deltaX=${e.clientX - dragData.startX}`
+      );
+
+      const deltaX = e.clientX - dragData.startX;
+      const slotWidth = 150;
+      const subSlotWidth = slotWidth / 4; // 15 dakikalık alt bölümler
+
+      // Kaç 15 dakika hareket ettiğimizi hesapla
+      const minutesDelta = Math.round(deltaX / subSlotWidth) * 15;
+
+      let newStartTime = dragData.originalStartTime;
+      let newEndTime = dragData.originalEndTime;
+
+      if (dragData.direction === "start") {
+        const newStartMinutes =
+          getTimeInMinutes(dragData.originalStartTime) + minutesDelta;
+        newStartTime = formatTime(Math.max(0, newStartMinutes));
+
+        // Başlangıç saati bitiş saatinden sonra olamaz
+        if (getTimeInMinutes(newStartTime) >= getTimeInMinutes(newEndTime)) {
+          newStartTime = formatTime(getTimeInMinutes(newEndTime) - 15);
+        }
+      } else {
+        const newEndMinutes =
+          getTimeInMinutes(dragData.originalEndTime) + minutesDelta;
+        newEndTime = formatTime(Math.max(15, newEndMinutes)); // En az 15 dakika
+
+        // Bitiş saati başlangıç saatinden önce olamaz
+        if (getTimeInMinutes(newEndTime) <= getTimeInMinutes(newStartTime)) {
+          newEndTime = formatTime(getTimeInMinutes(newStartTime) + 15);
+        }
+      }
+
+      // Local preview'i güncelle
+      currentPreview = {
+        startTime: newStartTime,
+        endTime: newEndTime,
+      };
+
+      // State'i de güncelle (görsel için)
+      setDragResizePreview(currentPreview);
+
+      console.log(
+        `🔧 Preview updated: ${currentPreview.startTime} - ${currentPreview.endTime}`
+      );
+    };
+
+    const handleEnd = async (e: MouseEvent) => {
+      console.log(`🔧 handleDragResizeEnd called`);
+      console.log(
+        `🔧 Final preview: ${currentPreview.startTime} - ${currentPreview.endTime}`
+      );
+
+      // Event listener'ları kaldır
+      document.removeEventListener("mousemove", handleMove);
+      document.removeEventListener("mouseup", handleEnd);
+
+      try {
+        // Eğer zaman değişmediyse hiçbir şey yapma
+        if (
+          currentPreview.startTime === dragData.originalStartTime &&
+          currentPreview.endTime === dragData.originalEndTime
+        ) {
+          console.log(`🔧 No time change, cleaning up`);
+          setDragResizing(null);
+          setDragResizePreview(null);
+          return;
+        }
+
+        const reservation = reservations.find((r) => r.id === reservationId);
+        if (!reservation) {
+          setDragResizing(null);
+          setDragResizePreview(null);
+          return;
+        }
+
+        // Çakışma kontrolü
+        const isOverlapping = reservations.some((res) => {
+          if (res.id === reservation.id) return false;
+          if (res.tableId !== reservation.tableId) return false;
+          if (res.date !== reservation.date) return false;
+
+          const resStart = getTimeInMinutes(res.startTime);
+          const resEnd = getTimeInMinutes(res.endTime);
+          const newStart = getTimeInMinutes(currentPreview.startTime);
+          const newEnd = getTimeInMinutes(currentPreview.endTime);
+
+          return newStart < resEnd && newEnd > resStart;
+        });
+
+        if (isOverlapping) {
+          toast.error("Bu saatte başka bir rezervasyon var", {
+            id: "resize-error",
+          });
+          setDragResizing(null);
+          setDragResizePreview(null);
+          return;
+        }
+
+        const updatedReservation = {
+          ...reservation,
+          startTime: currentPreview.startTime,
+          endTime: currentPreview.endTime,
+        };
+
+        console.log(`🔧 Updating Firebase with:`, updatedReservation);
+        const reservationRef = ref(db, `reservations/${reservation.id}`);
+        await update(reservationRef, updatedReservation);
+        console.log(`🔧 Firebase update successful`);
+
+        toast.success("Rezervasyon saati güncellendi", {
+          id: "resize-success",
+        });
+      } catch (error) {
+        console.error("Error resizing reservation:", error);
+        toast.error("Rezervasyon saati güncellenirken hata oluştu", {
+          id: "resize-error",
+        });
+      } finally {
+        setDragResizing(null);
+        setDragResizePreview(null);
+      }
+    };
 
     // Mouse move ve mouse up event'lerini document'e ekle
-    document.addEventListener("mousemove", handleDragResizeMove);
-    document.addEventListener("mouseup", handleDragResizeEnd);
+    document.addEventListener("mousemove", handleMove);
+    document.addEventListener("mouseup", handleEnd);
   };
 
   const handleDragResizeMove = (e: MouseEvent) => {
     if (!dragResizing) return;
+    console.log(
+      `🔧 handleDragResizeMove: deltaX=${e.clientX - dragResizing.startX}`
+    );
 
     const deltaX = e.clientX - dragResizing.startX;
     const slotWidth = 150;
@@ -783,7 +901,9 @@ export default function ReservationPanel() {
   };
 
   const handleDragResizeEnd = async (e: MouseEvent) => {
+    console.log(`🔧 handleDragResizeEnd called`);
     if (!dragResizing || !dragResizePreview) {
+      console.log(`🔧 No dragResizing or dragResizePreview, cleaning up`);
       cleanupDragResize();
       return;
     }
@@ -840,6 +960,7 @@ export default function ReservationPanel() {
   };
 
   const cleanupDragResize = () => {
+    console.log(`🔧 cleanupDragResize called`);
     setDragResizing(null);
     setDragResizePreview(null);
     document.removeEventListener("mousemove", handleDragResizeMove);
@@ -1540,34 +1661,11 @@ export default function ReservationPanel() {
                                                 )
                                             );
 
-                                            console.log(
-                                              `🎯 Debug Card: ${reservation.customerName} (${reservation.id})`
-                                            );
-                                            console.log(
-                                              `🎯 Raw times: ${displayStartTime} - ${displayEndTime}`
-                                            );
-                                            console.log(
-                                              `🎯 Normalized times: ${normalize(
-                                                displayStartTime
-                                              )} - ${normalizeForEndTime(
-                                                displayEndTime
-                                              )}`
-                                            );
-                                            console.log(
-                                              `🎯 TimeSlots indices: start=${startIdx}, end=${endIdx}`
-                                            );
-                                            console.log(
-                                              `🎯 TimeSlots length: ${timeSlots.length}`
-                                            );
-
                                             if (
                                               startIdx === -1 ||
                                               endIdx === -1 ||
                                               endIdx <= startIdx
                                             ) {
-                                              console.log(
-                                                `🎯 Card not rendered: startIdx=${startIdx}, endIdx=${endIdx}`
-                                              );
                                               return null;
                                             }
 
@@ -1659,8 +1757,11 @@ export default function ReservationPanel() {
                                                   <>
                                                     {/* Sol resize handle (başlangıç zamanı) */}
                                                     <div
-                                                      className="absolute left-0 top-0 bottom-0 w-4 cursor-ew-resize hover:bg-white/40 transition-colors group z-20"
+                                                      className="absolute left-0 top-0 bottom-0 w-4 cursor-ew-resize hover:bg-white/60 transition-colors group z-30 bg-white/20"
                                                       onMouseDown={(e) => {
+                                                        console.log(
+                                                          `🔧 Left resize handle clicked for reservation: ${reservation.id}`
+                                                        );
                                                         e.stopPropagation();
                                                         e.preventDefault();
                                                         handleDragResizeStart(
@@ -1679,8 +1780,11 @@ export default function ReservationPanel() {
 
                                                     {/* Sağ resize handle (bitiş zamanı) */}
                                                     <div
-                                                      className="absolute right-0 top-0 bottom-0 w-4 cursor-ew-resize hover:bg-white/40 transition-colors group z-20"
+                                                      className="absolute right-0 top-0 bottom-0 w-4 cursor-ew-resize hover:bg-white/60 transition-colors group z-30 bg-white/20"
                                                       onMouseDown={(e) => {
+                                                        console.log(
+                                                          `🔧 Right resize handle clicked for reservation: ${reservation.id}`
+                                                        );
                                                         e.stopPropagation();
                                                         e.preventDefault();
                                                         handleDragResizeStart(
