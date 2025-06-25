@@ -266,6 +266,21 @@ export default function ReservationPanel() {
     setActiveCategory(categoryId);
   };
 
+  // Scroll senkronizasyonu - Basitleştirilmiş
+  const handleTimeHeaderScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const scrollLeft = e.currentTarget.scrollLeft;
+    if (mainScrollRef.current) {
+      mainScrollRef.current.scrollLeft = scrollLeft;
+    }
+  };
+
+  const handleMainScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const scrollLeft = e.currentTarget.scrollLeft;
+    if (timeHeaderRef.current) {
+      timeHeaderRef.current.scrollLeft = scrollLeft;
+    }
+  };
+
   // Create flat table list grouped by categories
   const flatTablesList = useMemo(() => {
     const flatList: { table: Table; category: Category }[] = [];
@@ -670,21 +685,6 @@ export default function ReservationPanel() {
     }
   }, [reservations]);
 
-  // Scroll senkronizasyonu
-  const handleTimeHeaderScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    const scrollLeft = e.currentTarget.scrollLeft;
-    if (mainScrollRef.current) {
-      mainScrollRef.current.scrollLeft = scrollLeft;
-    }
-  };
-
-  const handleMainScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    const scrollLeft = e.currentTarget.scrollLeft;
-    if (timeHeaderRef.current) {
-      timeHeaderRef.current.scrollLeft = scrollLeft;
-    }
-  };
-
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-gray-50 text-gray-800">
       {/* Navbar */}
@@ -854,7 +854,10 @@ export default function ReservationPanel() {
               <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-400"></div>
             </div>
           ) : (
-            <div className="flex flex-col space-y-4">
+            <div
+              className="flex flex-col space-y-4"
+              style={{ minWidth: `calc(130px + ${timeSlots.length * 150}px)` }}
+            >
               {/* Table status summary */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                 <div className="bg-white rounded-lg shadow p-4 border-l-4 border-blue-500">
@@ -932,10 +935,7 @@ export default function ReservationPanel() {
                     className="flex-1 overflow-x-auto scrollbar-hide"
                     onScroll={handleTimeHeaderScroll}
                   >
-                    <div
-                      className="flex"
-                      style={{ minWidth: `${timeSlots.length * 150}px` }}
-                    >
+                    <div className="flex" style={{ minWidth: `${timeSlots.length * 150}px` }}>
                       {timeSlots.map((time) => (
                         <div
                           key={time}
@@ -970,7 +970,7 @@ export default function ReservationPanel() {
                         <div key={categoryId} className="category-group">
                           {/* Category header - Sol kısım */}
                           <div
-                            className="h-[42px] px-3 py-2 font-medium text-white uppercase tracking-wider text-sm border-b border-gray-200 flex items-center"
+                            className="px-3 py-2 font-medium text-white uppercase tracking-wider text-sm border-b border-gray-200"
                             style={{
                               backgroundColor: category.color,
                             }}
@@ -1027,12 +1027,12 @@ export default function ReservationPanel() {
                     )}
                   </div>
 
-                  {/* Sağ scroll edilebilir grid panel */}
-                  <div
-                    ref={mainScrollRef}
-                    className="flex-1 overflow-x-auto scrollbar-hide relative"
-                    onScroll={handleMainScroll}
-                  >
+                                     {/* Sağ scroll edilebilir grid panel */}
+                   <div
+                     ref={mainScrollRef}
+                     className="flex-1 overflow-x-auto scrollbar-hide relative"
+                     onScroll={handleMainScroll}
+                   >
                     {/* Current time indicator */}
                     <div
                       className="absolute top-0 bottom-0 w-[2px] bg-red-500 z-30 pointer-events-none"
@@ -1065,7 +1065,7 @@ export default function ReservationPanel() {
                           <div key={categoryId} className="category-group">
                             {/* Category header - Sağ kısım */}
                             <div
-                              className="h-[42px] border-b border-gray-200 flex items-center"
+                              className="h-[42px] border-b border-gray-200"
                               style={{
                                 backgroundColor: category.color,
                                 minWidth: `${timeSlots.length * 150}px`,
@@ -1129,136 +1129,142 @@ export default function ReservationPanel() {
                                               `${table.id}`
                                           )
                                           .map((reservation) => {
-                                            const normalize = (t: string) => {
-                                              if (!t) return "";
-                                              const [h, m] = t.split(":");
-                                              return `${(h || "").padStart(
-                                                2,
-                                                "0"
-                                              )}:${(m || "00").padStart(
-                                                2,
-                                                "0"
-                                              )}`;
-                                            };
+                                                                                         const normalize = (t: string) => {
+                                                if (!t) return "";
+                                                const [h, m] = t.split(":");
+                                                return `${(h || "").padStart(
+                                                  2,
+                                                  "0"
+                                                )}:${(m || "00").padStart(
+                                                  2,
+                                                  "0"
+                                                )}`;
+                                              };
 
-                                            const startIdx =
-                                              timeSlots.findIndex(
-                                                (slot) =>
-                                                  normalize(slot) ===
-                                                  normalize(
-                                                    reservation.startTime
-                                                  )
-                                              );
-                                            const endIdx = timeSlots.findIndex(
-                                              (slot) =>
-                                                normalize(slot) ===
-                                                normalize(reservation.endTime)
-                                            );
+                                              const startIdx =
+                                                timeSlots.findIndex(
+                                                  (slot) =>
+                                                    normalize(slot) ===
+                                                    normalize(
+                                                      reservation.startTime
+                                                    )
+                                                );
+                                              const endIdx =
+                                                timeSlots.findIndex(
+                                                  (slot) =>
+                                                    normalize(slot) ===
+                                                    normalize(
+                                                      reservation.endTime
+                                                    )
+                                                );
 
-                                            if (
-                                              startIdx === -1 ||
-                                              endIdx === -1 ||
-                                              endIdx <= startIdx
-                                            ) {
-                                              return null;
-                                            }
+                                              if (
+                                                startIdx === -1 ||
+                                                endIdx === -1 ||
+                                                endIdx <= startIdx
+                                              ) {
+                                                return null;
+                                              }
 
-                                            return (
-                                              <div
-                                                key={`${reservation.id}-${table.id}`}
-                                                className="absolute rounded-lg pointer-events-auto overflow-hidden shadow-lg hover:shadow-xl transition-all duration-200 cursor-grab hover:scale-102"
-                                                style={{
-                                                  left: `${startIdx * 150}px`,
-                                                  width: `${
-                                                    (endIdx - startIdx) * 150
-                                                  }px`,
-                                                  height: "26px",
-                                                  top: "2px",
-                                                  backgroundColor: "#f87171",
-                                                  borderColor: "#b91c1c",
-                                                  minWidth: "100px",
-                                                  touchAction: "none",
-                                                  backdropFilter: "blur(4px)",
-                                                  boxShadow:
-                                                    "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
-                                                  zIndex: 5,
-                                                }}
-                                                draggable
-                                                onDragStart={() =>
-                                                  handleDragStart(reservation)
-                                                }
-                                                onClick={() =>
-                                                  handleCellClick(
-                                                    table.id,
-                                                    reservation.startTime
-                                                  )
-                                                }
-                                              >
-                                                {/* Modern gradient overlay */}
-                                                <div className="absolute inset-0 bg-gradient-to-r from-black/20 to-transparent pointer-events-none" />
+                                              return (
+                                                <div
+                                                  key={`${reservation.id}-${table.id}`}
+                                                  className="absolute rounded-lg pointer-events-auto overflow-hidden shadow-lg hover:shadow-xl transition-all duration-200 cursor-grab hover:scale-102"
+                                                  style={{
+                                                    left: `${startIdx * 150}px`,
+                                                    width: `${
+                                                      (endIdx - startIdx) * 150
+                                                    }px`,
+                                                    height: "26px",
+                                                    top: "2px",
+                                                    backgroundColor: "#f87171",
+                                                    borderColor: "#b91c1c",
+                                                    minWidth: "100px",
+                                                    touchAction: "none",
+                                                    backdropFilter: "blur(4px)",
+                                                    boxShadow:
+                                                      "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
+                                                    zIndex: 5,
+                                                  }}
+                                                  draggable
+                                                  onDragStart={() =>
+                                                    handleDragStart(reservation)
+                                                  }
+                                                  onClick={() =>
+                                                    handleCellClick(
+                                                      table.id,
+                                                      reservation.startTime
+                                                    )
+                                                  }
+                                                >
+                                                  {/* Modern gradient overlay */}
+                                                  <div className="absolute inset-0 bg-gradient-to-r from-black/20 to-transparent pointer-events-none" />
 
-                                                {/* Ana içerik */}
-                                                <div className="relative z-10 h-full flex flex-col justify-center px-3 py-1">
-                                                  {/* Kompakt gösterim */}
-                                                  <div className="flex items-center justify-between">
-                                                    <div className="flex items-center space-x-2">
-                                                      <div className="w-2 h-2 rounded-full bg-white/80 flex-shrink-0" />
-                                                      <div className="font-semibold text-white text-xs truncate">
-                                                        {reservation.customerName ||
-                                                          "İsimsiz"}
+                                                  {/* Ana içerik */}
+                                                  <div className="relative z-10 h-full flex flex-col justify-center px-3 py-1">
+                                                    {/* Kompakt gösterim */}
+                                                    <div className="flex items-center justify-between">
+                                                      <div className="flex items-center space-x-2">
+                                                        <div className="w-2 h-2 rounded-full bg-white/80 flex-shrink-0" />
+                                                        <div className="font-semibold text-white text-xs truncate">
+                                                          {reservation.customerName ||
+                                                            "İsimsiz"}
+                                                        </div>
+                                                      </div>
+                                                      <div className="flex items-center space-x-1">
+                                                        <span className="bg-white/20 backdrop-blur-sm px-1.5 py-0.5 rounded text-[10px] text-white font-medium">
+                                                          {
+                                                            reservation.guestCount
+                                                          }
+                                                        </span>
                                                       </div>
                                                     </div>
-                                                    <div className="flex items-center space-x-1">
-                                                      <span className="bg-white/20 backdrop-blur-sm px-1.5 py-0.5 rounded text-[10px] text-white font-medium">
-                                                        {reservation.guestCount}
-                                                      </span>
-                                                    </div>
                                                   </div>
+
+                                                  {/* Sürükleme göstergesi */}
+                                                  <div className="absolute top-1 right-1 w-2 h-2 bg-white/30 rounded-full pointer-events-none" />
+
+                                                  {/* Resize handle'ları */}
+                                                  {/* Sol resize handle (başlangıç zamanı) */}
+                                                  <div
+                                                    className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-white/20 transition-colors"
+                                                    onMouseDown={(e) => {
+                                                      e.stopPropagation();
+                                                      handleResizeStart(
+                                                        e,
+                                                        reservation.id,
+                                                        "start"
+                                                      );
+                                                    }}
+                                                    title="Başlangıç zamanını değiştir"
+                                                  />
+
+                                                  {/* Sağ resize handle (bitiş zamanı) */}
+                                                  <div
+                                                    className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-white/20 transition-colors"
+                                                    onMouseDown={(e) => {
+                                                      e.stopPropagation();
+                                                      handleResizeStart(
+                                                        e,
+                                                        reservation.id,
+                                                        "end"
+                                                      );
+                                                    }}
+                                                    title="Bitiş zamanını değiştir"
+                                                  />
                                                 </div>
-
-                                                {/* Sürükleme göstergesi */}
-                                                <div className="absolute top-1 right-1 w-2 h-2 bg-white/30 rounded-full pointer-events-none" />
-
-                                                {/* Resize handle'ları */}
-                                                {/* Sol resize handle (başlangıç zamanı) */}
-                                                <div
-                                                  className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-white/20 transition-colors"
-                                                  onMouseDown={(e) => {
-                                                    e.stopPropagation();
-                                                    handleResizeStart(
-                                                      e,
-                                                      reservation.id,
-                                                      "start"
-                                                    );
-                                                  }}
-                                                  title="Başlangıç zamanını değiştir"
-                                                />
-
-                                                {/* Sağ resize handle (bitiş zamanı) */}
-                                                <div
-                                                  className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-white/20 transition-colors"
-                                                  onMouseDown={(e) => {
-                                                    e.stopPropagation();
-                                                    handleResizeStart(
-                                                      e,
-                                                      reservation.id,
-                                                      "end"
-                                                    );
-                                                  }}
-                                                  title="Bitiş zamanını değiştir"
-                                                />
-                                              </div>
-                                            );
-                                          })}
-                                      </div>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            ))}
-                          </div>
-                        )
-                      )}
+                                              );
+                                            })}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              ))}
+                            </div>
+                          )
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
