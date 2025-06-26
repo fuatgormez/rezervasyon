@@ -122,24 +122,25 @@ export default function ReservationPanel() {
     time: string;
   } | null>(null);
 
-  // Resize için state'ler
+  const [resizeHoveredCell, setResizeHoveredCell] = useState<{
+    tableId: string;
+    time: string;
+  } | null>(null);
+
+  // Yeni sürükleyerek resize için state'ler
   const [dragResizing, setDragResizing] = useState<{
     id: string;
     direction: "start" | "end";
     startX: number;
+    startY: number;
     originalStartTime: string;
     originalEndTime: string;
-    tableId: string;
+    tableId?: string;
   } | null>(null);
 
   const [dragResizePreview, setDragResizePreview] = useState<{
     startTime: string;
     endTime: string;
-  } | null>(null);
-
-  const [resizeHoveredCell, setResizeHoveredCell] = useState<{
-    tableId: string;
-    time: string;
   } | null>(null);
 
   // Refs
@@ -213,18 +214,10 @@ export default function ReservationPanel() {
           if (snapshot.exists()) {
             const reservationsData = snapshot.val();
             const selectedDateStr = format(selectedDate, "yyyy-MM-dd");
-            console.log("🔍 Debug: Selected date:", selectedDateStr);
-            console.log("🔍 Debug: All reservations data:", reservationsData);
-
             const loadedReservations = Object.entries(reservationsData)
               .filter(([_, data]: [string, any]) => {
                 const reservationDate =
                   data.date || format(new Date(), "yyyy-MM-dd");
-                console.log(
-                  `🔍 Debug: Reservation date: ${reservationDate}, Selected date: ${selectedDateStr}, Match: ${
-                    reservationDate === selectedDateStr
-                  }`
-                );
                 return reservationDate === selectedDateStr;
               })
               .map(([id, data]: [string, any]) => ({
@@ -238,10 +231,8 @@ export default function ReservationPanel() {
                 note: data.note || "",
                 date: data.date || format(new Date(), "yyyy-MM-dd"),
               }));
-            console.log("🔍 Debug: Filtered reservations:", loadedReservations);
             setReservations(loadedReservations);
           } else {
-            console.log("🔍 Debug: No reservations found in Firebase");
             setReservations([]);
           }
         });
@@ -372,25 +363,16 @@ export default function ReservationPanel() {
 
   // Get reservation at specific time for a table
   const getReservationAtTime = (tableId: string, time: string) => {
-    console.log(
-      `🔍 getReservationAtTime called: tableId=${tableId}, time=${time}`
-    );
-    console.log(`🔍 Available reservations:`, reservations);
-
-    const found = reservations.find(
+    return reservations.find(
       (res) =>
         res.tableId === tableId &&
         getTimeInMinutes(res.startTime) <= getTimeInMinutes(time) &&
         getTimeInMinutes(res.endTime) > getTimeInMinutes(time)
     );
-
-    console.log(`🔍 Found reservation:`, found);
-    return found;
   };
 
   // Handle card click - directly with reservation object
   const handleCardClick = (reservation: Reservation) => {
-    console.log(`🎯 handleCardClick called with reservation:`, reservation);
     setEditingReservation(reservation);
     setFormValues({
       customerName: reservation.customerName,
@@ -406,14 +388,9 @@ export default function ReservationPanel() {
 
   // Handle cell click
   const handleCellClick = (tableId: string, time: string) => {
-    console.log(`🎯 handleCellClick called: tableId=${tableId}, time=${time}`);
     const existingReservation = getReservationAtTime(tableId, time);
 
     if (existingReservation) {
-      console.log(
-        `🎯 Found existing reservation, editing:`,
-        existingReservation
-      );
       setEditingReservation(existingReservation);
       setFormValues({
         customerName: existingReservation.customerName,
@@ -425,7 +402,6 @@ export default function ReservationPanel() {
         note: existingReservation.note || "",
       });
     } else {
-      console.log(`🎯 No existing reservation found, creating new one`);
       const endTime = addTimeMinutes(time, 60); // Default 1 hour duration
       setEditingReservation(null);
       setFormValues({
@@ -721,7 +697,7 @@ export default function ReservationPanel() {
     toast.dismiss("resize-toast");
   };
 
-  // Yeni sürükleyerek resize handler'ları
+  // Yeni, temiz resize fonksiyonu
   const handleDragResizeStart = (
     e: React.MouseEvent,
     reservationId: string,
@@ -733,44 +709,39 @@ export default function ReservationPanel() {
     const reservation = reservations.find((r) => r.id === reservationId);
     if (!reservation) return;
 
-    setDragResizing({
+    const dragState = {
       id: reservationId,
       direction,
       startX: e.clientX,
+      startY: e.clientY,
       originalStartTime: reservation.startTime,
       originalEndTime: reservation.endTime,
       tableId: reservation.tableId,
-    });
+    };
 
+    setDragResizing(dragState);
     setDragResizePreview({
       startTime: reservation.startTime,
       endTime: reservation.endTime,
     });
 
-    // Mouse event listeners
+    // Mouse event'lerini document'e ekle
     const handleMouseMove = (e: MouseEvent) => {
-      const currentDragState = dragResizing || {
-        id: reservationId,
-        direction,
-        startX: e.clientX,
-        originalStartTime: reservation.startTime,
-        originalEndTime: reservation.endTime,
-        tableId: reservation.tableId,
-      };
+      if (!dragState) return;
 
-      const deltaX = e.clientX - currentDragState.startX;
+      const deltaX = e.clientX - dragState.startX;
       const pixelsPer15Min = 37.5; // 150px / 4 = 37.5px per 15 minutes
 
       // 15 dakikalık adımları hesapla
       const steps15Min = Math.round(deltaX / pixelsPer15Min);
       const minutesDelta = steps15Min * 15;
 
-      let newStartTime = currentDragState.originalStartTime;
-      let newEndTime = currentDragState.originalEndTime;
+      let newStartTime = dragState.originalStartTime;
+      let newEndTime = dragState.originalEndTime;
 
-      if (currentDragState.direction === "start") {
+      if (dragState.direction === "start") {
         const newStartMinutes =
-          getTimeInMinutes(currentDragState.originalStartTime) + minutesDelta;
+          getTimeInMinutes(dragState.originalStartTime) + minutesDelta;
         newStartTime = formatTime(Math.max(0, newStartMinutes));
 
         // Başlangıç zamanı bitiş zamanından sonra olamaz
@@ -779,7 +750,7 @@ export default function ReservationPanel() {
         }
       } else {
         const newEndMinutes =
-          getTimeInMinutes(currentDragState.originalEndTime) + minutesDelta;
+          getTimeInMinutes(dragState.originalEndTime) + minutesDelta;
         newEndTime = formatTime(
           Math.max(getTimeInMinutes(newStartTime) + 15, newEndMinutes)
         );
@@ -796,38 +767,28 @@ export default function ReservationPanel() {
       });
 
       // Resize edilen cell'i işaretle
-      const currentTime =
-        currentDragState.direction === "start" ? newStartTime : newEndTime;
-      setResizeHoveredCell({
-        tableId: currentDragState.tableId,
-        time: currentTime,
-      });
+      if (dragState.tableId) {
+        const currentTime =
+          dragState.direction === "start" ? newStartTime : newEndTime;
+        setResizeHoveredCell({ tableId: dragState.tableId, time: currentTime });
+      }
     };
 
     const handleMouseUp = async (e: MouseEvent) => {
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
 
-      if (!dragResizePreview) {
+      if (!dragResizePreview || !dragState) {
         setDragResizing(null);
         setDragResizePreview(null);
         setResizeHoveredCell(null);
         return;
       }
 
-      const currentDragState = dragResizing || {
-        id: reservationId,
-        direction,
-        startX: e.clientX,
-        originalStartTime: reservation.startTime,
-        originalEndTime: reservation.endTime,
-        tableId: reservation.tableId,
-      };
-
       // Değişiklik olup olmadığını kontrol et
       if (
-        dragResizePreview.startTime === currentDragState.originalStartTime &&
-        dragResizePreview.endTime === currentDragState.originalEndTime
+        dragResizePreview.startTime === dragState.originalStartTime &&
+        dragResizePreview.endTime === dragState.originalEndTime
       ) {
         setDragResizing(null);
         setDragResizePreview(null);
@@ -836,16 +797,14 @@ export default function ReservationPanel() {
       }
 
       try {
-        const reservationToUpdate = reservations.find(
-          (r) => r.id === reservationId
-        );
-        if (!reservationToUpdate) return;
+        const reservation = reservations.find((r) => r.id === reservationId);
+        if (!reservation) return;
 
         // Çakışma kontrolü
         const isOverlapping = reservations.some((res) => {
-          if (res.id === reservationToUpdate.id) return false;
-          if (res.tableId !== reservationToUpdate.tableId) return false;
-          if (res.date !== reservationToUpdate.date) return false;
+          if (res.id === reservation.id) return false;
+          if (res.tableId !== reservation.tableId) return false;
+          if (res.date !== reservation.date) return false;
 
           const resStart = getTimeInMinutes(res.startTime);
           const resEnd = getTimeInMinutes(res.endTime);
@@ -862,15 +821,12 @@ export default function ReservationPanel() {
 
         // Firebase güncelleme
         const updatedReservation = {
-          ...reservationToUpdate,
+          ...reservation,
           startTime: dragResizePreview.startTime,
           endTime: dragResizePreview.endTime,
         };
 
-        const reservationRef = ref(
-          db,
-          `reservations/${reservationToUpdate.id}`
-        );
+        const reservationRef = ref(db, `reservations/${reservation.id}`);
         await update(reservationRef, updatedReservation);
 
         toast.success("Rezervasyon saati güncellendi");
@@ -1398,12 +1354,12 @@ export default function ReservationPanel() {
                                       }
                                     }}
                                   >
-                                    {/* Kart taşıma veya resize sırasında sub-slots göster */}
+                                    {/* Sadece kart taşıma veya resize sırasında sub-slots göster */}
                                     {((draggingReservation &&
                                       hoveredCell?.tableId === table.id) ||
-                                      (resizeHoveredCell?.tableId ===
-                                        table.id &&
-                                        resizeHoveredCell?.time === time)) && (
+                                      (dragResizing &&
+                                        resizeHoveredCell?.tableId ===
+                                          table.id)) && (
                                       <div className="absolute inset-0 flex">
                                         {/* 15 dakika */}
                                         <div
@@ -1412,13 +1368,11 @@ export default function ReservationPanel() {
                                             e.stopPropagation();
                                             const [hour] = time.split(":");
                                             const subTime = `${hour}:15`;
-                                            if (draggingReservation) {
-                                              handleDrop(
-                                                e as any,
-                                                table.id,
-                                                subTime
-                                              );
-                                            }
+                                            handleDrop(
+                                              e as any,
+                                              table.id,
+                                              subTime
+                                            );
                                           }}
                                         >
                                           <span className="text-xs text-cyan-700 font-medium opacity-80">
@@ -1432,13 +1386,11 @@ export default function ReservationPanel() {
                                             e.stopPropagation();
                                             const [hour] = time.split(":");
                                             const subTime = `${hour}:30`;
-                                            if (draggingReservation) {
-                                              handleDrop(
-                                                e as any,
-                                                table.id,
-                                                subTime
-                                              );
-                                            }
+                                            handleDrop(
+                                              e as any,
+                                              table.id,
+                                              subTime
+                                            );
                                           }}
                                         >
                                           <span className="text-xs text-cyan-700 font-medium opacity-80">
@@ -1452,13 +1404,11 @@ export default function ReservationPanel() {
                                             e.stopPropagation();
                                             const [hour] = time.split(":");
                                             const subTime = `${hour}:45`;
-                                            if (draggingReservation) {
-                                              handleDrop(
-                                                e as any,
-                                                table.id,
-                                                subTime
-                                              );
-                                            }
+                                            handleDrop(
+                                              e as any,
+                                              table.id,
+                                              subTime
+                                            );
                                           }}
                                         >
                                           <span className="text-xs text-cyan-700 font-medium opacity-80">
@@ -1477,13 +1427,11 @@ export default function ReservationPanel() {
                                               .toString()
                                               .padStart(2, "0");
                                             const subTime = `${nextHour}:00`;
-                                            if (draggingReservation) {
-                                              handleDrop(
-                                                e as any,
-                                                table.id,
-                                                subTime
-                                              );
-                                            }
+                                            handleDrop(
+                                              e as any,
+                                              table.id,
+                                              subTime
+                                            );
                                           }}
                                         >
                                           <span className="text-xs text-cyan-700 font-medium opacity-80">
@@ -1588,34 +1536,11 @@ export default function ReservationPanel() {
                                                 )
                                             );
 
-                                            console.log(
-                                              `🎯 Debug Card: ${reservation.customerName} (${reservation.id})`
-                                            );
-                                            console.log(
-                                              `🎯 Raw times: ${displayStartTime} - ${displayEndTime}`
-                                            );
-                                            console.log(
-                                              `🎯 Normalized times: ${normalize(
-                                                displayStartTime
-                                              )} - ${normalizeForEndTime(
-                                                displayEndTime
-                                              )}`
-                                            );
-                                            console.log(
-                                              `🎯 TimeSlots indices: start=${startIdx}, end=${endIdx}`
-                                            );
-                                            console.log(
-                                              `🎯 TimeSlots length: ${timeSlots.length}`
-                                            );
-
                                             if (
                                               startIdx === -1 ||
                                               endIdx === -1 ||
                                               endIdx <= startIdx
                                             ) {
-                                              console.log(
-                                                `🎯 Card not rendered: startIdx=${startIdx}, endIdx=${endIdx}`
-                                              );
                                               return null;
                                             }
 
@@ -1638,7 +1563,7 @@ export default function ReservationPanel() {
                                                     ? "opacity-50 cursor-grabbing"
                                                     : dragResizing?.id ===
                                                       reservation.id
-                                                    ? "ring-2 ring-cyan-400 ring-opacity-75 cursor-pointer opacity-80"
+                                                    ? "ring-2 ring-cyan-400 ring-opacity-75 cursor-pointer"
                                                     : resizingReservation?.id ===
                                                       reservation.id
                                                     ? "ring-2 ring-blue-400 ring-opacity-75 cursor-pointer"
@@ -1673,13 +1598,21 @@ export default function ReservationPanel() {
                                                   handleDragStart(reservation);
                                                 }}
                                                 onClick={(e) => {
+                                                  // Resize sırasında popup açılmasını engelle
+                                                  if (
+                                                    dragResizing?.id ===
+                                                    reservation.id
+                                                  ) {
+                                                    e.stopPropagation();
+                                                    e.preventDefault();
+                                                    return;
+                                                  }
                                                   e.stopPropagation();
                                                   handleCardClick(reservation);
                                                 }}
                                               >
                                                 {/* Modern gradient overlay */}
                                                 <div className="absolute inset-0 bg-gradient-to-r from-black/20 to-transparent pointer-events-none" />
-
                                                 {/* Ana içerik */}
                                                 <div className="relative z-10 h-full flex flex-col justify-center px-3 py-1">
                                                   {/* Kompakt gösterim */}
@@ -1698,54 +1631,51 @@ export default function ReservationPanel() {
                                                     </div>
                                                   </div>
                                                 </div>
-
                                                 {/* Sürükleme göstergesi */}
                                                 <div className="absolute top-1 right-1 w-2 h-2 bg-white/30 rounded-full pointer-events-none" />
+                                                {/* Resize handle'ları */}
+                                                <>
+                                                  {/* Sol resize handle (başlangıç zamanı) */}
+                                                  <div
+                                                    className="absolute left-0 top-0 bottom-0 w-4 cursor-ew-resize hover:bg-white/60 transition-colors group z-30 bg-white/20"
+                                                    onMouseDown={(e) => {
+                                                      e.stopPropagation();
+                                                      e.preventDefault();
+                                                      handleDragResizeStart(
+                                                        e,
+                                                        reservation.id,
+                                                        "start"
+                                                      );
+                                                    }}
+                                                    onDragStart={(e) =>
+                                                      e.preventDefault()
+                                                    }
+                                                    title="Başlangıç zamanını değiştir"
+                                                  >
+                                                    <div className="absolute left-0.5 top-1/2 transform -translate-y-1/2 w-1 h-6 bg-white/80 rounded-full group-hover:bg-white transition-colors shadow-sm" />
+                                                  </div>
 
-                                                {/* Resize handle'ları - sadece resize aktif değilken */}
-                                                {!dragResizing && (
-                                                  <>
-                                                    {/* Sol resize handle (başlangıç zamanı) */}
-                                                    <div
-                                                      className="absolute left-0 top-0 bottom-0 w-4 cursor-ew-resize hover:bg-white/40 transition-colors group z-20"
-                                                      onMouseDown={(e) => {
-                                                        e.stopPropagation();
-                                                        e.preventDefault();
-                                                        handleDragResizeStart(
-                                                          e,
-                                                          reservation.id,
-                                                          "start"
-                                                        );
-                                                      }}
-                                                      onDragStart={(e) =>
-                                                        e.preventDefault()
-                                                      }
-                                                      title="Başlangıç zamanını değiştir"
-                                                    >
-                                                      <div className="absolute left-0.5 top-1/2 transform -translate-y-1/2 w-1 h-6 bg-white/80 rounded-full group-hover:bg-white transition-colors shadow-sm" />
-                                                    </div>
-
-                                                    {/* Sağ resize handle (bitiş zamanı) */}
-                                                    <div
-                                                      className="absolute right-0 top-0 bottom-0 w-4 cursor-ew-resize hover:bg-white/40 transition-colors group z-20"
-                                                      onMouseDown={(e) => {
-                                                        e.stopPropagation();
-                                                        e.preventDefault();
-                                                        handleDragResizeStart(
-                                                          e,
-                                                          reservation.id,
-                                                          "end"
-                                                        );
-                                                      }}
-                                                      onDragStart={(e) =>
-                                                        e.preventDefault()
-                                                      }
-                                                      title="Bitiş zamanını değiştir"
-                                                    >
-                                                      <div className="absolute right-0.5 top-1/2 transform -translate-y-1/2 w-1 h-6 bg-white/80 rounded-full group-hover:bg-white transition-colors shadow-sm" />
-                                                    </div>
-                                                  </>
-                                                )}
+                                                  {/* Sağ resize handle (bitiş zamanı) */}
+                                                  <div
+                                                    className="absolute right-0 top-0 bottom-0 w-4 cursor-ew-resize hover:bg-white/60 transition-colors group z-30 bg-white/20"
+                                                    onMouseDown={(e) => {
+                                                      e.stopPropagation();
+                                                      e.preventDefault();
+                                                      handleDragResizeStart(
+                                                        e,
+                                                        reservation.id,
+                                                        "end"
+                                                      );
+                                                    }}
+                                                    onDragStart={(e) =>
+                                                      e.preventDefault()
+                                                    }
+                                                    title="Bitiş zamanını değiştir"
+                                                  >
+                                                    <div className="absolute right-0.5 top-1/2 transform -translate-y-1/2 w-1 h-6 bg-white/80 rounded-full group-hover:bg-white transition-colors shadow-sm" />
+                                                  </div>
+                                                                                                </>
+                                              </div>
                                               </div>
                                             );
                                           })}
