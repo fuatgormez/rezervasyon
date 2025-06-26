@@ -1,39 +1,64 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { verifyJWTToken } from "./lib/jwt";
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // Cookie'den token al
   const authToken = request.cookies.get("auth-token");
 
-  // Public sayfalar
-  const publicPages = ["/login", "/register"];
+  // Header'dan da token kontrolü yap
+  const authHeader = request.headers.get("authorization");
+
+  // Herhangi birinden token varsa kabul et
+  const hasToken = authToken?.value || authHeader;
+
+  // Public sayfalar - bu sayfalara herkes erişebilir
+  const publicPages = [
+    "/login",
+    "/register",
+    "/setup-demo",
+    "/", // Ana sayfa da public olsun
+  ];
+
   const isPublicPage = publicPages.includes(pathname);
 
-  // Eğer kullanıcı giriş yapmışsa ve public sayfaya erişmeye çalışıyorsa
-  if (authToken && isPublicPage) {
-    // Ana sayfaya yönlendir
-    const response = NextResponse.redirect(new URL("/", request.url));
-    // Cache'i temizle
-    response.headers.set("Cache-Control", "no-store, must-revalidate");
-    return response;
+  // Sadece önemli durumları logla
+  if (!hasToken && !isPublicPage) {
+    console.log(`❌ Middleware - No token, redirecting from: ${pathname}`);
   }
 
-  // Eğer kullanıcı giriş yapmamışsa ve private sayfaya erişmeye çalışıyorsa
-  if (!authToken && !isPublicPage) {
-    // Login sayfasına yönlendir
+  // Eğer public sayfaya erişiliyorsa, izin ver
+  if (isPublicPage) {
+    return NextResponse.next();
+  }
+
+  // Private sayfa erişimi için token kontrolü
+  if (!hasToken) {
+    // Token yoksa login'e yönlendir (hangi sayfadan geldiğini belirt)
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("from", pathname);
-    const response = NextResponse.redirect(loginUrl);
-    // Cache'i temizle
-    response.headers.set("Cache-Control", "no-store, must-revalidate");
-    return response;
+    return NextResponse.redirect(loginUrl);
   }
 
-  // Normal sayfa yüklemesi
-  const response = NextResponse.next();
-  // Cache'i temizle
-  response.headers.set("Cache-Control", "no-store, must-revalidate");
-  return response;
+  // Token geçerlilik kontrolü
+  const tokenValue = authToken?.value || authHeader;
+
+  // JWT Token kontrolü
+  if (tokenValue) {
+    const decoded = verifyJWTToken(tokenValue);
+    if (decoded) {
+      return NextResponse.next();
+    } else {
+      const loginUrl = new URL("/login", request.url);
+      loginUrl.searchParams.set("from", pathname);
+      return NextResponse.redirect(loginUrl);
+    }
+  }
+  const loginUrl = new URL("/login", request.url);
+  loginUrl.searchParams.set("from", pathname);
+  return NextResponse.redirect(loginUrl);
 }
 
 export const config = {

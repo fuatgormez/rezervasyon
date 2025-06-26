@@ -1,6 +1,5 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { Suspense } from "react";
 import { Loader2 } from "lucide-react";
@@ -25,31 +24,6 @@ function LoadingSpinner() {
 }
 
 export default function AdminPage() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-
-  // Oturum durumunu kontrol et
-  useEffect(() => {
-    // Kullanıcı oturum durumunu localStorage'dan kontrol et
-    const checkLoginStatus = () => {
-      const userStatus = localStorage.getItem("userLoggedIn");
-      if (userStatus === "true") {
-        setIsLoggedIn(true);
-      }
-      setIsLoading(false);
-    };
-
-    // Tarayıcı tarafında çalıştığından emin ol
-    if (typeof window !== "undefined") {
-      checkLoginStatus();
-    }
-  }, []);
-
-  // Yükleme durumunda spinner göster
-  if (isLoading) {
-    return <LoadingSpinner />;
-  }
-
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
       {/* Ana içerik */}

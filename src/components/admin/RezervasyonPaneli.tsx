@@ -30,11 +30,17 @@ import {
   Filter,
   X,
   Info,
+  User,
+  Building,
 } from "lucide-react";
 import { db } from "@/lib/firebase/config";
 import { ref, get, onValue, set, update, remove } from "firebase/database";
 import toast from "react-hot-toast";
 import DraggableReservationCard from "../reservation/DraggableReservationCard";
+import RestaurantSelector from "../RestaurantSelector";
+import { useAuthContext } from "@/lib/firebase/context";
+import { useAuth } from "@/lib/firebase/hooks";
+import { useRouter } from "next/navigation";
 
 // Time slots - Saatlik periyotlar
 const timeSlots: string[] = [];
@@ -96,6 +102,26 @@ interface Category {
 }
 
 export default function ReservationPanel() {
+  // Multi-tenant context
+  const { selectedRestaurant, company, user } = useAuthContext();
+  const { logout } = useAuth();
+  const router = useRouter();
+
+  // Mock restaurant data eğer selectedRestaurant yoksa - useMemo ile optimize et
+  const currentRestaurant = useMemo(() => {
+    if (selectedRestaurant) return selectedRestaurant;
+
+    return {
+      id: "restaurant-1",
+      name: "Test Restaurant",
+      companyId: "company-1",
+      address: "Test Address",
+      phone: "123456789",
+      email: "test@restaurant.com",
+      isActive: true,
+    };
+  }, [selectedRestaurant]);
+
   // State declarations
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
@@ -142,6 +168,9 @@ export default function ReservationPanel() {
     time: string;
   } | null>(null);
 
+  // User info dropdown
+  const [showUserInfo, setShowUserInfo] = useState(false);
+
   // Refs
   const calendarRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLDivElement>(null);
@@ -160,51 +189,386 @@ export default function ReservationPanel() {
     date: format(new Date(), "yyyy-MM-dd"),
   });
 
+  // Auto scroll to current time on load
+  useEffect(() => {
+    const scrollToCurrentTime = () => {
+      console.log("🔧 scrollToCurrentTime called");
+      if (mainScrollRef.current) {
+        const now = new Date();
+        const hour = now.getHours();
+        const minute = now.getMinutes();
+        const currentMinutes = hour * 60 + minute;
+        const baseMinutes = 7 * 60; // 07:00
+        const relativeMinutes = currentMinutes - baseMinutes;
+
+        console.log("🔧 Current time:", {
+          hour,
+          minute,
+          currentMinutes,
+          baseMinutes,
+          relativeMinutes,
+        });
+
+        // Eğer saat 07:00'dan önce ise (gece saatleri), ertesi güne ekle
+        let scrollPosition;
+        if (hour < 7) {
+          const adjustedMinutes = (hour + 24) * 60 + minute;
+          const adjustedRelative = adjustedMinutes - baseMinutes;
+          scrollPosition = (adjustedRelative / 60) * 150; // Her saat 150px
+        } else {
+          scrollPosition = (relativeMinutes / 60) * 150; // Her saat 150px
+        }
+
+        // Sayfanın ortasına getir
+        const containerWidth = mainScrollRef.current.clientWidth;
+        const centerOffset = containerWidth / 2;
+        const finalScrollPosition = Math.max(0, scrollPosition - centerOffset);
+
+        console.log("🔧 Scroll calculation:", {
+          scrollPosition,
+          containerWidth,
+          centerOffset,
+          finalScrollPosition,
+        });
+
+        setTimeout(() => {
+          if (mainScrollRef.current) {
+            mainScrollRef.current.scrollLeft = finalScrollPosition;
+            console.log("🔧 Scrolled to position:", finalScrollPosition);
+          }
+        }, 100); // Biraz gecikme ile scroll yap
+      } else {
+        console.log("🔧 mainScrollRef.current is null");
+      }
+    };
+
+    // Data yüklendikten sonra scroll yap
+    if (!loading && tables.length > 0) {
+      console.log(
+        "🔧 Triggering scrollToCurrentTime. Loading:",
+        loading,
+        "Tables:",
+        tables.length
+      );
+      scrollToCurrentTime();
+    }
+  }, [loading, tables.length]);
+
   // Load data
   useEffect(() => {
     const loadData = async () => {
+      console.log("🔧 loadData called. currentRestaurant:", currentRestaurant);
+      if (!currentRestaurant) {
+        console.log("🔧 No currentRestaurant, exiting loadData");
+        setLoading(false);
+        return;
+      }
+
       try {
         setLoading(true);
+        console.log("🔧 Loading data for restaurant:", currentRestaurant.id);
 
-        // Load categories
+        // Load categories for selected restaurant
         const categoriesRef = ref(db, "table_categories");
         const categoriesSnapshot = await get(categoriesRef);
 
+        console.log(
+          "🔧 Categories snapshot exists:",
+          categoriesSnapshot.exists()
+        );
         if (categoriesSnapshot.exists()) {
           const categoriesData = categoriesSnapshot.val();
-          const loadedCategories = Object.entries(categoriesData).map(
-            ([id, data]: [string, any]) => ({
+          console.log("🔧 Raw categories data:", categoriesData);
+
+          // Mevcut restaurant ID'leri kontrol et
+          const restaurantIds = Object.values(categoriesData).map(
+            (data: any) => data.restaurantId
+          );
+          console.log("🔧 Available restaurant IDs in categories:", [
+            ...new Set(restaurantIds),
+          ]);
+          console.log("🔧 Looking for restaurant ID:", currentRestaurant.id);
+
+          const loadedCategories = Object.entries(categoriesData)
+            .filter(
+              ([id, data]: [string, any]) =>
+                data.restaurantId === currentRestaurant.id
+            )
+            .map(([id, data]: [string, any]) => ({
               id,
               name: data.name,
               color: data.color || "#4f46e5",
               borderColor: data.borderColor || "#3730a3",
               backgroundColor: data.backgroundColor || "#eef2ff",
-            })
+            }));
+          console.log(
+            "🔧 Filtered categories for restaurant:",
+            loadedCategories
           );
-          setCategories(loadedCategories);
 
-          // Set first category as default if none is selected
-          if (loadedCategories.length > 0 && !activeCategory) {
-            setActiveCategory(loadedCategories[0].id);
+          if (loadedCategories.length === 0) {
+            console.log(
+              "🔧 No categories found for restaurant, loading demo categories"
+            );
+            // Demo kategoriler yükle
+            const demoCategories = [
+              {
+                id: "salon",
+                name: "Salon",
+                color: "#4f46e5",
+                borderColor: "#3730a3",
+                backgroundColor: "#eef2ff",
+              },
+              {
+                id: "terrace",
+                name: "Teras",
+                color: "#059669",
+                borderColor: "#047857",
+                backgroundColor: "#ecfccb",
+              },
+              {
+                id: "vip",
+                name: "VIP",
+                color: "#dc2626",
+                borderColor: "#b91c1c",
+                backgroundColor: "#fef2f2",
+              },
+            ];
+            setCategories(demoCategories);
+            setActiveCategory(demoCategories[0].id);
+          } else {
+            setCategories(loadedCategories);
+            // Set first category as default if none is selected
+            if (loadedCategories.length > 0 && !activeCategory) {
+              setActiveCategory(loadedCategories[0].id);
+            }
           }
+        } else {
+          // Demo kategoriler yükle
+          const demoCategories = [
+            {
+              id: "salon",
+              name: "Salon",
+              color: "#4f46e5",
+              borderColor: "#3730a3",
+              backgroundColor: "#eef2ff",
+            },
+            {
+              id: "terrace",
+              name: "Teras",
+              color: "#059669",
+              borderColor: "#047857",
+              backgroundColor: "#ecfccb",
+            },
+            {
+              id: "vip",
+              name: "VIP",
+              color: "#dc2626",
+              borderColor: "#b91c1c",
+              backgroundColor: "#fef2f2",
+            },
+          ];
+          console.log("🔧 Loading demo categories:", demoCategories);
+          setCategories(demoCategories);
+          setActiveCategory(demoCategories[0].id);
         }
 
-        // Load tables
+        // Load tables for selected restaurant
         const tablesRef = ref(db, "tables");
         const tablesSnapshot = await get(tablesRef);
 
+        console.log("🔧 Tables snapshot exists:", tablesSnapshot.exists());
         if (tablesSnapshot.exists()) {
           const tablesData = tablesSnapshot.val();
-          const loadedTables = Object.entries(tablesData).map(
-            ([id, data]: [string, any]) => ({
+          console.log("🔧 Raw tables data:", tablesData);
+
+          // Mevcut restaurant ID'leri kontrol et
+          const restaurantIds = Object.values(tablesData).map(
+            (data: any) => data.restaurantId
+          );
+          console.log("🔧 Available restaurant IDs in tables:", [
+            ...new Set(restaurantIds),
+          ]);
+
+          const loadedTables = Object.entries(tablesData)
+            .filter(
+              ([id, data]: [string, any]) =>
+                data.restaurantId === currentRestaurant.id
+            )
+            .map(([id, data]: [string, any]) => ({
               id,
               number: data.number || parseInt(id.replace("table", "")) || 0,
               capacity: data.capacity || 2,
               categoryId: data.category_id || data.category || "salon",
               status: data.status === "active" ? "Available" : "Unavailable",
-            })
-          );
-          setTables(loadedTables);
+            }));
+          console.log("🔧 Filtered tables for restaurant:", loadedTables);
+
+          if (loadedTables.length === 0) {
+            console.log(
+              "🔧 No tables found for restaurant, loading demo tables"
+            );
+            // Demo masalar yükle
+            const demoTables = [
+              // Salon masaları
+              {
+                id: "table1",
+                number: 1,
+                capacity: 2,
+                categoryId: "salon",
+                status: "Available",
+              },
+              {
+                id: "table2",
+                number: 2,
+                capacity: 4,
+                categoryId: "salon",
+                status: "Available",
+              },
+              {
+                id: "table3",
+                number: 3,
+                capacity: 6,
+                categoryId: "salon",
+                status: "Available",
+              },
+              {
+                id: "table4",
+                number: 4,
+                capacity: 4,
+                categoryId: "salon",
+                status: "Available",
+              },
+              {
+                id: "table5",
+                number: 5,
+                capacity: 2,
+                categoryId: "salon",
+                status: "Available",
+              },
+              // Teras masaları
+              {
+                id: "table6",
+                number: 6,
+                capacity: 4,
+                categoryId: "terrace",
+                status: "Available",
+              },
+              {
+                id: "table7",
+                number: 7,
+                capacity: 6,
+                categoryId: "terrace",
+                status: "Available",
+              },
+              {
+                id: "table8",
+                number: 8,
+                capacity: 8,
+                categoryId: "terrace",
+                status: "Available",
+              },
+              // VIP masaları
+              {
+                id: "table9",
+                number: 9,
+                capacity: 4,
+                categoryId: "vip",
+                status: "Available",
+              },
+              {
+                id: "table10",
+                number: 10,
+                capacity: 6,
+                categoryId: "vip",
+                status: "Available",
+              },
+            ];
+            console.log("🔧 Setting demo tables:", demoTables.length);
+            setTables(demoTables);
+          } else {
+            console.log("🔧 Setting loaded tables:", loadedTables.length);
+            setTables(loadedTables);
+          }
+        } else {
+          // Demo masalar yükle
+          const demoTables = [
+            // Salon masaları
+            {
+              id: "table1",
+              number: 1,
+              capacity: 2,
+              categoryId: "salon",
+              status: "Available",
+            },
+            {
+              id: "table2",
+              number: 2,
+              capacity: 4,
+              categoryId: "salon",
+              status: "Available",
+            },
+            {
+              id: "table3",
+              number: 3,
+              capacity: 6,
+              categoryId: "salon",
+              status: "Available",
+            },
+            {
+              id: "table4",
+              number: 4,
+              capacity: 4,
+              categoryId: "salon",
+              status: "Available",
+            },
+            {
+              id: "table5",
+              number: 5,
+              capacity: 2,
+              categoryId: "salon",
+              status: "Available",
+            },
+            // Teras masaları
+            {
+              id: "table6",
+              number: 6,
+              capacity: 4,
+              categoryId: "terrace",
+              status: "Available",
+            },
+            {
+              id: "table7",
+              number: 7,
+              capacity: 6,
+              categoryId: "terrace",
+              status: "Available",
+            },
+            {
+              id: "table8",
+              number: 8,
+              capacity: 8,
+              categoryId: "terrace",
+              status: "Available",
+            },
+            // VIP masaları
+            {
+              id: "table9",
+              number: 9,
+              capacity: 4,
+              categoryId: "vip",
+              status: "Available",
+            },
+            {
+              id: "table10",
+              number: 10,
+              capacity: 6,
+              categoryId: "vip",
+              status: "Available",
+            },
+          ];
+          console.log("🔧 Loading demo tables:", demoTables);
+          setTables(demoTables);
         }
 
         // Load reservations
@@ -220,12 +584,13 @@ export default function ReservationPanel() {
               .filter(([_, data]: [string, any]) => {
                 const reservationDate =
                   data.date || format(new Date(), "yyyy-MM-dd");
+                const isCorrectRestaurant =
+                  data.restaurantId === currentRestaurant.id;
+                const isCorrectDate = reservationDate === selectedDateStr;
                 console.log(
-                  `🔍 Debug: Reservation date: ${reservationDate}, Selected date: ${selectedDateStr}, Match: ${
-                    reservationDate === selectedDateStr
-                  }`
+                  `🔍 Debug: Reservation date: ${reservationDate}, Selected date: ${selectedDateStr}, Restaurant match: ${isCorrectRestaurant}, Date match: ${isCorrectDate}`
                 );
-                return reservationDate === selectedDateStr;
+                return isCorrectDate && isCorrectRestaurant;
               })
               .map(([id, data]: [string, any]) => ({
                 id,
@@ -255,7 +620,16 @@ export default function ReservationPanel() {
     };
 
     loadData();
-  }, [selectedDate, activeCategory]);
+  }, [selectedDate, activeCategory, currentRestaurant]);
+
+  // State güncellemelerini takip et
+  useEffect(() => {
+    console.log("🔧 Categories state updated:", categories.length);
+  }, [categories]);
+
+  useEffect(() => {
+    console.log("🔧 Tables state updated:", tables.length);
+  }, [tables]);
 
   // Close calendar when clicking outside
   useEffect(() => {
@@ -273,6 +647,24 @@ export default function ReservationPanel() {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
+
+  // Close user info dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      // User info dropdown için ref eklemek yerine, basit bir çözüm
+      if (showUserInfo) {
+        const target = event.target as Element;
+        if (!target.closest(".relative")) {
+          setShowUserInfo(false);
+        }
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showUserInfo]);
 
   // Navigation functions
   const goToPreviousDay = () => {
@@ -341,9 +733,10 @@ export default function ReservationPanel() {
     const grouped: Record<string, { category: Category; tables: Table[] }> = {};
 
     categories.forEach((category) => {
+      const categoryTables = tables.filter((t) => t.categoryId === category.id);
       grouped[category.id] = {
         category,
-        tables: tables.filter((t) => t.categoryId === category.id),
+        tables: categoryTables,
       };
     });
 
@@ -426,7 +819,20 @@ export default function ReservationPanel() {
       });
     } else {
       console.log(`🎯 No existing reservation found, creating new one`);
-      const endTime = addTimeMinutes(time, 60); // Default 1 hour duration
+
+      // timeSlots'tan bir sonraki saati bul
+      const currentIndex = timeSlots.findIndex((slot) => slot === time);
+      const nextIndex = currentIndex + 1;
+      const endTime =
+        nextIndex < timeSlots.length ? timeSlots[nextIndex] : timeSlots[0];
+
+      console.log("🔧 Cell click - setting end time:", {
+        startTime: time,
+        currentIndex,
+        nextIndex,
+        endTime,
+      });
+
       setEditingReservation(null);
       setFormValues({
         customerName: "",
@@ -444,6 +850,12 @@ export default function ReservationPanel() {
 
   // Save reservation
   const handleSaveReservation = async () => {
+    const activeRestaurant = selectedRestaurant || currentRestaurant;
+    if (!activeRestaurant) {
+      toast.error("Lütfen bir restoran seçin");
+      return;
+    }
+
     try {
       const {
         customerName,
@@ -483,6 +895,8 @@ export default function ReservationPanel() {
       }
 
       const reservationData = {
+        companyId: company?.id,
+        restaurantId: activeRestaurant.id,
         customerName,
         guestCount: Number(guestCount),
         startTime,
@@ -491,6 +905,8 @@ export default function ReservationPanel() {
         status,
         note,
         date: reservationDate,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       };
 
       if (editingReservation) {
@@ -939,14 +1355,26 @@ export default function ReservationPanel() {
     }
   };
 
+  const handleLogout = async () => {
+    try {
+      await logout();
+      router.push("/login");
+    } catch (error) {
+      console.error("Logout error:", error);
+      toast.error("Çıkış yaparken hata oluştu");
+    }
+  };
+
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-gray-50 text-gray-800">
       {/* Navbar */}
       <div className="flex justify-between items-center bg-white p-4 border-b border-gray-200 shadow-sm">
         <div className="flex items-center space-x-6">
-          <div className="text-2xl font-bold text-blue-600">
-            Reservation Management
+          <div className="flex items-center space-x-4">
+            <div className="text-2xl font-bold text-blue-600">Zonekult</div>
+            <div className="text-sm text-gray-500">Reservation Management</div>
           </div>
+          <RestaurantSelector />
           <div className="flex space-x-4">
             <Link
               href="/admin"
@@ -987,7 +1415,83 @@ export default function ReservationPanel() {
           >
             Initialize DB
           </Link>
-          <button className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center space-x-1">
+
+          {/* User Info Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setShowUserInfo(!showUserInfo)}
+              className="flex items-center space-x-2 px-3 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+            >
+              <User className="w-4 h-4 text-gray-600" />
+              <span className="text-sm text-gray-700">
+                {user?.email || "User"}
+              </span>
+            </button>
+
+            {showUserInfo && (
+              <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+                <div className="p-4">
+                  <div className="flex items-center space-x-3 mb-3">
+                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                      <User className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <h3 className="font-medium text-gray-900">
+                        {user?.email || "Kullanıcı"}
+                      </h3>
+                      <p className="text-sm text-gray-500">
+                        {user?.role === "SUPER_ADMIN"
+                          ? "Süper Admin"
+                          : user?.role === "COMPANY_ADMIN"
+                          ? "Firma Yöneticisi"
+                          : "Kullanıcı"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-gray-200 pt-3 space-y-2">
+                    <div className="flex items-center space-x-2">
+                      <Building className="w-4 h-4 text-gray-500" />
+                      <div>
+                        <p className="text-sm font-medium text-gray-700">
+                          Firma
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          {company?.name || "Test Company"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center space-x-2">
+                      <Coffee className="w-4 h-4 text-gray-500" />
+                      <div>
+                        <p className="text-sm font-medium text-gray-700">
+                          Restoran
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          {selectedRestaurant?.name || currentRestaurant.name}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-gray-200 p-2">
+                  <button
+                    onClick={() => setShowUserInfo(false)}
+                    className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
+                  >
+                    Kapat
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={handleLogout}
+            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center space-x-1"
+          >
             <LogOut className="w-4 h-4" />
             <span>Logout</span>
           </button>
@@ -1863,12 +2367,33 @@ export default function ReservationPanel() {
                   <select
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
                     value={formValues.startTime}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const newStartTime = e.target.value;
+
+                      // timeSlots'tan bir sonraki saati bul
+                      const currentIndex = timeSlots.findIndex(
+                        (slot) => slot === newStartTime
+                      );
+                      const nextIndex = currentIndex + 1;
+                      const newEndTime =
+                        nextIndex < timeSlots.length
+                          ? timeSlots[nextIndex]
+                          : timeSlots[0];
+
+                      console.log("🔧 Start time changed:", {
+                        newStartTime,
+                        currentIndex,
+                        nextIndex,
+                        newEndTime,
+                        timeSlots: timeSlots.slice(0, 5), // İlk 5 slot'u göster
+                      });
+
                       setFormValues({
                         ...formValues,
-                        startTime: e.target.value,
-                      })
-                    }
+                        startTime: newStartTime,
+                        endTime: newEndTime,
+                      });
+                    }}
                   >
                     {timeSlots.map((time) => (
                       <option key={`start-${time}`} value={time}>
@@ -1889,18 +2414,32 @@ export default function ReservationPanel() {
                       setFormValues({ ...formValues, endTime: e.target.value })
                     }
                   >
-                    {timeSlots.map((time) => (
-                      <option
-                        key={`end-${time}`}
-                        value={time}
-                        disabled={
-                          getTimeInMinutes(time) <=
-                          getTimeInMinutes(formValues.startTime || "19:00")
-                        }
-                      >
-                        {time}
-                      </option>
-                    ))}
+                    {timeSlots.map((time) => {
+                      const isDisabled =
+                        getTimeInMinutes(time) <=
+                        getTimeInMinutes(formValues.startTime || "19:00");
+                      if (time === formValues.endTime) {
+                        console.log("🔧 End time option check:", {
+                          time,
+                          formValuesStartTime: formValues.startTime,
+                          formValuesEndTime: formValues.endTime,
+                          isDisabled,
+                          startTimeMinutes: getTimeInMinutes(
+                            formValues.startTime || "19:00"
+                          ),
+                          endTimeMinutes: getTimeInMinutes(time),
+                        });
+                      }
+                      return (
+                        <option
+                          key={`end-${time}`}
+                          value={time}
+                          disabled={isDisabled}
+                        >
+                          {time}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
               </div>

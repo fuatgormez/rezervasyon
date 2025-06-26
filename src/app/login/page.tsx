@@ -1,18 +1,65 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/firebase/hooks";
 import Image from "next/image";
 import Link from "next/link";
+import { createJWTToken, verifyJWTToken } from "@/lib/jwt";
+import Cookies from "js-cookie";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, error: authError } = useAuth();
+  const { login, user, loading: authLoading, error: authError } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Redirect guard - localStorage ile persist et
+  const [hasRedirected, setHasRedirected] = React.useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("login-redirect-guard") === "true";
+    }
+    return false;
+  });
+
+  // Manual token kontrolü
+  React.useEffect(() => {
+    if (hasRedirected) return; // Zaten yönlendirme yapıldıysa çık
+
+    const checkTokenManually = () => {
+      if (typeof window === "undefined") return;
+
+      const token = Cookies.get("auth-token");
+
+      if (token && !hasRedirected) {
+        // JWT token'ı doğrula
+        const decoded = verifyJWTToken(token);
+        if (decoded) {
+          setHasRedirected(true);
+          localStorage.setItem("login-redirect-guard", "true");
+          router.replace("/admin");
+          return;
+        } else {
+          // Geçersiz token'ı temizle
+          Cookies.remove("auth-token");
+          localStorage.removeItem("auth-token");
+          sessionStorage.removeItem("auth-token");
+        }
+      }
+    };
+
+    // İlk kontrol
+    checkTokenManually();
+
+    // Eğer loading bitmişse ve user varsa yönlendir
+    if (!authLoading && user && !hasRedirected) {
+      setHasRedirected(true);
+      localStorage.setItem("login-redirect-guard", "true");
+      router.replace("/admin");
+    }
+  }, [user, authLoading, router, hasRedirected]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,9 +68,21 @@ export default function LoginPage() {
 
     try {
       console.log("Giriş işlemi başlatılıyor...");
-      await login(email, password);
+      const result = await login(email, password);
       console.log("Giriş başarılı, yönlendiriliyor...");
-      router.push("/");
+
+      // URL'den 'from' parametresini kontrol et
+      const searchParams = new URLSearchParams(window.location.search);
+      const from = searchParams.get("from");
+
+      if (from) {
+        // Eğer belirli bir sayfadan yönlendirildiyse oraya geri git
+        router.push(from);
+      } else {
+        // Varsayılan olarak admin paneline yönlendir
+        router.push("/admin");
+      }
+
       router.refresh(); // Sayfayı yenile
     } catch (err: any) {
       console.error("Login error:", err);
@@ -80,13 +139,14 @@ export default function LoginPage() {
                 htmlFor="email"
                 className="block text-sm font-medium text-gray-700 mb-1"
               >
-                E-posta
+                E-posta veya Kullanıcı Adı
               </label>
               <input
-                type="email"
+                type="text"
                 id="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                placeholder="admin veya admin@zonekult.com"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                 required
               />
@@ -104,6 +164,7 @@ export default function LoginPage() {
                 id="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                placeholder="admin123"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                 required
               />
@@ -121,14 +182,79 @@ export default function LoginPage() {
               {loading ? "Giriş Yapılıyor..." : "Giriş Yap"}
             </button>
 
-            <div className="text-center text-sm text-gray-600">
-              Hesabınız yok mu?{" "}
-              <Link
-                href="/register"
-                className="text-indigo-600 hover:text-indigo-500"
+            {/* Debug butonları */}
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => {
+                  console.log("🔧 Storage Check butonu tıklandı");
+                  console.log(
+                    "🔧 localStorage:",
+                    localStorage.getItem("auth-token")
+                  );
+                  console.log(
+                    "🔧 sessionStorage:",
+                    sessionStorage.getItem("auth-token")
+                  );
+                  console.log("🔧 cookies:", document.cookie);
+
+                  // JWT token oluştur
+                  const testToken = createJWTToken({
+                    email: "admin",
+                    role: "SUPER_ADMIN",
+                    uid: "test-debug",
+                  });
+
+                  localStorage.setItem("auth-token", testToken);
+                  sessionStorage.setItem("auth-token", testToken);
+                  document.cookie = `auth-token=${testToken}; path=/; max-age=${
+                    7 * 24 * 60 * 60
+                  }; SameSite=Lax`;
+
+                  console.log("✅ Token set edildi");
+                  console.log(
+                    "✅ localStorage:",
+                    localStorage.getItem("auth-token")
+                  );
+                  console.log(
+                    "✅ sessionStorage:",
+                    sessionStorage.getItem("auth-token")
+                  );
+                }}
+                className="w-full py-2 px-4 rounded-lg bg-yellow-500 hover:bg-yellow-600 text-white font-medium text-sm"
               >
-                Kayıt Olun
-              </Link>
+                🔧 Manuel Token Set Et
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  console.log("🗑️ Storage Clear butonu tıklandı");
+                  localStorage.removeItem("auth-token");
+                  sessionStorage.removeItem("auth-token");
+                  document.cookie =
+                    "auth-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+                  console.log("✅ Tüm storage'lar temizlendi");
+                }}
+                className="w-full py-2 px-4 rounded-lg bg-red-500 hover:bg-red-600 text-white font-medium text-sm"
+              >
+                🗑️ Storage'ları Temizle
+              </button>
+            </div>
+
+            <div className="text-center text-sm text-gray-600 space-y-2">
+              <div className="bg-blue-50 border border-blue-200 text-blue-700 px-3 py-2 rounded-md">
+                <strong>Test Girişi:</strong> admin / admin123
+              </div>
+              <div>
+                Hesabınız yok mu?{" "}
+                <Link
+                  href="/register"
+                  className="text-indigo-600 hover:text-indigo-500"
+                >
+                  Kayıt Olun
+                </Link>
+              </div>
             </div>
           </form>
         </div>

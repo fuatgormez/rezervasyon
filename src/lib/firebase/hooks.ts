@@ -26,9 +26,9 @@ import { userService } from "@/services/userService";
 import { User, UserRole } from "@/types/user";
 import Cookies from "js-cookie";
 import { useRouter } from "next/navigation";
+import { createJWTToken, verifyJWTToken, JWTPayload } from "../jwt";
 
-// Kullanıcı rolleri için tip tanımlaması
-export type UserRole = "user" | "admin" | "super_admin";
+// Kullanıcı rolleri için tip tanımlaması - User tipinden import edilecek
 
 // Kullanıcı profili arayüzü
 export interface UserProfile {
@@ -47,14 +47,106 @@ export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
   useEffect(() => {
+    // Client-side kontrolü
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const checkAuth = () => {
+      console.log("🔧 checkAuth called");
+
+      // Client-side kontrolü
+      if (typeof window === "undefined") {
+        console.log("🔧 checkAuth - Server-side, skipping");
+        return;
+      }
+
+      let token = Cookies.get("auth-token");
+      console.log("🔧 checkAuth - Cookie token:", token ? "EXISTS" : "NONE");
+
+      // Cookie'de token yoksa localStorage ve sessionStorage'dan kontrol et
+      if (!token) {
+        const localToken = localStorage.getItem("auth-token");
+        const sessionToken = sessionStorage.getItem("auth-token");
+        const backupToken = localToken || sessionToken;
+        console.log(
+          "🔧 checkAuth - localStorage token:",
+          localToken ? "EXISTS" : "NONE"
+        );
+        console.log(
+          "🔧 checkAuth - sessionStorage token:",
+          sessionToken ? "EXISTS" : "NONE"
+        );
+        console.log(
+          "🔧 checkAuth - Backup token:",
+          backupToken ? "EXISTS" : "NONE"
+        );
+        if (backupToken) {
+          console.log("🔄 Token storage'dan cookie'ye geri yükleniyor");
+          // Token'ı hem cookie hem storage'lara kaydet
+          Cookies.set("auth-token", backupToken, {
+            expires: 7,
+            path: "/",
+            sameSite: "lax",
+          });
+          localStorage.setItem("auth-token", backupToken);
+          sessionStorage.setItem("auth-token", backupToken);
+          token = backupToken;
+        }
+      }
+
+      if (token) {
+        // JWT token kontrolü
+        const decoded = verifyJWTToken(token);
+
+        if (decoded) {
+          console.log("✅ checkAuth - JWT valid, setting user:", decoded.email);
+          const userData = {
+            uid: decoded.uid,
+            email: decoded.email,
+            displayName:
+              decoded.role === "SUPER_ADMIN" ? "Super Admin" : "User",
+            role: decoded.role as any,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            lastLoginAt: new Date(),
+            isActive: true,
+          };
+          setUser(userData);
+          setLoading(false);
+          return;
+        } else {
+          console.log("❌ checkAuth - JWT invalid");
+        }
+      }
+
+      console.log("❌ checkAuth - No valid token, clearing user");
+      setUser(null);
+      setLoading(false);
+    };
+
+    // İlk kontrol
+    checkAuth();
+
+    // Periyodik kontrol (her 5000ms - daha az agresif)
+    const interval = setInterval(() => {
+      checkAuth();
+    }, 5000);
+
+    // Firebase Auth state listener
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       try {
         if (firebaseUser) {
           // Auth token'ı al ve cookie'ye kaydet
           const token = await firebaseUser.getIdToken();
-          Cookies.set("auth-token", token, { expires: 7 }); // 7 gün geçerli
+          Cookies.set("auth-token", token, {
+            expires: 7,
+            path: "/",
+            sameSite: "lax",
+          });
+          localStorage.setItem("auth-token", token);
+          sessionStorage.setItem("auth-token", token);
 
           // Firestore'dan kullanıcı bilgilerini al
           const userData = await userService.getUser(firebaseUser.uid);
@@ -72,35 +164,54 @@ export function useAuth() {
             await handleLogout();
           }
         } else {
-          // Kullanıcı çıkış yaptığında cookie'yi sil
-          Cookies.remove("auth-token");
-          setUser(null);
+          // Firebase user yoksa token'ı kontrol et
+          const currentToken = Cookies.get("auth-token");
+          if (currentToken) {
+            // JWT token mı kontrol et
+            const decoded = verifyJWTToken(currentToken);
+            if (!decoded) {
+              // JWT değilse Firebase token olabilir, temizle
+              Cookies.remove("auth-token");
+              localStorage.removeItem("auth-token");
+              sessionStorage.removeItem("auth-token");
+              setUser(null);
+            }
+            // JWT token varsa onu koruyalım
+          }
         }
       } catch (err) {
         console.error("Auth state change error:", err);
         setError("Kullanıcı bilgileri alınamadı");
-        // Hata durumunda çıkış yap
-        await handleLogout();
       } finally {
         setLoading(false);
       }
     });
 
-    return () => unsubscribe();
-  }, []);
+    return () => {
+      clearInterval(interval);
+      unsubscribe();
+    };
+  }, []); // Sadece bir kez çalışsın
 
   const handleLogout = async () => {
     try {
-      // Önce cookie'yi sil
-      Cookies.remove("auth-token");
+      console.log("🚪 Logout başlatılıyor...");
+      // Önce cookie'yi sil (path ile birlikte)
+      Cookies.remove("auth-token", { path: "/" });
+      console.log("🗑️ Cookie silindi");
+      // Storage'ları da temizle
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("auth-token");
+        sessionStorage.removeItem("auth-token");
+        console.log("🗑️ Storage'lar temizlendi");
+      }
       // Sonra Firebase oturumunu kapat
       await signOut(auth);
       // Son olarak state'i temizle
       setUser(null);
-      router.push("/login");
-      router.refresh();
+      console.log("✅ Logout başarılı, login sayfasına yönlendiriliyor");
     } catch (err) {
-      console.error("Logout error:", err);
+      console.error("❌ Logout error:", err);
       setError("Çıkış yapılırken bir hata oluştu");
     }
   };
@@ -109,7 +220,7 @@ export function useAuth() {
     email: string,
     password: string,
     displayName: string,
-    role: UserRole = "user"
+    role: UserRole = "USER"
   ) => {
     try {
       setError(null);
@@ -128,7 +239,13 @@ export function useAuth() {
 
       // Auth token'ı al ve cookie'ye kaydet
       const token = await userCredential.user.getIdToken();
-      Cookies.set("auth-token", token, { expires: 7 });
+      Cookies.set("auth-token", token, {
+        expires: 7,
+        path: "/",
+        sameSite: "lax",
+      });
+      localStorage.setItem("auth-token", token);
+      sessionStorage.setItem("auth-token", token);
 
       // Firestore'da kullanıcı profilini oluştur
       const newUser: User = {
@@ -166,8 +283,87 @@ export function useAuth() {
   const login = async (email: string, password: string) => {
     try {
       setError(null);
-      console.log("Giriş işlemi başlatılıyor...");
+      console.log("Giriş işlemi başlatılıyor...", { email, password });
 
+      // Test kullanıcıları
+      const testUsers = [
+        {
+          email: "admin",
+          password: "admin123",
+          role: "SUPER_ADMIN",
+          name: "Super Admin",
+        },
+        {
+          email: "admin@zonekult.com",
+          password: "123456",
+          role: "SUPER_ADMIN",
+          name: "Super Admin",
+        },
+        {
+          email: "tamer@tamerrestoran.com",
+          password: "123456",
+          role: "COMPANY_ADMIN",
+          name: "Tamer Bey",
+        },
+        {
+          email: "manager.merkez@tamerrestoran.com",
+          password: "123456",
+          role: "RESTAURANT_ADMIN",
+          name: "Merkez Müdürü",
+        },
+      ];
+
+      // Test kullanıcısı kontrolü
+      const testUser = testUsers.find(
+        (u) => u.email === email && u.password === password
+      );
+
+      if (testUser) {
+        console.log("Test kullanıcısı ile giriş:", testUser);
+
+        // JWT token oluştur
+        const mockToken = createJWTToken({
+          email: testUser.email,
+          role: testUser.role as any,
+          uid: `test-${Date.now()}`,
+        });
+
+        // Cookie'yi set et - localhost için basit ayarlar
+        Cookies.set("auth-token", mockToken, {
+          expires: 7,
+          path: "/",
+          sameSite: "lax",
+        });
+
+        // Debug: Cookie'nin set edildiğini kontrol et
+        console.log("🍪 Cookie set edildi:", Cookies.get("auth-token"));
+
+        // Browser storage'lara da kaydet (backup)
+        localStorage.setItem("auth-token", mockToken);
+        sessionStorage.setItem("auth-token", mockToken);
+        console.log(
+          "💾 Storage'lara da kaydedildi:",
+          localStorage.getItem("auth-token")
+        );
+
+        // Mock user data
+        const userData = {
+          uid: `test-${email.replace(/[^a-zA-Z0-9]/g, "")}`,
+          email: testUser.email,
+          displayName: testUser.name,
+          role: testUser.role as any,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          lastLoginAt: new Date(),
+          isActive: true,
+        };
+
+        setUser(userData);
+        console.log("Test kullanıcısı giriş başarılı:", userData);
+        return { uid: userData.uid, email: userData.email };
+      }
+
+      // Gerçek Firebase Auth deneme
       const userCredential = await signInWithEmailAndPassword(
         auth,
         email,
@@ -177,7 +373,13 @@ export function useAuth() {
 
       // Auth token'ı al ve cookie'ye kaydet
       const token = await userCredential.user.getIdToken();
-      Cookies.set("auth-token", token, { expires: 7 });
+      Cookies.set("auth-token", token, {
+        expires: 7,
+        path: "/",
+        sameSite: "lax",
+      });
+      localStorage.setItem("auth-token", token);
+      sessionStorage.setItem("auth-token", token);
 
       const userData = await userService.getUser(userCredential.user.uid);
       console.log("Firestore kullanıcı bilgileri alındı:", userData);
@@ -209,8 +411,8 @@ export function useAuth() {
     }
   };
 
-  const isAdmin = () => user?.role === "admin" || user?.role === "super_admin";
-  const isSuperAdmin = () => user?.role === "super_admin";
+  const isAdmin = () => user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
+  const isSuperAdmin = () => user?.role === "SUPER_ADMIN";
 
   return {
     user,
