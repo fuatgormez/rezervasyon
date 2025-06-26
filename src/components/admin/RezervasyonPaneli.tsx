@@ -30,8 +30,6 @@ import {
   Filter,
   X,
   Info,
-  User,
-  Building,
 } from "lucide-react";
 import { db } from "@/lib/firebase/config";
 import { ref, get, onValue, set, update, remove } from "firebase/database";
@@ -168,9 +166,6 @@ export default function ReservationPanel() {
     time: string;
   } | null>(null);
 
-  // User info dropdown
-  const [showUserInfo, setShowUserInfo] = useState(false);
-
   // Refs
   const calendarRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLDivElement>(null);
@@ -280,6 +275,18 @@ export default function ReservationPanel() {
           const categoriesData = categoriesSnapshot.val();
           console.log("🔧 Raw categories data:", categoriesData);
 
+          // Kategorilerin detaylarını göster
+          Object.entries(categoriesData).forEach(
+            ([id, data]: [string, any]) => {
+              console.log(`🔧 Category ${id}:`, {
+                name: data.name,
+                restaurantId: data.restaurantId,
+                color: data.color,
+                fullData: data,
+              });
+            }
+          );
+
           // Mevcut restaurant ID'leri kontrol et
           const restaurantIds = Object.values(categoriesData).map(
             (data: any) => data.restaurantId
@@ -289,18 +296,23 @@ export default function ReservationPanel() {
           ]);
           console.log("🔧 Looking for restaurant ID:", currentRestaurant.id);
 
-          const loadedCategories = Object.entries(categoriesData)
-            .filter(
-              ([id, data]: [string, any]) =>
-                data.restaurantId === currentRestaurant.id
-            )
-            .map(([id, data]: [string, any]) => ({
+          // Tüm kategorileri yükle (restaurant filter olmadan önce test edelim)
+          const allCategories = Object.entries(categoriesData).map(
+            ([id, data]: [string, any]) => ({
               id,
               name: data.name,
               color: data.color || "#4f46e5",
               borderColor: data.borderColor || "#3730a3",
               backgroundColor: data.backgroundColor || "#eef2ff",
-            }));
+              restaurantId: data.restaurantId,
+            })
+          );
+
+          console.log("🔧 All available categories:", allCategories);
+
+          const loadedCategories = allCategories.filter(
+            (category) => category.restaurantId === currentRestaurant.id
+          );
           console.log(
             "🔧 Filtered categories for restaurant:",
             loadedCategories
@@ -308,35 +320,47 @@ export default function ReservationPanel() {
 
           if (loadedCategories.length === 0) {
             console.log(
-              "🔧 No categories found for restaurant, loading demo categories"
+              "🔧 No categories found for current restaurant, checking if we should use all categories or demo"
             );
-            // Demo kategoriler yükle
-            const demoCategories = [
-              {
-                id: "salon",
-                name: "Salon",
-                color: "#4f46e5",
-                borderColor: "#3730a3",
-                backgroundColor: "#eef2ff",
-              },
-              {
-                id: "terrace",
-                name: "Teras",
-                color: "#059669",
-                borderColor: "#047857",
-                backgroundColor: "#ecfccb",
-              },
-              {
-                id: "vip",
-                name: "VIP",
-                color: "#dc2626",
-                borderColor: "#b91c1c",
-                backgroundColor: "#fef2f2",
-              },
-            ];
-            setCategories(demoCategories);
-            setActiveCategory(demoCategories[0].id);
+
+            // Eğer Firebase'de kategori var ama current restaurant'a ait değilse, tüm kategorileri kullan
+            if (allCategories.length > 0) {
+              console.log("🔧 Using all available categories from Firebase");
+              setCategories(allCategories);
+              setActiveCategory(allCategories[0].id);
+            } else {
+              console.log(
+                "🔧 No categories in Firebase, loading demo categories"
+              );
+              // Demo kategoriler yükle
+              const demoCategories = [
+                {
+                  id: "salon",
+                  name: "Salon",
+                  color: "#4f46e5",
+                  borderColor: "#3730a3",
+                  backgroundColor: "#eef2ff",
+                },
+                {
+                  id: "terrace",
+                  name: "Teras",
+                  color: "#059669",
+                  borderColor: "#047857",
+                  backgroundColor: "#ecfccb",
+                },
+                {
+                  id: "vip",
+                  name: "VIP",
+                  color: "#dc2626",
+                  borderColor: "#b91c1c",
+                  backgroundColor: "#fef2f2",
+                },
+              ];
+              setCategories(demoCategories);
+              setActiveCategory(demoCategories[0].id);
+            }
           } else {
+            console.log("🔧 Using filtered categories for restaurant");
             setCategories(loadedCategories);
             // Set first category as default if none is selected
             if (loadedCategories.length > 0 && !activeCategory) {
@@ -382,6 +406,20 @@ export default function ReservationPanel() {
           const tablesData = tablesSnapshot.val();
           console.log("🔧 Raw tables data:", tablesData);
 
+          // Masaların detaylarını göster
+          Object.entries(tablesData)
+            .slice(0, 5)
+            .forEach(([id, data]: [string, any]) => {
+              console.log(`🔧 Table ${id}:`, {
+                number: data.number,
+                category: data.category,
+                category_id: data.category_id,
+                restaurantId: data.restaurantId,
+                capacity: data.capacity,
+                fullData: data,
+              });
+            });
+
           // Mevcut restaurant ID'leri kontrol et
           const restaurantIds = Object.values(tablesData).map(
             (data: any) => data.restaurantId
@@ -390,18 +428,141 @@ export default function ReservationPanel() {
             ...new Set(restaurantIds),
           ]);
 
+          // Eğer currentRestaurant mock ise, gerçek restoranlardan birini kullan
+          let targetRestaurantId = currentRestaurant.id;
+          const availableRealRestaurants = [...new Set(restaurantIds)].filter(
+            (id) => id && id !== "restaurant-1"
+          );
+
+          if (
+            targetRestaurantId === "restaurant-1" &&
+            availableRealRestaurants.length > 0
+          ) {
+            // Mock restaurant yerine gerçek restaurant kullan
+            targetRestaurantId = availableRealRestaurants[0];
+            console.log(
+              "🔧 Using real restaurant instead of mock:",
+              targetRestaurantId
+            );
+          }
+
           const loadedTables = Object.entries(tablesData)
-            .filter(
-              ([id, data]: [string, any]) =>
-                data.restaurantId === currentRestaurant.id
-            )
-            .map(([id, data]: [string, any]) => ({
-              id,
-              number: data.number || parseInt(id.replace("table", "")) || 0,
-              capacity: data.capacity || 2,
-              categoryId: data.category_id || data.category || "salon",
-              status: data.status === "active" ? "Available" : "Unavailable",
-            }));
+            .filter(([id, data]: [string, any]) => {
+              // Restaurant filtresi - undefined olanları da kabul et (genel masalar)
+              const restaurantMatch =
+                !data.restaurantId || data.restaurantId === targetRestaurantId;
+              console.log(`🔧 Table ${id} restaurant filter:`, {
+                tableRestaurantId: data.restaurantId,
+                targetRestaurantId: targetRestaurantId,
+                currentRestaurantId: currentRestaurant.id,
+                match: restaurantMatch,
+              });
+              return restaurantMatch;
+            })
+            .map(([id, data]: [string, any]) => {
+              // Masa numarasını temizle - uzun isimleri kısalt
+              let tableNumber = data.number || id;
+
+              // Eğer masa ismi çok uzunsa, sadece son kısmını al
+              if (typeof tableNumber === "string" && tableNumber.length > 10) {
+                // "ANA-SALON-1" -> "1", "TERRACE-2" -> "2" gibi
+                const parts = tableNumber.split("-");
+                const lastPart = parts[parts.length - 1];
+                tableNumber = lastPart || tableNumber;
+              }
+
+              // Eğer hala string ise ve sayı içeriyorsa, sayıyı çıkar
+              if (typeof tableNumber === "string") {
+                const numberMatch = tableNumber.match(/\d+/);
+                if (numberMatch) {
+                  tableNumber = parseInt(numberMatch[0]);
+                }
+              }
+
+              // Firebase'deki gerçek kategori ID'sini kullan
+              let categoryId = data.category_id || data.category;
+
+              // Eğer categoryId yoksa, masa isminden tahmin et
+              if (!categoryId) {
+                const tableIdLower = id.toLowerCase();
+                const tableNumberLower = (data.number || "")
+                  .toString()
+                  .toLowerCase();
+
+                if (
+                  tableIdLower.includes("ana-salon") ||
+                  tableIdLower.includes("salon") ||
+                  tableNumberLower.includes("salon")
+                ) {
+                  // "İç Mekan" kategorisini bul
+                  const icMekanCategory = categories.find(
+                    (c) => c.name === "İç Mekan"
+                  );
+                  categoryId = icMekanCategory
+                    ? icMekanCategory.id
+                    : categories[0]?.id;
+                } else if (
+                  tableIdLower.includes("bahce") ||
+                  tableNumberLower.includes("bahce")
+                ) {
+                  // "Bahçe1" kategorisini bul
+                  const bahceCategory = categories.find(
+                    (c) => c.name === "Bahçe1"
+                  );
+                  categoryId = bahceCategory
+                    ? bahceCategory.id
+                    : categories[0]?.id;
+                } else if (
+                  tableIdLower.includes("terrace") ||
+                  tableIdLower.includes("teras") ||
+                  tableNumberLower.includes("terrace")
+                ) {
+                  // "Teras" kategorisini bul
+                  const terasCategory = categories.find(
+                    (c) => c.name === "Teras"
+                  );
+                  categoryId = terasCategory
+                    ? terasCategory.id
+                    : categories[0]?.id;
+                } else if (
+                  tableIdLower.includes("vip") ||
+                  tableNumberLower.includes("vip")
+                ) {
+                  // VIP için "İç Mekan" kullan (veya istersen ayrı kategori)
+                  const icMekanCategory = categories.find(
+                    (c) => c.name === "İç Mekan"
+                  );
+                  categoryId = icMekanCategory
+                    ? icMekanCategory.id
+                    : categories[0]?.id;
+                } else {
+                  // Varsayılan olarak ilk kategoriyi kullan
+                  categoryId =
+                    categories.length > 0 ? categories[0].id : undefined;
+                }
+              }
+
+              console.log(`🔧 Table ${id} category mapping:`, {
+                originalCategoryId: data.category_id,
+                originalCategory: data.category,
+                finalCategoryId: categoryId,
+                tableNumber: data.number,
+                tableId: id,
+                inferredFromName: !data.category_id && !data.category,
+                availableCategories: categories.map((c) => ({
+                  id: c.id,
+                  name: c.name,
+                })),
+              });
+
+              return {
+                id,
+                number: tableNumber,
+                capacity: data.capacity || 2,
+                categoryId,
+                status: data.status === "active" ? "Available" : "Unavailable",
+              };
+            });
           console.log("🔧 Filtered tables for restaurant:", loadedTables);
 
           if (loadedTables.length === 0) {
@@ -647,24 +808,6 @@ export default function ReservationPanel() {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
-
-  // Close user info dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      // User info dropdown için ref eklemek yerine, basit bir çözüm
-      if (showUserInfo) {
-        const target = event.target as Element;
-        if (!target.closest(".relative")) {
-          setShowUserInfo(false);
-        }
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [showUserInfo]);
 
   // Navigation functions
   const goToPreviousDay = () => {
@@ -1374,7 +1517,6 @@ export default function ReservationPanel() {
             <div className="text-2xl font-bold text-blue-600">Zonekult</div>
             <div className="text-sm text-gray-500">Reservation Management</div>
           </div>
-          <RestaurantSelector />
           <div className="flex space-x-4">
             <Link
               href="/admin"
@@ -1409,84 +1551,13 @@ export default function ReservationPanel() {
           </div>
         </div>
         <div className="flex items-center space-x-3">
+          <RestaurantSelector />
           <Link
             href="/init-db"
             className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
           >
             Initialize DB
           </Link>
-
-          {/* User Info Dropdown */}
-          <div className="relative">
-            <button
-              onClick={() => setShowUserInfo(!showUserInfo)}
-              className="flex items-center space-x-2 px-3 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-            >
-              <User className="w-4 h-4 text-gray-600" />
-              <span className="text-sm text-gray-700">
-                {user?.email || "User"}
-              </span>
-            </button>
-
-            {showUserInfo && (
-              <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
-                <div className="p-4">
-                  <div className="flex items-center space-x-3 mb-3">
-                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                      <User className="w-5 h-5 text-blue-600" />
-                    </div>
-                    <div>
-                      <h3 className="font-medium text-gray-900">
-                        {user?.email || "Kullanıcı"}
-                      </h3>
-                      <p className="text-sm text-gray-500">
-                        {user?.role === "SUPER_ADMIN"
-                          ? "Süper Admin"
-                          : user?.role === "COMPANY_ADMIN"
-                          ? "Firma Yöneticisi"
-                          : "Kullanıcı"}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="border-t border-gray-200 pt-3 space-y-2">
-                    <div className="flex items-center space-x-2">
-                      <Building className="w-4 h-4 text-gray-500" />
-                      <div>
-                        <p className="text-sm font-medium text-gray-700">
-                          Firma
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          {company?.name || "Test Company"}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center space-x-2">
-                      <Coffee className="w-4 h-4 text-gray-500" />
-                      <div>
-                        <p className="text-sm font-medium text-gray-700">
-                          Restoran
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          {selectedRestaurant?.name || currentRestaurant.name}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="border-t border-gray-200 p-2">
-                  <button
-                    onClick={() => setShowUserInfo(false)}
-                    className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
-                  >
-                    Kapat
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
 
           <button
             onClick={handleLogout}
