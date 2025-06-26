@@ -182,79 +182,121 @@ export default function LoginPage() {
               {loading ? "Giriş Yapılıyor..." : "Giriş Yap"}
             </button>
 
-            {/* Debug butonları */}
-            <div className="space-y-2">
+            {/* Test Kullanıcıları */}
+            <div className="space-y-3">
+              <div className="text-center text-sm font-medium text-gray-700 mb-3">
+                🧪 Test Kullanıcıları (Tıklayarak Otomatik Doldur)
+              </div>
+
+              {/* Super Admin */}
               <button
                 type="button"
                 onClick={() => {
-                  console.log("🔧 Storage Check butonu tıklandı");
-                  console.log(
-                    "🔧 localStorage:",
-                    localStorage.getItem("auth-token")
-                  );
-                  console.log(
-                    "🔧 sessionStorage:",
-                    sessionStorage.getItem("auth-token")
-                  );
-                  console.log("🔧 cookies:", document.cookie);
-
-                  // JWT token oluştur
-                  const testToken = createJWTToken({
-                    email: "admin",
-                    role: "SUPER_ADMIN",
-                    uid: "test-debug",
-                  });
-
-                  localStorage.setItem("auth-token", testToken);
-                  sessionStorage.setItem("auth-token", testToken);
-                  document.cookie = `auth-token=${testToken}; path=/; max-age=${
-                    7 * 24 * 60 * 60
-                  }; SameSite=Lax`;
-
-                  console.log("✅ Token set edildi");
-                  console.log(
-                    "✅ localStorage:",
-                    localStorage.getItem("auth-token")
-                  );
-                  console.log(
-                    "✅ sessionStorage:",
-                    sessionStorage.getItem("auth-token")
-                  );
+                  setEmail("admin@zonekult.com");
+                  setPassword("123456");
                 }}
-                className="w-full py-2 px-4 rounded-lg bg-yellow-500 hover:bg-yellow-600 text-white font-medium text-sm"
+                className="w-full p-3 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg text-left transition-colors"
               >
-                🔧 Manuel Token Set Et
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-medium text-purple-900">
+                      👑 Super Admin
+                    </div>
+                    <div className="text-sm text-purple-600">
+                      admin@zonekult.com
+                    </div>
+                    <div className="text-xs text-purple-500">
+                      Tüm yetkilere sahip sistem yöneticisi
+                    </div>
+                  </div>
+                  <div className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded">
+                    SUPER_ADMIN
+                  </div>
+                </div>
               </button>
 
+              {/* Company Admin */}
               <button
                 type="button"
                 onClick={() => {
-                  console.log("🗑️ Storage Clear butonu tıklandı");
-                  localStorage.removeItem("auth-token");
-                  sessionStorage.removeItem("auth-token");
-                  document.cookie =
-                    "auth-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-                  console.log("✅ Tüm storage'lar temizlendi");
+                  setEmail("tamer@tamerrestoran.com");
+                  setPassword("123456");
                 }}
-                className="w-full py-2 px-4 rounded-lg bg-red-500 hover:bg-red-600 text-white font-medium text-sm"
+                className="w-full p-3 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg text-left transition-colors"
               >
-                🗑️ Storage'ları Temizle
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-medium text-blue-900">
+                      🏢 Firma Yöneticisi
+                    </div>
+                    <div className="text-sm text-blue-600">
+                      tamer@tamerrestoran.com
+                    </div>
+                    <div className="text-xs text-blue-500">
+                      Tamer Restoran Grubu - 3 Restoran
+                    </div>
+                  </div>
+                  <div className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
+                    COMPANY_ADMIN
+                  </div>
+                </div>
+              </button>
+
+              {/* Mock Admin (Eski test kullanıcısı) */}
+              <button
+                type="button"
+                onClick={() => {
+                  setEmail("admin");
+                  setPassword("admin123");
+                }}
+                className="w-full p-3 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-lg text-left transition-colors"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-medium text-gray-900">
+                      🔧 Test Admin
+                    </div>
+                    <div className="text-sm text-gray-600">
+                      admin / admin123
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      Mock data ile test kullanıcısı
+                    </div>
+                  </div>
+                  <div className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded">
+                    MOCK
+                  </div>
+                </div>
               </button>
             </div>
 
-            <div className="text-center text-sm text-gray-600 space-y-2">
-              <div className="bg-blue-50 border border-blue-200 text-blue-700 px-3 py-2 rounded-md">
-                <strong>Test Girişi:</strong> admin / admin123
+            {/* Restoran Bilgileri */}
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+              <div className="text-sm font-medium text-green-800 mb-2">
+                📍 Mevcut Restoranlar:
               </div>
-              <div>
-                Hesabınız yok mu?{" "}
-                <Link
-                  href="/register"
-                  className="text-indigo-600 hover:text-indigo-500"
-                >
-                  Kayıt Olun
-                </Link>
+              <div className="text-xs text-green-700 space-y-1">
+                <div>
+                  • <strong>Bebek Boğaziçi:</strong> Bebek Cad. No:123, Beşiktaş
+                </div>
+                <div>
+                  • <strong>Kadıköy Moda:</strong> Moda Cad. No:456, Kadıköy
+                </div>
+                <div>
+                  • <strong>Merkez Nişantaşı:</strong> Nişantaşı Cad. No:789,
+                  Şişli
+                </div>
               </div>
+            </div>
+
+            <div className="text-center text-sm text-gray-600">
+              Hesabınız yok mu?{" "}
+              <Link
+                href="/register"
+                className="text-indigo-600 hover:text-indigo-500"
+              >
+                Kayıt Olun
+              </Link>
             </div>
           </form>
         </div>
