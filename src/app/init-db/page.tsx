@@ -15,7 +15,7 @@ export default function InitDbPage() {
 
     try {
       const response = await fetch("/api/init-db", {
-        method: "GET",
+        method: "POST",
         headers: {
           "Content-Type": "application/json",
         },

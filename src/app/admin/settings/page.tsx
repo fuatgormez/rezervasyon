@@ -507,12 +507,20 @@ export default function SettingsPage() {
     <div className="container mx-auto p-4">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Sistem Ayarları</h1>
-        <Link
-          href="/admin"
-          className="bg-blue-500 text-white px-4 py-2 rounded"
-        >
-          Admin Paneline Dön
-        </Link>
+        <div className="flex space-x-3">
+          <Link
+            href="/admin/settings/crud"
+            className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
+          >
+            🔧 CRUD Yönetimi
+          </Link>
+          <Link
+            href="/admin"
+            className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+          >
+            Admin Paneline Dön
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

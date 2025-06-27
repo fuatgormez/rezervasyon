@@ -1038,7 +1038,8 @@ export default function ReservationPanel() {
       }
 
       const reservationData = {
-        companyId: company?.id,
+        companyId:
+          company?.id || activeRestaurant.companyId || "default-company",
         restaurantId: activeRestaurant.id,
         customerName,
         guestCount: Number(guestCount),

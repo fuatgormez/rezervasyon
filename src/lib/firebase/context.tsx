@@ -129,6 +129,44 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                     }
                   }
                 });
+              } else if ((decoded.role as any) === "SUPER_ADMIN") {
+                // SUPER_ADMIN için tüm restoranları yükle
+                console.log("🔧 Loading restaurants for SUPER_ADMIN");
+                const restaurantsRef = ref(db, `restaurants`);
+                onValue(restaurantsRef, (snapshot) => {
+                  if (snapshot.exists()) {
+                    const restaurantsData = snapshot.val();
+                    console.log(
+                      "🔧 All restaurants data for SUPER_ADMIN:",
+                      restaurantsData
+                    );
+
+                    // Tüm restoranları listele
+                    const allRestaurants = Object.entries(restaurantsData).map(
+                      ([id, data]: [string, any]) => ({
+                        id,
+                        ...data,
+                      })
+                    ) as Restaurant[];
+
+                    console.log(
+                      "🏪 All restaurants for SUPER_ADMIN:",
+                      allRestaurants
+                    );
+                    setRestaurants(allRestaurants);
+
+                    // İlk restoranı seç (eğer henüz seçilmemişse)
+                    if (!selectedRestaurant && allRestaurants.length > 0) {
+                      setSelectedRestaurant(allRestaurants[0]);
+                      console.log(
+                        "🎯 Selected restaurant for SUPER_ADMIN:",
+                        allRestaurants[0]
+                      );
+                    }
+                  } else {
+                    console.log("❌ No restaurants found in Firebase");
+                  }
+                });
               }
 
               setLoading(false);
@@ -199,12 +237,45 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                     });
                   }
                 } else if (userData.role === "SUPER_ADMIN") {
-                  // SUPER_ADMIN için tüm firmaları ve restoranları getir
-                  const companiesRef = ref(db, `companies`);
-                  onValue(companiesRef, (snapshot) => {
+                  // SUPER_ADMIN için tüm restoranları getir
+                  console.log(
+                    "🔧 Loading restaurants for Firebase SUPER_ADMIN"
+                  );
+                  const restaurantsRef = ref(db, `restaurants`);
+                  onValue(restaurantsRef, (snapshot) => {
                     if (snapshot.exists()) {
-                      // Super admin için şimdilik boş bırakıyoruz
-                      // İhtiyaç halinde tüm firmaları listeleyebiliriz
+                      const restaurantsData = snapshot.val();
+                      console.log(
+                        "🔧 All restaurants data for Firebase SUPER_ADMIN:",
+                        restaurantsData
+                      );
+
+                      // Tüm restoranları listele
+                      const allRestaurants = Object.entries(
+                        restaurantsData
+                      ).map(([id, data]: [string, any]) => ({
+                        id,
+                        ...data,
+                      })) as Restaurant[];
+
+                      console.log(
+                        "🏪 All restaurants for Firebase SUPER_ADMIN:",
+                        allRestaurants
+                      );
+                      setRestaurants(allRestaurants);
+
+                      // İlk restoranı seç (eğer henüz seçilmemişse)
+                      if (!selectedRestaurant && allRestaurants.length > 0) {
+                        setSelectedRestaurant(allRestaurants[0]);
+                        console.log(
+                          "🎯 Selected restaurant for Firebase SUPER_ADMIN:",
+                          allRestaurants[0]
+                        );
+                      }
+                    } else {
+                      console.log(
+                        "❌ No restaurants found in Firebase for SUPER_ADMIN"
+                      );
                     }
                   });
                 }

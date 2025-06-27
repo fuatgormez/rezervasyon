@@ -225,3 +225,163 @@ export async function GET() {
     );
   }
 }
+
+export async function POST() {
+  try {
+    console.log("🔄 Firebase Realtime Database başlatılıyor...");
+
+    // Kategoriler için demo data
+    const categoriesData = {
+      "-OSVBo0LgI-kgRDndQiT": {
+        name: "İç Mekan",
+        color: "#ef4444",
+        restaurantId: "bebek-bogazici",
+        createdAt: new Date().toISOString(),
+      },
+      "-OSVBo0LgI-kgRDndQiU": {
+        name: "Bahçe",
+        color: "#22c55e",
+        restaurantId: "bebek-bogazici",
+        createdAt: new Date().toISOString(),
+      },
+      "-OSVBo0LgI-kgRDndQiV": {
+        name: "Teras",
+        color: "#3b82f6",
+        restaurantId: "bebek-bogazici",
+        createdAt: new Date().toISOString(),
+      },
+    };
+
+    // Demo müşteriler
+    const customersData = {
+      "customer-1": {
+        name: "Ahmet Yılmaz",
+        email: "ahmet@example.com",
+        phone: "+905551234567",
+        companyId: "tamer-group",
+        reservationCount: 5,
+        loyaltyPoints: 50,
+        firstReservationDate: "2024-01-15T10:00:00.000Z",
+        lastReservationDate: "2024-12-01T19:30:00.000Z",
+        createdAt: "2024-01-15T10:00:00.000Z",
+      },
+      "customer-2": {
+        name: "Elif Kaya",
+        email: "elif@example.com",
+        phone: "+905559876543",
+        companyId: "tamer-group",
+        reservationCount: 3,
+        loyaltyPoints: 30,
+        firstReservationDate: "2024-02-20T14:00:00.000Z",
+        lastReservationDate: "2024-11-15T20:00:00.000Z",
+        createdAt: "2024-02-20T14:00:00.000Z",
+      },
+      "customer-3": {
+        name: "Mehmet Öz",
+        email: "mehmet@example.com",
+        phone: "+905557654321",
+        companyId: "tamer-group",
+        reservationCount: 8,
+        loyaltyPoints: 80,
+        firstReservationDate: "2023-12-10T12:00:00.000Z",
+        lastReservationDate: "2024-12-05T18:45:00.000Z",
+        createdAt: "2023-12-10T12:00:00.000Z",
+      },
+    };
+
+    // Demo garsonlar
+    const waitersData = {
+      "waiter-1": {
+        name: "Ali Demir",
+        email: "ali@tamerrestoran.com",
+        phone: "+905551111111",
+        restaurantId: "bebek-bogazici",
+        isActive: true,
+        createdAt: new Date().toISOString(),
+      },
+      "waiter-2": {
+        name: "Ayşe Şahin",
+        email: "ayse@tamerrestoran.com",
+        phone: "+905552222222",
+        restaurantId: "bebek-bogazici",
+        isActive: true,
+        createdAt: new Date().toISOString(),
+      },
+    };
+
+    // Demo firmalar
+    const companiesData = {
+      "tamer-group": {
+        name: "Tamer Restoran Grubu",
+        email: "info@tamerrestoran.com",
+        phone: "+902123456789",
+        address: "Bebek, İstanbul",
+        isActive: true,
+        createdAt: new Date().toISOString(),
+      },
+      "demo-company": {
+        name: "Demo Restoran",
+        email: "demo@example.com",
+        phone: "+902129876543",
+        address: "Şişli, İstanbul",
+        isActive: true,
+        createdAt: new Date().toISOString(),
+      },
+    };
+
+    // Demo restoranlar
+    const restaurantsData = {
+      "bebek-bogazici": {
+        name: "Bebek Boğaziçi",
+        companyId: "tamer-group",
+        address: "Bebek Caddesi No:123, Bebek/İstanbul",
+        phone: "+902122222222",
+        email: "bebek@tamerrestoran.com",
+        capacity: 120,
+        isActive: true,
+        createdAt: new Date().toISOString(),
+      },
+      "etiler-branch": {
+        name: "Etiler Şubesi",
+        companyId: "tamer-group",
+        address: "Etiler Mahallesi, Etiler/İstanbul",
+        phone: "+902123333333",
+        email: "etiler@tamerrestoran.com",
+        capacity: 80,
+        isActive: true,
+        createdAt: new Date().toISOString(),
+      },
+    };
+
+    // Verileri Firebase'e kaydet
+    await set(ref(db, "categories"), categoriesData);
+    await set(ref(db, "customers"), customersData);
+    await set(ref(db, "waiters"), waitersData);
+    await set(ref(db, "companies"), companiesData);
+    await set(ref(db, "restaurants"), restaurantsData);
+
+    console.log("✅ Firebase Realtime Database başarıyla başlatıldı!");
+
+    return NextResponse.json({
+      success: true,
+      message: "Firebase Realtime Database başarıyla başlatıldı!",
+      data: {
+        categories: Object.keys(categoriesData).length,
+        customers: Object.keys(customersData).length,
+        waiters: Object.keys(waitersData).length,
+        companies: Object.keys(companiesData).length,
+        restaurants: Object.keys(restaurantsData).length,
+      },
+    });
+  } catch (error: any) {
+    console.error("❌ Firebase Realtime Database başlatma hatası:", error);
+    return NextResponse.json(
+      {
+        success: false,
+        message: "Firebase Realtime Database başlatma hatası",
+        error: error.message,
+      },
+      { status: 500 }
+    );
+  }
+}

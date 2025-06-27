@@ -9,8 +9,8 @@ export default function RestaurantSelector() {
     useAuthContext();
   const [isOpen, setIsOpen] = useState(false);
 
-  if (!restaurants || restaurants.length <= 1) {
-    return null; // Tek restoran varsa selector gösterme
+  if (!restaurants || restaurants.length === 0) {
+    return null;
   }
 
   return (

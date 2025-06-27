@@ -1,6 +1,7 @@
 "use client";
 
-import { db, auth } from "@/lib/firebase/config";
+import { auth } from "@/lib/firebase/config";
+import { getFirestore } from "firebase/firestore";
 import {
   collection,
   addDoc,
@@ -17,11 +18,26 @@ import {
   disableNetwork,
 } from "firebase/firestore";
 import { User } from "firebase/auth";
+import { db as realtimeDb } from "@/lib/firebase/config";
+import { ref, get, set, push, update } from "firebase/database";
+
+// Firestore'u başlat
+const db = getFirestore();
 
 export class FirebaseService {
   static async createReservation(reservationData: any): Promise<any> {
     try {
       console.log("Firebase: Rezervasyon oluşturuluyor", reservationData);
+
+      // Önce müşteri kaydı yap (eğer email veya telefon varsa)
+      if (reservationData.email || reservationData.phone) {
+        await this.createOrUpdateCustomer({
+          name: reservationData.customer_name,
+          email: reservationData.email,
+          phone: reservationData.phone,
+          companyId: reservationData.company_id,
+        });
+      }
 
       // Firestore'da rezervasyon oluştur
       const docRef = await addDoc(collection(db, "reservations"), {
@@ -225,6 +241,129 @@ export class FirebaseService {
     } catch (error) {
       console.error("Firebase: Rezervasyon silme hatası", error);
       throw error;
+    }
+  }
+
+  // Müşteri yönetimi fonksiyonları
+  static async createOrUpdateCustomer(customerData: {
+    name: string;
+    email?: string;
+    phone?: string;
+    companyId?: string;
+  }): Promise<string | null> {
+    try {
+      if (!customerData.email && !customerData.phone) {
+        return null; // Email veya telefon yoksa müşteri kaydetme
+      }
+
+      // Mevcut müşteriyi ara
+      const existingCustomer = await this.findCustomerByEmailOrPhone(
+        customerData.email,
+        customerData.phone
+      );
+
+      if (existingCustomer) {
+        // Mevcut müşteri varsa rezervasyon sayısını artır
+        const updates: any = {
+          reservationCount: (existingCustomer.reservationCount || 0) + 1,
+          lastReservationDate: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+
+        // İsim güncelle (eğer boşsa)
+        if (!existingCustomer.name && customerData.name) {
+          updates.name = customerData.name;
+        }
+
+        // Email güncelle (eğer boşsa)
+        if (!existingCustomer.email && customerData.email) {
+          updates.email = customerData.email;
+        }
+
+        // Telefon güncelle (eğer boşsa)
+        if (!existingCustomer.phone && customerData.phone) {
+          updates.phone = customerData.phone;
+        }
+
+        await update(
+          ref(realtimeDb, `customers/${existingCustomer.id}`),
+          updates
+        );
+        return existingCustomer.id;
+      } else {
+        // Yeni müşteri oluştur
+        const newCustomerRef = push(ref(realtimeDb, "customers"));
+        const newCustomer = {
+          name: customerData.name || "",
+          email: customerData.email || "",
+          phone: customerData.phone || "",
+          companyId: customerData.companyId || "",
+          reservationCount: 1,
+          loyaltyPoints: 10, // İlk rezervasyon için 10 puan
+          firstReservationDate: new Date().toISOString(),
+          lastReservationDate: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+        };
+
+        await set(newCustomerRef, newCustomer);
+        return newCustomerRef.key;
+      }
+    } catch (error) {
+      console.error("Müşteri kaydetme hatası:", error);
+      return null;
+    }
+  }
+
+  static async findCustomerByEmailOrPhone(
+    email?: string,
+    phone?: string
+  ): Promise<any | null> {
+    try {
+      const customersRef = ref(realtimeDb, "customers");
+      const snapshot = await get(customersRef);
+
+      if (snapshot.exists()) {
+        const customers = snapshot.val();
+
+        // Email veya telefon ile eşleşen müşteriyi bul
+        for (const [id, customer] of Object.entries(customers)) {
+          const customerData = customer as any;
+
+          if (
+            (email && customerData.email === email) ||
+            (phone && customerData.phone === phone)
+          ) {
+            return { id, ...customerData };
+          }
+        }
+      }
+
+      return null;
+    } catch (error) {
+      console.error("Müşteri arama hatası:", error);
+      return null;
+    }
+  }
+
+  static async updateCustomerLoyalty(
+    customerId: string,
+    points: number
+  ): Promise<void> {
+    try {
+      const customerRef = ref(realtimeDb, `customers/${customerId}`);
+      const snapshot = await get(customerRef);
+
+      if (snapshot.exists()) {
+        const currentData = snapshot.val();
+        const updates = {
+          loyaltyPoints: (currentData.loyaltyPoints || 0) + points,
+          updatedAt: new Date().toISOString(),
+        };
+
+        await update(customerRef, updates);
+      }
+    } catch (error) {
+      console.error("Müşteri puanı güncelleme hatası:", error);
     }
   }
 }
