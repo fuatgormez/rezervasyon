@@ -8,8 +8,6 @@ import {
   serverTimestamp,
 } from "firebase/database";
 import { initializeApp } from "firebase/app";
-import { getAuth, signInAnonymously } from "firebase/auth";
-import { db } from "@/lib/firebase/config";
 
 // API'nin dinamik olarak çalışmasını sağlar (önbellekleme yok)
 export const dynamic = "force-dynamic";
@@ -230,8 +228,13 @@ export async function POST() {
   try {
     console.log("🔄 Firebase Realtime Database başlatılıyor...");
 
+    // Firebase için özel bir instance oluştur (server-side)
+    const app = initializeApp(firebaseConfig, "init-db-post-server");
+    const db = getDatabase(app);
+
     // Kategoriler için demo data
     const categoriesData = {
+      // Bebek Boğaziçi kategorileri
       "-OSVBo0LgI-kgRDndQiT": {
         name: "İç Mekan",
         color: "#ef4444",
@@ -250,6 +253,25 @@ export async function POST() {
         restaurantId: "bebek-bogazici",
         createdAt: new Date().toISOString(),
       },
+      // Etiler Şubesi kategorileri
+      "-OSVBo0LgI-kgRDndQiW": {
+        name: "Ana Salon",
+        color: "#8b5cf6",
+        restaurantId: "etiler-branch",
+        createdAt: new Date().toISOString(),
+      },
+      "-OSVBo0LgI-kgRDndQiX": {
+        name: "VIP Bölüm",
+        color: "#f59e0b",
+        restaurantId: "etiler-branch",
+        createdAt: new Date().toISOString(),
+      },
+      "-OSVBo0LgI-kgRDndQiY": {
+        name: "Cam Balkon",
+        color: "#06b6d4",
+        restaurantId: "etiler-branch",
+        createdAt: new Date().toISOString(),
+      },
     };
 
     // Demo müşteriler
@@ -258,7 +280,9 @@ export async function POST() {
         name: "Ahmet Yılmaz",
         email: "ahmet@example.com",
         phone: "+905551234567",
-        companyId: "tamer-group",
+        address: "Bebek, İstanbul",
+        notes: "VIP müşteri, pencere kenarı masayı tercih eder",
+        restaurantId: "bebek-bogazici",
         reservationCount: 5,
         loyaltyPoints: 50,
         firstReservationDate: "2024-01-15T10:00:00.000Z",
@@ -269,7 +293,9 @@ export async function POST() {
         name: "Elif Kaya",
         email: "elif@example.com",
         phone: "+905559876543",
-        companyId: "tamer-group",
+        address: "Etiler, İstanbul",
+        notes: "Vejeteryan yemek tercih eder",
+        restaurantId: "bebek-bogazici",
         reservationCount: 3,
         loyaltyPoints: 30,
         firstReservationDate: "2024-02-20T14:00:00.000Z",
@@ -280,17 +306,33 @@ export async function POST() {
         name: "Mehmet Öz",
         email: "mehmet@example.com",
         phone: "+905557654321",
-        companyId: "tamer-group",
+        address: "Beşiktaş, İstanbul",
+        notes: "Büyük grup rezervasyonları yapar",
+        restaurantId: "etiler-branch",
         reservationCount: 8,
         loyaltyPoints: 80,
         firstReservationDate: "2023-12-10T12:00:00.000Z",
         lastReservationDate: "2024-12-05T18:45:00.000Z",
         createdAt: "2023-12-10T12:00:00.000Z",
       },
+      "customer-4": {
+        name: "Zeynep Demir",
+        email: "zeynep@example.com",
+        phone: "+905558887766",
+        address: "Nişantaşı, İstanbul",
+        notes: "Balık yemekleri sever",
+        restaurantId: "etiler-branch",
+        reservationCount: 2,
+        loyaltyPoints: 20,
+        firstReservationDate: "2024-03-10T13:00:00.000Z",
+        lastReservationDate: "2024-11-20T19:00:00.000Z",
+        createdAt: "2024-03-10T13:00:00.000Z",
+      },
     };
 
     // Demo garsonlar
     const waitersData = {
+      // Bebek Boğaziçi garsonları
       "waiter-1": {
         name: "Ali Demir",
         email: "ali@tamerrestoran.com",
@@ -304,6 +346,23 @@ export async function POST() {
         email: "ayse@tamerrestoran.com",
         phone: "+905552222222",
         restaurantId: "bebek-bogazici",
+        isActive: true,
+        createdAt: new Date().toISOString(),
+      },
+      // Etiler Şubesi garsonları
+      "waiter-3": {
+        name: "Emre Yılmaz",
+        email: "emre@tamerrestoran.com",
+        phone: "+905553333333",
+        restaurantId: "etiler-branch",
+        isActive: true,
+        createdAt: new Date().toISOString(),
+      },
+      "waiter-4": {
+        name: "Selin Kaya",
+        email: "selin@tamerrestoran.com",
+        phone: "+905554444444",
+        restaurantId: "etiler-branch",
         isActive: true,
         createdAt: new Date().toISOString(),
       },
@@ -338,6 +397,8 @@ export async function POST() {
         phone: "+902122222222",
         email: "bebek@tamerrestoran.com",
         capacity: 120,
+        openingTime: "07:00",
+        closingTime: "02:00",
         isActive: true,
         createdAt: new Date().toISOString(),
       },
@@ -348,7 +409,79 @@ export async function POST() {
         phone: "+902123333333",
         email: "etiler@tamerrestoran.com",
         capacity: 80,
+        openingTime: "08:00",
+        closingTime: "01:00",
         isActive: true,
+        createdAt: new Date().toISOString(),
+      },
+    };
+
+    // Demo masalar
+    const tablesData = {
+      // Bebek Boğaziçi masaları
+      "table-bb-1": {
+        number: 1,
+        capacity: 2,
+        category_id: "-OSVBo0LgI-kgRDndQiT", // İç Mekan
+        restaurantId: "bebek-bogazici",
+        status: "active",
+        createdAt: new Date().toISOString(),
+      },
+      "table-bb-2": {
+        number: 2,
+        capacity: 4,
+        category_id: "-OSVBo0LgI-kgRDndQiT", // İç Mekan
+        restaurantId: "bebek-bogazici",
+        status: "active",
+        createdAt: new Date().toISOString(),
+      },
+      "table-bb-3": {
+        number: 3,
+        capacity: 6,
+        category_id: "-OSVBo0LgI-kgRDndQiU", // Bahçe
+        restaurantId: "bebek-bogazici",
+        status: "active",
+        createdAt: new Date().toISOString(),
+      },
+      "table-bb-4": {
+        number: 4,
+        capacity: 4,
+        category_id: "-OSVBo0LgI-kgRDndQiV", // Teras
+        restaurantId: "bebek-bogazici",
+        status: "active",
+        createdAt: new Date().toISOString(),
+      },
+      // Etiler Şubesi masaları
+      "table-et-1": {
+        number: 1,
+        capacity: 2,
+        category_id: "-OSVBo0LgI-kgRDndQiW", // Ana Salon
+        restaurantId: "etiler-branch",
+        status: "active",
+        createdAt: new Date().toISOString(),
+      },
+      "table-et-2": {
+        number: 2,
+        capacity: 4,
+        category_id: "-OSVBo0LgI-kgRDndQiW", // Ana Salon
+        restaurantId: "etiler-branch",
+        status: "active",
+        createdAt: new Date().toISOString(),
+      },
+      "table-et-3": {
+        number: 3,
+        capacity: 6,
+        category_id: "-OSVBo0LgI-kgRDndQiX", // VIP Bölüm
+        restaurantId: "etiler-branch",
+        status: "active",
+        createdAt: new Date().toISOString(),
+      },
+      "table-et-4": {
+        number: 4,
+        capacity: 8,
+        category_id: "-OSVBo0LgI-kgRDndQiY", // Cam Balkon
+        restaurantId: "etiler-branch",
+        status: "active",
         createdAt: new Date().toISOString(),
       },
     };
@@ -359,6 +492,7 @@ export async function POST() {
     await set(ref(db, "waiters"), waitersData);
     await set(ref(db, "companies"), companiesData);
     await set(ref(db, "restaurants"), restaurantsData);
+    await set(ref(db, "tables"), tablesData);
 
     console.log("✅ Firebase Realtime Database başarıyla başlatıldı!");
 
@@ -371,6 +505,7 @@ export async function POST() {
         waiters: Object.keys(waitersData).length,
         companies: Object.keys(companiesData).length,
         restaurants: Object.keys(restaurantsData).length,
+        tables: Object.keys(tablesData).length,
       },
     });
   } catch (error: any) {

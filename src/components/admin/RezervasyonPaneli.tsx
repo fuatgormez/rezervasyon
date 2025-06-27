@@ -40,13 +40,7 @@ import { useAuthContext } from "@/lib/firebase/context";
 import { useAuth } from "@/lib/firebase/hooks";
 import { useRouter } from "next/navigation";
 
-// Time slots - Saatlik periyotlar
-const timeSlots: string[] = [];
-for (let hour = 7; hour <= 27; hour++) {
-  // 27 = 03:00 (ertesi gün)
-  const h = (hour % 24).toString().padStart(2, "0");
-  timeSlots.push(`${h}:00`);
-}
+// Time slots artık dinamik olarak component içinde oluşturuluyor
 
 // Helper functions
 const getTimeInMinutes = (timeString: string) => {
@@ -116,9 +110,36 @@ export default function ReservationPanel() {
       address: "Test Address",
       phone: "123456789",
       email: "test@restaurant.com",
+      openingTime: "07:00",
+      closingTime: "02:00",
       isActive: true,
     };
   }, [selectedRestaurant]);
+
+  // Dinamik saat aralığı - restoran açılış/kapanış saatlerine göre
+  const timeSlots = useMemo(() => {
+    const slots: string[] = [];
+    const openingHour = parseInt(
+      currentRestaurant.openingTime?.split(":")[0] || "7"
+    );
+    const closingHour = parseInt(
+      currentRestaurant.closingTime?.split(":")[0] || "2"
+    );
+
+    // Açılış saatinden başla
+    let hour = openingHour;
+
+    // Kapanış saati ertesi gün ise (örn: 02:00)
+    const endHour = closingHour < openingHour ? closingHour + 24 : closingHour;
+
+    while (hour <= endHour) {
+      const displayHour = (hour % 24).toString().padStart(2, "0");
+      slots.push(`${displayHour}:00`);
+      hour++;
+    }
+
+    return slots;
+  }, [currentRestaurant.openingTime, currentRestaurant.closingTime]);
 
   // State declarations
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -264,7 +285,7 @@ export default function ReservationPanel() {
         console.log("🔧 Loading data for restaurant:", currentRestaurant.id);
 
         // Load categories for selected restaurant
-        const categoriesRef = ref(db, "table_categories");
+        const categoriesRef = ref(db, "categories");
         const categoriesSnapshot = await get(categoriesRef);
 
         console.log(
@@ -318,54 +339,43 @@ export default function ReservationPanel() {
             loadedCategories
           );
 
-          if (loadedCategories.length === 0) {
-            console.log(
-              "🔧 No categories found for current restaurant, checking if we should use all categories or demo"
-            );
-
-            // Eğer Firebase'de kategori var ama current restaurant'a ait değilse, tüm kategorileri kullan
-            if (allCategories.length > 0) {
-              console.log("🔧 Using all available categories from Firebase");
-              setCategories(allCategories);
-              setActiveCategory(allCategories[0].id);
-            } else {
-              console.log(
-                "🔧 No categories in Firebase, loading demo categories"
-              );
-              // Demo kategoriler yükle
-              const demoCategories = [
-                {
-                  id: "salon",
-                  name: "Salon",
-                  color: "#4f46e5",
-                  borderColor: "#3730a3",
-                  backgroundColor: "#eef2ff",
-                },
-                {
-                  id: "terrace",
-                  name: "Teras",
-                  color: "#059669",
-                  borderColor: "#047857",
-                  backgroundColor: "#ecfccb",
-                },
-                {
-                  id: "vip",
-                  name: "VIP",
-                  color: "#dc2626",
-                  borderColor: "#b91c1c",
-                  backgroundColor: "#fef2f2",
-                },
-              ];
-              setCategories(demoCategories);
-              setActiveCategory(demoCategories[0].id);
-            }
-          } else {
+          if (loadedCategories.length > 0) {
             console.log("🔧 Using filtered categories for restaurant");
             setCategories(loadedCategories);
             // Set first category as default if none is selected
-            if (loadedCategories.length > 0 && !activeCategory) {
+            if (!activeCategory) {
               setActiveCategory(loadedCategories[0].id);
             }
+          } else {
+            console.log(
+              "🔧 No categories found for current restaurant, loading demo categories"
+            );
+            // Demo kategoriler yükle
+            const demoCategories = [
+              {
+                id: "salon",
+                name: "Salon",
+                color: "#4f46e5",
+                borderColor: "#3730a3",
+                backgroundColor: "#eef2ff",
+              },
+              {
+                id: "terrace",
+                name: "Teras",
+                color: "#059669",
+                borderColor: "#047857",
+                backgroundColor: "#ecfccb",
+              },
+              {
+                id: "vip",
+                name: "VIP",
+                color: "#dc2626",
+                borderColor: "#b91c1c",
+                backgroundColor: "#fef2f2",
+              },
+            ];
+            setCategories(demoCategories);
+            setActiveCategory(demoCategories[0].id);
           }
         } else {
           // Demo kategoriler yükle
@@ -428,32 +438,13 @@ export default function ReservationPanel() {
             ...new Set(restaurantIds),
           ]);
 
-          // Eğer currentRestaurant mock ise, gerçek restoranlardan birini kullan
-          let targetRestaurantId = currentRestaurant.id;
-          const availableRealRestaurants = [...new Set(restaurantIds)].filter(
-            (id) => id && id !== "restaurant-1"
-          );
-
-          if (
-            targetRestaurantId === "restaurant-1" &&
-            availableRealRestaurants.length > 0
-          ) {
-            // Mock restaurant yerine gerçek restaurant kullan
-            targetRestaurantId = availableRealRestaurants[0];
-            console.log(
-              "🔧 Using real restaurant instead of mock:",
-              targetRestaurantId
-            );
-          }
-
           const loadedTables = Object.entries(tablesData)
             .filter(([id, data]: [string, any]) => {
-              // Restaurant filtresi - undefined olanları da kabul et (genel masalar)
+              // Sadece seçili restorana ait masaları getir
               const restaurantMatch =
-                !data.restaurantId || data.restaurantId === targetRestaurantId;
+                data.restaurantId === currentRestaurant.id;
               console.log(`🔧 Table ${id} restaurant filter:`, {
                 tableRestaurantId: data.restaurantId,
-                targetRestaurantId: targetRestaurantId,
                 currentRestaurantId: currentRestaurant.id,
                 match: restaurantMatch,
               });

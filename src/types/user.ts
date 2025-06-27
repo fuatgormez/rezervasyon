@@ -24,12 +24,15 @@ export interface Restaurant {
   id: string;
   companyId: string;
   name: string;
-  slug: string; // URL için (örn: tamer-merkez-sube)
+  slug?: string; // URL için (örn: tamer-merkez-sube)
   address: string;
   phone: string;
   email?: string;
   logo?: string;
-  settings: {
+  capacity?: number;
+  openingTime?: string; // "07:00" formatında
+  closingTime?: string; // "02:00" formatında
+  settings?: {
     timezone: string;
     currency: string;
     openingHours: {
@@ -48,8 +51,8 @@ export interface Restaurant {
       allowOnlineBooking: boolean;
     };
   };
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt?: Date;
+  updatedAt?: Date;
   isActive: boolean;
 }
 
