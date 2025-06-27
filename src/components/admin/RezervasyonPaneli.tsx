@@ -39,6 +39,7 @@ import RestaurantSelector from "../RestaurantSelector";
 import { useAuthContext } from "@/lib/firebase/context";
 import { useAuth } from "@/lib/firebase/hooks";
 import { useRouter } from "next/navigation";
+import AdminHeader from "./AdminHeader";
 
 // Time slots artık dinamik olarak component içinde oluşturuluyor
 
@@ -1502,170 +1503,113 @@ export default function ReservationPanel() {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-gray-50 text-gray-800">
-      {/* Navbar */}
-      <div className="flex justify-between items-center bg-white p-4 border-b border-gray-200 shadow-sm">
-        <div className="flex items-center space-x-6">
+      <AdminHeader title="📅 Rezervasyon Yönetimi">
+        {/* Date Controls */}
+        <div className="flex justify-between items-center">
           <div className="flex items-center space-x-4">
-            <div className="text-2xl font-bold text-blue-600">Zonekult</div>
-            <div className="text-sm text-gray-500">Reservation Management</div>
-          </div>
-          <div className="flex space-x-4">
-            <Link
-              href="/admin"
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            >
-              Dashboard
-            </Link>
-            <Link
-              href="/admin/settings"
-              className="px-4 py-2 rounded-lg hover:bg-gray-100"
-            >
-              Settings
-            </Link>
-            <Link
-              href="/admin/staff"
-              className="px-4 py-2 rounded-lg hover:bg-gray-100"
-            >
-              Staff Management
-            </Link>
-            <Link
-              href="/admin/customers"
-              className="px-4 py-2 rounded-lg hover:bg-gray-100"
-            >
-              Customer Management
-            </Link>
-            <Link
-              href="/reservation"
-              className="px-4 py-2 rounded-lg hover:bg-gray-100"
-            >
-              Reservation
-            </Link>
-          </div>
-        </div>
-        <div className="flex items-center space-x-3">
-          <RestaurantSelector />
-          <Link
-            href="/init-db"
-            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-          >
-            Initialize DB
-          </Link>
-
-          <button
-            onClick={handleLogout}
-            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center space-x-1"
-          >
-            <LogOut className="w-4 h-4" />
-            <span>Logout</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Header */}
-      <div className="flex justify-between items-center p-4 bg-white border-b border-gray-200">
-        <div className="flex items-center space-x-4">
-          <button
-            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            onClick={goToToday}
-          >
-            <Calendar className="w-4 h-4" />
-            <span>Today</span>
-          </button>
-          <div className="flex items-center space-x-2">
             <button
-              aria-label="Previous day"
-              className="p-2 rounded-lg hover:bg-gray-100"
-              onClick={goToPreviousDay}
+              className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              onClick={goToToday}
             >
-              <ChevronLeft className="w-5 h-5 text-gray-600" />
+              <Calendar className="w-4 h-4" />
+              <span>Bugün</span>
             </button>
-            <div
-              className="relative font-medium text-lg cursor-pointer"
-              onClick={() => setIsCalendarOpen(!isCalendarOpen)}
-              ref={calendarRef}
-            >
-              {format(selectedDate, "dd MMMM yyyy", { locale: tr })}
+            <div className="flex items-center space-x-2">
+              <button
+                aria-label="Önceki gün"
+                className="p-2 rounded-lg hover:bg-gray-100"
+                onClick={goToPreviousDay}
+              >
+                <ChevronLeft className="w-5 h-5 text-gray-600" />
+              </button>
+              <div
+                className="relative font-medium text-lg cursor-pointer"
+                onClick={() => setIsCalendarOpen(!isCalendarOpen)}
+                ref={calendarRef}
+              >
+                {format(selectedDate, "dd MMMM yyyy", { locale: tr })}
 
-              {/* DatePicker */}
-              {isCalendarOpen && (
-                <div className="absolute z-10 mt-2 bg-white shadow-lg rounded-lg p-2 border">
-                  <DayPicker
-                    mode="single"
-                    selected={selectedDate}
-                    onSelect={handleDaySelect}
-                    locale={tr}
-                    classNames={{
-                      day_selected: "bg-blue-600 text-white rounded-md",
-                      day_today: "border border-blue-500 rounded-md",
-                      button: "hover:bg-blue-100 rounded-md",
-                    }}
-                    footer={
-                      <div className="mt-2 pt-2 border-t border-gray-200 flex justify-between">
-                        <button
-                          onClick={goToToday}
-                          className="text-sm text-blue-600 hover:text-blue-800"
-                          type="button"
-                        >
-                          Today
-                        </button>
-                        <button
-                          onClick={() => setIsCalendarOpen(false)}
-                          className="text-sm text-gray-600 hover:text-gray-800"
-                          type="button"
-                        >
-                          Close
-                        </button>
-                      </div>
-                    }
-                  />
-                </div>
-              )}
+                {/* DatePicker */}
+                {isCalendarOpen && (
+                  <div className="absolute z-10 mt-2 bg-white shadow-lg rounded-lg p-2 border">
+                    <DayPicker
+                      mode="single"
+                      selected={selectedDate}
+                      onSelect={handleDaySelect}
+                      locale={tr}
+                      classNames={{
+                        day_selected: "bg-blue-600 text-white rounded-md",
+                        day_today: "border border-blue-500 rounded-md",
+                        button: "hover:bg-blue-100 rounded-md",
+                      }}
+                      footer={
+                        <div className="mt-2 pt-2 border-t border-gray-200 flex justify-between">
+                          <button
+                            onClick={goToToday}
+                            className="text-sm text-blue-600 hover:text-blue-800"
+                            type="button"
+                          >
+                            Bugün
+                          </button>
+                          <button
+                            onClick={() => setIsCalendarOpen(false)}
+                            className="text-sm text-gray-600 hover:text-gray-800"
+                            type="button"
+                          >
+                            Kapat
+                          </button>
+                        </div>
+                      }
+                    />
+                  </div>
+                )}
+              </div>
+              <button
+                aria-label="Sonraki gün"
+                className="p-2 rounded-lg hover:bg-gray-100"
+                onClick={goToNextDay}
+              >
+                <ChevronRight className="w-5 h-5 text-gray-600" />
+              </button>
             </div>
+          </div>
+          <div className="flex items-center space-x-3">
+            <button className="p-2 rounded-lg hover:bg-gray-100 text-blue-600">
+              <Filter className="w-5 h-5" />
+            </button>
+            <div className="relative">
+              <Search className="absolute left-3 top-3 text-gray-500 w-4 h-4" />
+              <input
+                type="text"
+                placeholder="Ara..."
+                className="pl-10 pr-4 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+            <button className="p-2 rounded-lg hover:bg-gray-100">
+              <RefreshCw className="w-5 h-5 text-gray-600" />
+            </button>
             <button
-              aria-label="Next day"
-              className="p-2 rounded-lg hover:bg-gray-100"
-              onClick={goToNextDay}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center space-x-1"
+              onClick={() => {
+                setEditingReservation(null);
+                setFormValues({
+                  customerName: "",
+                  guestCount: 2,
+                  startTime: "19:00",
+                  endTime: "20:00",
+                  tableId: tables.length > 0 ? tables[0].id : "",
+                  status: "confirmed",
+                  note: "",
+                });
+                setIsReservationModalOpen(true);
+              }}
             >
-              <ChevronRight className="w-5 h-5 text-gray-600" />
+              <PlusCircle className="w-4 h-4" />
+              <span>Yeni Rezervasyon</span>
             </button>
           </div>
         </div>
-        <div className="flex items-center space-x-3">
-          <button className="p-2 rounded-lg hover:bg-gray-100 text-blue-600">
-            <Filter className="w-5 h-5" />
-          </button>
-          <div className="relative">
-            <Search className="absolute left-3 top-3 text-gray-500 w-4 h-4" />
-            <input
-              type="text"
-              placeholder="Search..."
-              className="pl-10 pr-4 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
-          </div>
-          <button className="p-2 rounded-lg hover:bg-gray-100">
-            <RefreshCw className="w-5 h-5 text-gray-600" />
-          </button>
-          <button
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center space-x-1"
-            onClick={() => {
-              setEditingReservation(null);
-              setFormValues({
-                customerName: "",
-                guestCount: 2,
-                startTime: "19:00",
-                endTime: "20:00",
-                tableId: tables.length > 0 ? tables[0].id : "",
-                status: "confirmed",
-                note: "",
-              });
-              setIsReservationModalOpen(true);
-            }}
-          >
-            <PlusCircle className="w-4 h-4" />
-            <span>New Reservation</span>
-          </button>
-        </div>
-      </div>
+      </AdminHeader>
 
       {/* Main content - Reservation area */}
       <div className="flex flex-1 overflow-hidden">

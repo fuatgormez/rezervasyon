@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import toast from "react-hot-toast";
+import AdminHeader from "@/components/admin/AdminHeader";
 
 // Müşteri türü tanımı
 interface Customer {
@@ -183,204 +184,202 @@ export default function CustomerManagementPage() {
   };
 
   return (
-    <div className="container mx-auto p-4">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Müşteri Yönetimi</h1>
-        <div className="space-x-2">
+    <div className="min-h-screen bg-gray-50">
+      <AdminHeader
+        title="👥 Müşteri Yönetimi"
+        subtitle="Müşteri bilgilerini ve tercihlerini yönetin"
+      >
+        <div className="flex justify-end">
           <button
             onClick={() => setIsFormOpen(true)}
-            className="bg-green-500 text-white px-4 py-2 rounded"
+            className="bg-green-500 text-white px-4 py-2 rounded-lg hover:bg-green-600"
           >
             Yeni Müşteri Ekle
           </button>
-          <Link
-            href="/admin"
-            className="bg-blue-500 text-white px-4 py-2 rounded"
-          >
-            Admin Paneline Dön
-          </Link>
         </div>
-      </div>
+      </AdminHeader>
 
-      {/* Müşteri Listesi */}
-      <div className="bg-white p-6 rounded-lg shadow-md mb-6">
-        <h2 className="text-xl font-semibold mb-4">Müşteri Listesi</h2>
+      <div className="container mx-auto p-4">
+        {/* Müşteri Listesi */}
+        <div className="bg-white p-6 rounded-lg shadow-md mb-6">
+          <h2 className="text-xl font-semibold mb-4">Müşteri Listesi</h2>
 
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Ad Soyad
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Telefon
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  E-posta
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Ziyaret Sayısı
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Son Ziyaret
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  VIP
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  İşlemler
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {customers.map((customer) => (
-                <tr key={customer.id}>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {customer.name}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {customer.phone}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {customer.email}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {customer.visitCount}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {customer.lastVisit || "Henüz ziyaret yok"}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {customer.isVIP ? (
-                      <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
-                        VIP
-                      </span>
-                    ) : (
-                      <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
-                        Normal
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap space-x-2">
-                    <button
-                      onClick={() => handleEdit(customer)}
-                      className="text-blue-600 hover:text-blue-800"
-                    >
-                      Düzenle
-                    </button>
-                    <button
-                      onClick={() => deleteCustomer(customer.id)}
-                      className="text-red-600 hover:text-red-800"
-                    >
-                      Sil
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Müşteri Ekleme/Düzenleme Formu */}
-      {isFormOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-lg shadow-md w-full max-w-2xl">
-            <h2 className="text-xl font-semibold mb-4">
-              {selectedCustomer ? "Müşteri Düzenle" : "Yeni Müşteri Ekle"}
-            </h2>
-
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Ad Soyad
-                  </label>
-                  <input
-                    type="text"
-                    name="name"
-                    value={formData.name}
-                    onChange={handleInputChange}
-                    required
-                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Telefon
-                  </label>
-                  <input
-                    type="text"
-                    name="phone"
-                    value={formData.phone}
-                    onChange={handleInputChange}
-                    required
-                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     E-posta
-                  </label>
-                  <input
-                    type="email"
-                    name="email"
-                    value={formData.email}
-                    onChange={handleInputChange}
-                    required
-                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
-                  />
-                </div>
-
-                <div className="flex items-center h-full">
-                  <label className="inline-flex items-center mt-6">
-                    <input
-                      type="checkbox"
-                      name="isVIP"
-                      checked={formData.isVIP}
-                      onChange={handleInputChange}
-                      className="form-checkbox h-5 w-5 text-blue-600"
-                    />
-                    <span className="ml-2 text-gray-700">VIP Müşteri</span>
-                  </label>
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700">
-                    Notlar
-                  </label>
-                  <textarea
-                    name="notes"
-                    value={formData.notes}
-                    onChange={handleInputChange}
-                    rows={3}
-                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end space-x-2 mt-6">
-                <button
-                  type="button"
-                  onClick={resetForm}
-                  className="bg-gray-300 text-gray-800 px-4 py-2 rounded"
-                >
-                  İptal
-                </button>
-                <button
-                  type="submit"
-                  className="bg-blue-500 text-white px-4 py-2 rounded"
-                >
-                  {selectedCustomer ? "Güncelle" : "Ekle"}
-                </button>
-              </div>
-            </form>
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Ziyaret Sayısı
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Son Ziyaret
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    VIP
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    İşlemler
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {customers.map((customer) => (
+                  <tr key={customer.id}>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {customer.name}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {customer.phone}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {customer.email}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {customer.visitCount}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {customer.lastVisit || "Henüz ziyaret yok"}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {customer.isVIP ? (
+                        <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">
+                          VIP
+                        </span>
+                      ) : (
+                        <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-800">
+                          Normal
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap space-x-2">
+                      <button
+                        onClick={() => handleEdit(customer)}
+                        className="text-blue-600 hover:text-blue-800"
+                      >
+                        Düzenle
+                      </button>
+                      <button
+                        onClick={() => deleteCustomer(customer.id)}
+                        className="text-red-600 hover:text-red-800"
+                      >
+                        Sil
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
-      )}
+
+        {/* Müşteri Ekleme/Düzenleme Formu */}
+        {isFormOpen && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white p-6 rounded-lg shadow-md w-full max-w-2xl">
+              <h2 className="text-xl font-semibold mb-4">
+                {selectedCustomer ? "Müşteri Düzenle" : "Yeni Müşteri Ekle"}
+              </h2>
+
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Ad Soyad
+                    </label>
+                    <input
+                      type="text"
+                      name="name"
+                      value={formData.name}
+                      onChange={handleInputChange}
+                      required
+                      className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      Telefon
+                    </label>
+                    <input
+                      type="text"
+                      name="phone"
+                      value={formData.phone}
+                      onChange={handleInputChange}
+                      required
+                      className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">
+                      E-posta
+                    </label>
+                    <input
+                      type="email"
+                      name="email"
+                      value={formData.email}
+                      onChange={handleInputChange}
+                      required
+                      className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+                    />
+                  </div>
+
+                  <div className="flex items-center h-full">
+                    <label className="inline-flex items-center mt-6">
+                      <input
+                        type="checkbox"
+                        name="isVIP"
+                        checked={formData.isVIP}
+                        onChange={handleInputChange}
+                        className="form-checkbox h-5 w-5 text-blue-600"
+                      />
+                      <span className="ml-2 text-gray-700">VIP Müşteri</span>
+                    </label>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Notlar
+                    </label>
+                    <textarea
+                      name="notes"
+                      value={formData.notes}
+                      onChange={handleInputChange}
+                      rows={3}
+                      className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end space-x-2 mt-6">
+                  <button
+                    type="button"
+                    onClick={resetForm}
+                    className="bg-gray-300 text-gray-800 px-4 py-2 rounded"
+                  >
+                    İptal
+                  </button>
+                  <button
+                    type="submit"
+                    className="bg-blue-500 text-white px-4 py-2 rounded"
+                  >
+                    {selectedCustomer ? "Güncelle" : "Ekle"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
