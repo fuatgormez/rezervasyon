@@ -7,6 +7,7 @@ import { ref, get, set, push, remove, update } from "firebase/database";
 import toast from "react-hot-toast";
 import Link from "next/link";
 import AdminHeader from "@/components/admin/AdminHeader";
+// XLSX will be imported dynamically
 
 export default function SettingsPage() {
   const [selectedCompany, setSelectedCompany] = useState<any>(null);
@@ -140,6 +141,118 @@ export default function SettingsPage() {
     setIsModalOpen(true);
   };
 
+  const handleCustomerImport = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!selectedRestaurant) {
+      toast.error("Önce bir restoran seçin!");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const reader = new FileReader();
+
+      reader.onload = async (e) => {
+        try {
+          const XLSX = await import("xlsx");
+          const arrayBuffer = new Uint8Array(e.target?.result as ArrayBuffer);
+          const workbook = XLSX.read(arrayBuffer, { type: "array" });
+          const sheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[sheetName];
+          const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+          let importedCount = 0;
+          let skippedCount = 0;
+          let errorCount = 0;
+
+          if (jsonData.length === 0) {
+            toast.error("Excel dosyası boş veya okunamadı!");
+            return;
+          }
+
+          toast(`📊 ${jsonData.length} satır işlenmeye başlandı...`);
+
+          for (const row of jsonData as any[]) {
+            try {
+              // Excel'den gelen veriyi müşteri formatına çevir
+              const customer = {
+                name:
+                  row["Ad"] ||
+                  row["Name"] ||
+                  row["İsim"] ||
+                  row["Müşteri Adı"] ||
+                  "",
+                email: row["Email"] || row["E-posta"] || row["Mail"] || "",
+                phone: row["Telefon"] || row["Phone"] || row["Tel"] || "",
+                notes: row["Notlar"] || row["Notes"] || row["Not"] || "",
+                restaurantId: selectedRestaurant.id,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                reservationCount: 0,
+                loyaltyPoints: 0,
+              };
+
+              // Boş isim kontrolü
+              if (!customer.name || customer.name.trim() === "") {
+                skippedCount++;
+                continue;
+              }
+
+              // Aynı isim ve telefon kontrolü
+              const existingCustomer = data.customers.find(
+                (c: any) =>
+                  c.restaurantId === selectedRestaurant.id &&
+                  c.name === customer.name &&
+                  customer.phone &&
+                  c.phone === customer.phone
+              );
+
+              if (existingCustomer) {
+                skippedCount++;
+                continue;
+              }
+
+              // Firebase'e kaydet
+              const newRef = push(ref(db, "customers"));
+              await set(newRef, customer);
+              importedCount++;
+            } catch (error) {
+              console.error("Row processing error:", error);
+              errorCount++;
+            }
+          }
+
+          // Verileri yenile
+          await loadAllData();
+
+          let message = `✅ ${importedCount} müşteri import edildi!`;
+          if (skippedCount > 0) message += ` (${skippedCount} atlandı)`;
+          if (errorCount > 0) message += ` (${errorCount} hata)`;
+
+          toast.success(message);
+        } catch (error) {
+          console.error("Import error:", error);
+          toast.error("Excel dosyası işlenirken hata oluştu!");
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      reader.readAsArrayBuffer(file);
+    } catch (error) {
+      console.error("File read error:", error);
+      toast.error("Dosya okuma hatası!");
+      setLoading(false);
+    }
+
+    // Input'u temizle
+    event.target.value = "";
+  };
+
   // Get filtered data
   const getFilteredRestaurants = () => {
     return selectedCompany
@@ -179,8 +292,8 @@ export default function SettingsPage() {
         subtitle="Firma → Restoran → Alt Veriler mantığında yönetim"
       />
 
-      <div className="p-6">
-        <div className="max-w-7xl mx-auto">
+      <div className="p-2">
+        <div className="w-full">
           {/* Breadcrumb */}
           <div className="bg-white rounded-lg shadow-sm mb-6 p-4">
             <div className="flex items-center space-x-2 text-sm text-gray-600">
@@ -212,7 +325,7 @@ export default function SettingsPage() {
           </div>
 
           {/* Üst Panel - Firma ve Restoran Seçimi */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-6">
             {/* Sol Panel - Firmalar */}
             <div className="bg-white rounded-lg shadow-sm p-6">
               <div className="flex justify-between items-center mb-4">
@@ -227,7 +340,7 @@ export default function SettingsPage() {
                 </button>
               </div>
 
-              <div className="space-y-2 max-h-96 overflow-y-auto">
+              <div className="space-y-2 max-h-[500px] overflow-y-auto">
                 {data.companies.map((company: any) => (
                   <div
                     key={company.id}
@@ -301,7 +414,7 @@ export default function SettingsPage() {
                   <div>Restoranları görmek için soldan bir firma seçin</div>
                 </div>
               ) : (
-                <div className="space-y-2 max-h-96 overflow-y-auto">
+                <div className="space-y-2 max-h-[500px] overflow-y-auto">
                   {getFilteredRestaurants().map((restaurant: any) => (
                     <div
                       key={restaurant.id}
@@ -367,14 +480,14 @@ export default function SettingsPage() {
                   📋 {selectedRestaurant.name} - Detay Yönetimi
                 </h2>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-4 gap-3 w-full">
                   {/* Müşteriler Kartı */}
-                  <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-6 border border-blue-200">
+                  <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-4 border border-blue-200 min-h-[600px] flex flex-col">
                     <div className="flex justify-between items-center mb-4">
                       <div className="flex items-center space-x-2">
-                        <div className="text-2xl">👥</div>
+                        <div className="text-3xl">👥</div>
                         <div>
-                          <h3 className="font-semibold text-gray-900">
+                          <h3 className="text-lg font-semibold text-gray-900">
                             Müşteriler
                           </h3>
                           <p className="text-sm text-gray-600">
@@ -382,20 +495,47 @@ export default function SettingsPage() {
                           </p>
                         </div>
                       </div>
-                      <button
-                        onClick={() => openModal("customers")}
-                        className="bg-blue-600 text-white px-3 py-1 rounded-lg hover:bg-blue-700 text-sm"
-                      >
-                        + Ekle
-                      </button>
+                      <div className="flex space-x-2">
+                        <div className="flex flex-col space-y-1">
+                          <label
+                            className={`${
+                              loading
+                                ? "bg-gray-400 cursor-not-allowed"
+                                : "bg-green-600 hover:bg-green-700 cursor-pointer"
+                            } text-white px-3 py-1 rounded-lg text-sm`}
+                          >
+                            {loading ? "⏳ İşleniyor..." : "📥 Import"}
+                            <input
+                              type="file"
+                              accept=".xlsx,.xls,.csv"
+                              onChange={(e) => handleCustomerImport(e)}
+                              className="hidden"
+                              disabled={loading}
+                            />
+                          </label>
+                          <a
+                            href="/musteri-ornegi.csv"
+                            download="musteri-ornegi.csv"
+                            className="text-xs text-blue-600 hover:underline text-center"
+                          >
+                            📄 Örnek dosya
+                          </a>
+                        </div>
+                        <button
+                          onClick={() => openModal("customers")}
+                          className="bg-blue-600 text-white px-3 py-1 rounded-lg hover:bg-blue-700 text-sm"
+                        >
+                          + Ekle
+                        </button>
+                      </div>
                     </div>
-                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                    <div className="space-y-2 flex-1 overflow-y-auto">
                       {getFilteredData("customers")
-                        .slice(0, 5)
+                        .slice(0, 8)
                         .map((customer: any) => (
                           <div
                             key={customer.id}
-                            className="bg-white rounded p-3 flex justify-between items-center shadow-sm"
+                            className="bg-white rounded p-4 flex justify-between items-center shadow-sm"
                           >
                             <div className="flex-1">
                               <div className="font-medium text-sm">
@@ -432,21 +572,46 @@ export default function SettingsPage() {
                             </div>
                           </div>
                         ))}
-                      {getFilteredData("customers").length > 5 && (
+                      {getFilteredData("customers").length > 8 && (
                         <div className="text-center text-sm text-gray-500 py-2">
-                          +{getFilteredData("customers").length - 5} daha...
+                          +{getFilteredData("customers").length - 8} daha...
                         </div>
                       )}
+                    </div>
+                    <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                      <h4 className="text-sm font-medium text-blue-900 mb-2">
+                        📥 Excel/CSV Import Bilgisi
+                      </h4>
+                      <p className="text-xs text-blue-700 mb-2">
+                        Desteklenen kolon başlıkları:
+                      </p>
+                      <div className="grid grid-cols-2 gap-2 text-xs text-blue-600">
+                        <div>
+                          • <strong>Ad</strong> / Name / İsim
+                        </div>
+                        <div>
+                          • <strong>Email</strong> / E-posta / Mail
+                        </div>
+                        <div>
+                          • <strong>Telefon</strong> / Phone / Tel
+                        </div>
+                        <div>
+                          • <strong>Notlar</strong> / Notes / Not
+                        </div>
+                      </div>
+                      <p className="text-xs text-blue-600 mt-2">
+                        💡 Aynı ad+telefon kombinasyonu varsa atlanır
+                      </p>
                     </div>
                   </div>
 
                   {/* Kategoriler Kartı */}
-                  <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-6 border border-purple-200">
+                  <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-4 border border-purple-200 min-h-[600px] flex flex-col">
                     <div className="flex justify-between items-center mb-4">
                       <div className="flex items-center space-x-2">
-                        <div className="text-2xl">📂</div>
+                        <div className="text-3xl">📂</div>
                         <div>
-                          <h3 className="font-semibold text-gray-900">
+                          <h3 className="text-lg font-semibold text-gray-900">
                             Kategoriler
                           </h3>
                           <p className="text-sm text-gray-600">
@@ -461,11 +626,11 @@ export default function SettingsPage() {
                         + Ekle
                       </button>
                     </div>
-                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                    <div className="space-y-2 flex-1 overflow-y-auto">
                       {getFilteredData("categories").map((category: any) => (
                         <div
                           key={category.id}
-                          className="bg-white rounded p-3 flex justify-between items-center shadow-sm"
+                          className="bg-white rounded p-4 flex justify-between items-center shadow-sm"
                         >
                           <div className="flex items-center space-x-3">
                             <div
@@ -498,12 +663,12 @@ export default function SettingsPage() {
                   </div>
 
                   {/* Masalar Kartı */}
-                  <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-6 border border-green-200">
+                  <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-4 border border-green-200 min-h-[600px] flex flex-col">
                     <div className="flex justify-between items-center mb-4">
                       <div className="flex items-center space-x-2">
-                        <div className="text-2xl">🪑</div>
+                        <div className="text-3xl">🪑</div>
                         <div>
-                          <h3 className="font-semibold text-gray-900">
+                          <h3 className="text-lg font-semibold text-gray-900">
                             Masalar
                           </h3>
                           <p className="text-sm text-gray-600">
@@ -518,11 +683,11 @@ export default function SettingsPage() {
                         + Ekle
                       </button>
                     </div>
-                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                    <div className="space-y-2 flex-1 overflow-y-auto">
                       {getFilteredData("tables").map((table: any) => (
                         <div
                           key={table.id}
-                          className="bg-white rounded p-3 flex justify-between items-center shadow-sm"
+                          className="bg-white rounded p-4 flex justify-between items-center shadow-sm"
                         >
                           <div>
                             <div className="font-medium text-sm">
@@ -552,12 +717,12 @@ export default function SettingsPage() {
                   </div>
 
                   {/* Garsonlar Kartı */}
-                  <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-6 border border-orange-200">
+                  <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-4 border border-orange-200 min-h-[600px] flex flex-col">
                     <div className="flex justify-between items-center mb-4">
                       <div className="flex items-center space-x-2">
-                        <div className="text-2xl">👨‍💼</div>
+                        <div className="text-3xl">👨‍💼</div>
                         <div>
-                          <h3 className="font-semibold text-gray-900">
+                          <h3 className="text-lg font-semibold text-gray-900">
                             Garsonlar
                           </h3>
                           <p className="text-sm text-gray-600">
@@ -572,11 +737,11 @@ export default function SettingsPage() {
                         + Ekle
                       </button>
                     </div>
-                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                    <div className="space-y-2 flex-1 overflow-y-auto">
                       {getFilteredData("waiters").map((waiter: any) => (
                         <div
                           key={waiter.id}
-                          className="bg-white rounded p-3 flex justify-between items-center shadow-sm"
+                          className="bg-white rounded p-4 flex justify-between items-center shadow-sm"
                         >
                           <div>
                             <div className="font-medium text-sm">
