@@ -26,18 +26,7 @@ export default function AdminPage() {
         >
           Sistem Ayarları
         </Link>
-        <Link
-          href="/admin/staff"
-          className="px-4 py-2 rounded-lg hover:bg-gray-100"
-        >
-          Garson Yönetimi
-        </Link>
-        <Link
-          href="/admin/customers"
-          className="px-4 py-2 rounded-lg hover:bg-gray-100"
-        >
-          Müşteri Yönetimi
-        </Link>
+
         <Link
           href="/reservation"
           className="px-4 py-2 rounded-lg hover:bg-gray-100"

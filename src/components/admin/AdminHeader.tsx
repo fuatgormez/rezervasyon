@@ -6,7 +6,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LogOut } from "lucide-react";
+import { LogOut, Settings } from "lucide-react";
 import RestaurantSelector from "../RestaurantSelector";
 import { useAuth } from "@/lib/firebase/hooks";
 
@@ -50,24 +50,6 @@ export default function AdminHeader({
               Dashboard
             </Link>
             <Link
-              href="/admin/settings"
-              className="px-4 py-2 rounded-lg hover:bg-gray-100"
-            >
-              Ayarlar
-            </Link>
-            <Link
-              href="/admin/staff"
-              className="px-4 py-2 rounded-lg hover:bg-gray-100"
-            >
-              Personel
-            </Link>
-            <Link
-              href="/admin/customers"
-              className="px-4 py-2 rounded-lg hover:bg-gray-100"
-            >
-              Müşteriler
-            </Link>
-            <Link
               href="/reservation"
               className="px-4 py-2 rounded-lg hover:bg-gray-100"
             >
@@ -77,6 +59,13 @@ export default function AdminHeader({
         </div>
         <div className="flex items-center space-x-3">
           <RestaurantSelector />
+          <Link
+            href="/admin/settings"
+            className="p-2 rounded-lg hover:bg-gray-100 text-gray-600 hover:text-gray-800"
+            title="Sistem Ayarları"
+          >
+            <Settings className="w-7 h-7" />
+          </Link>
           <Link
             href="/init-db"
             className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
