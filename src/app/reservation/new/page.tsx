@@ -7,22 +7,21 @@ import { tr } from "date-fns/locale";
 import DatePicker from "@/components/DatePicker";
 import TimeGrid from "@/components/reservation/TimeGrid";
 import toast, { Toaster } from "react-hot-toast";
-import { db } from "@/config/firebase";
-import {
-  collection,
-  getDocs,
-  addDoc,
-  query,
-  where,
-  Timestamp,
-} from "firebase/firestore";
+import { db } from "@/lib/firebase/config";
+import { ref, get } from "firebase/database";
 
 interface Table {
   id: string;
   number: number;
+  tableName?: string;
+  minCapacity?: number;
+  maxCapacity?: number;
   capacity: number;
   status: string;
   category_id?: string;
+  isAvailableForCustomers?: boolean;
+  description?: string;
+  restaurantId?: string;
 }
 
 interface ReservationData {
@@ -57,45 +56,41 @@ export default function NewReservationPage() {
   useEffect(() => {
     const loadTablesAndReservations = async () => {
       try {
-        // Masaları yükle
-        const tablesRef = collection(db, "tables");
-        const tablesSnapshot = await getDocs(tablesRef);
-        const tableData = tablesSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        })) as Table[];
-
-        setTables(tableData);
-
-        // Seçilen gün için rezervasyonları yükle
-        const startDate = new Date(selectedDate);
-        startDate.setHours(0, 0, 0, 0);
-
-        const endDate = new Date(selectedDate);
-        endDate.setHours(23, 59, 59, 999);
-
-        const reservationsRef = collection(db, "reservations");
-        const reservationsQuery = query(
-          reservationsRef,
-          where("start_time", ">=", Timestamp.fromDate(startDate)),
-          where("start_time", "<=", Timestamp.fromDate(endDate))
+        // Sadece müşterilere açık masaları API'den yükle
+        const dateStr = format(selectedDate, "yyyy-MM-dd");
+        const response = await fetch(
+          `/api/tables/available?date=${dateStr}&time=12:00&guests=${formData.guestCount}`
         );
 
-        const reservationsSnapshot = await getDocs(reservationsQuery);
-        const reservationData = reservationsSnapshot.docs.map((doc) => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            table_id: data.table_id,
-            customer_name: data.customer_name,
-            start_time:
-              data.start_time?.toDate()?.toISOString() ||
-              new Date().toISOString(),
-            end_time:
-              data.end_time?.toDate()?.toISOString() ||
-              new Date().toISOString(),
-          };
-        });
+        if (response.ok) {
+          const availableTables = await response.json();
+          setTables(availableTables);
+        } else {
+          console.error("Masalar yüklenirken hata:", response.statusText);
+          toast.error("Masalar yüklenirken bir hata oluştu.");
+        }
+
+        // Rezervasyonları Realtime Database'den yükle
+        const reservationsRef = ref(db, "reservations");
+        const reservationsSnapshot = await get(reservationsRef);
+
+        let reservationData: ReservationData[] = [];
+        if (reservationsSnapshot.exists()) {
+          const reservationsData = reservationsSnapshot.val();
+          reservationData = Object.entries(reservationsData)
+            .map(([id, data]: [string, any]) => ({
+              id,
+              table_id: data.table_id || data.tableId,
+              customer_name: data.customer_name || data.customerName,
+              start_time: data.start_time || data.startTime,
+              end_time: data.end_time || data.endTime,
+            }))
+            .filter((reservation: any) => {
+              // Sadece seçilen günün rezervasyonlarını filtrele
+              const resDate = new Date(reservation.start_time);
+              return resDate.toDateString() === selectedDate.toDateString();
+            });
+        }
 
         setReservations(reservationData);
       } catch (error) {
@@ -105,7 +100,7 @@ export default function NewReservationPage() {
     };
 
     loadTablesAndReservations();
-  }, [selectedDate]);
+  }, [selectedDate, formData.guestCount]);
 
   const handleDateChange = (date: Date) => {
     setSelectedDate(date);
@@ -170,34 +165,34 @@ export default function NewReservationPage() {
       const startTime = new Date(`${dateStr}T${formData.time}:00`);
       const endTime = new Date(`${dateStr}T${formData.endTime}:00`);
 
-      // Rezervasyon çakışmasını kontrol et
-      const reservationsRef = collection(db, "reservations");
-      const conflictQuery = query(
-        reservationsRef,
-        where("table_id", "==", formData.tableId),
-        where("start_time", "<", Timestamp.fromDate(endTime)),
-        where("end_time", ">", Timestamp.fromDate(startTime))
-      );
+      // API üzerinden rezervasyon oluştur
+      const response = await fetch('/api/reservations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          customer: {
+            name: formData.customerName,
+            email: formData.email,
+            phone: formData.phone,
+          },
+          tableId: formData.tableId,
+          date: dateStr,
+          startTime: formData.time,
+          endTime: formData.endTime,
+          guests: parseInt(formData.guestCount.toString()),
+          notes: formData.specialRequests,
+          status: 'confirmed',
+        }),
+      });
 
-      const conflictSnapshot = await getDocs(conflictQuery);
-
-      if (!conflictSnapshot.empty) {
-        toast.error("Bu zaman diliminde masa zaten rezerve edilmiş!");
+      if (!response.ok) {
+        const errorData = await response.json();
+        toast.error(errorData.error || "Rezervasyon oluşturulamadı!");
         setLoading(false);
         return;
       }
-
-      // Rezervasyon oluştur
-      await addDoc(collection(db, "reservations"), {
-        table_id: formData.tableId,
-        customer_name: formData.customerName,
-        customer_phone: formData.phone,
-        customer_email: formData.email,
-        guest_count: parseInt(formData.guestCount.toString()),
-        start_time: Timestamp.fromDate(startTime),
-        end_time: Timestamp.fromDate(endTime),
-        status: "confirmed",
-        note: formData.specialRequests,
         created_at: Timestamp.now(),
         updated_at: Timestamp.now(),
       });

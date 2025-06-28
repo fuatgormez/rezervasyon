@@ -1,16 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/config/firebase";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { db } from "@/lib/firebase/config";
+import { ref, get, query, orderByChild, equalTo } from "firebase/database";
 
 // Masa tipi
 interface Table {
   id: string;
   number: number;
+  tableName?: string;
+  minCapacity?: number;
+  maxCapacity?: number;
   capacity: number;
   location?: string;
   categoryId?: string;
   category_id?: string;
   status?: string;
+  isAvailableForCustomers?: boolean;
+  description?: string;
+  restaurantId?: string;
 }
 
 // Rezervasyon veri tipi
@@ -60,31 +66,48 @@ export async function GET(request: Request) {
       );
     }
 
-    // Firestore'dan tüm masaları getir
-    const tablesRef = collection(db, "tables");
-    const tablesSnapshot = await getDocs(tablesRef);
+    // Realtime Database'den tüm masaları getir
+    const tablesRef = ref(db, "tables");
+    const tablesSnapshot = await get(tablesRef);
 
-    const tables = tablesSnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    })) as Table[];
+    let tables: Table[] = [];
+    if (tablesSnapshot.exists()) {
+      const tablesData = tablesSnapshot.val();
+      tables = Object.entries(tablesData).map(([id, data]: [string, any]) => ({
+        id,
+        ...data,
+      })) as Table[];
+    }
 
     // Seçilen tarih için rezervasyonları getir
-    const reservationsRef = query(
-      collection(db, "reservations"),
-      where("date", "==", date)
-    );
-    const reservationsSnapshot = await getDocs(reservationsRef);
+    const reservationsRef = ref(db, "reservations");
+    const reservationsSnapshot = await get(reservationsRef);
 
-    const reservations = reservationsSnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    })) as Reservation[];
+    let reservations: Reservation[] = [];
+    if (reservationsSnapshot.exists()) {
+      const reservationsData = reservationsSnapshot.val();
+      reservations = Object.entries(reservationsData)
+        .map(([id, data]: [string, any]) => ({
+          id,
+          ...data,
+        }))
+        .filter(
+          (reservation: any) => reservation.date === date
+        ) as Reservation[];
+    }
 
     // Müsait masaları filtrele
     const availableTables = tables.filter((table) => {
-      // Kapasite kontrolü
-      if (table.capacity < guests) {
+      // Müşteri erişim kontrolü - sadece müşterilere açık masalar
+      if (table.isAvailableForCustomers === false) {
+        return false;
+      }
+
+      // Kapasite kontrolü - min/max kapasite varsa onları kullan
+      const minCap = table.minCapacity || table.capacity || 1;
+      const maxCap = table.maxCapacity || table.capacity || 10;
+
+      if (guests < minCap || guests > maxCap) {
         return false;
       }
 

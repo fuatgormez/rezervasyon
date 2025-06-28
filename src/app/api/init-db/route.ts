@@ -368,131 +368,129 @@ export async function POST() {
       },
     };
 
-    // Demo firmalar
-    const companiesData = {
-      "tamer-group": {
-        name: "Tamer Restoran Grubu",
-        email: "info@tamerrestoran.com",
-        phone: "+902123456789",
-        address: "Bebek, İstanbul",
-        isActive: true,
-        createdAt: new Date().toISOString(),
-      },
-      "demo-company": {
-        name: "Demo Restoran",
-        email: "demo@example.com",
-        phone: "+902129876543",
-        address: "Şişli, İstanbul",
-        isActive: true,
-        createdAt: new Date().toISOString(),
-      },
-    };
+    // Mevcut firma verilerini kontrol et
+    const companiesRef = ref(db, "companies");
+    const companiesSnapshot = await get(companiesRef);
 
-    // Demo restoranlar
-    const restaurantsData = {
-      "bebek-bogazici": {
-        name: "Bebek Boğaziçi",
-        companyId: "tamer-group",
-        address: "Bebek Caddesi No:123, Bebek/İstanbul",
-        phone: "+902122222222",
-        email: "bebek@tamerrestoran.com",
-        capacity: 120,
-        openingTime: "07:00",
-        closingTime: "02:00",
-        isActive: true,
-        createdAt: new Date().toISOString(),
-      },
-      "etiler-branch": {
-        name: "Etiler Şubesi",
-        companyId: "tamer-group",
-        address: "Etiler Mahallesi, Etiler/İstanbul",
-        phone: "+902123333333",
-        email: "etiler@tamerrestoran.com",
-        capacity: 80,
-        openingTime: "08:00",
-        closingTime: "01:00",
-        isActive: true,
-        createdAt: new Date().toISOString(),
-      },
-    };
+    let companiesData = {};
+    if (companiesSnapshot.exists()) {
+      companiesData = companiesSnapshot.val();
+      console.log(
+        "✅ Mevcut firma verileri kullanılıyor:",
+        Object.keys(companiesData).length,
+        "firma"
+      );
+    } else {
+      // Eğer hiç firma yoksa demo firma ekle
+      companiesData = {
+        "demo-company": {
+          name: "Demo Restoran Grubu",
+          email: "demo@example.com",
+          phone: "+902129876543",
+          address: "İstanbul",
+          isActive: true,
+          createdAt: new Date().toISOString(),
+        },
+      };
+      console.log("⚠️ Demo firma oluşturuldu");
+    }
 
-    // Demo masalar
-    const tablesData = {
-      // Bebek Boğaziçi masaları
-      "table-bb-1": {
-        number: 1,
-        capacity: 2,
-        category_id: "-OSVBo0LgI-kgRDndQiT", // İç Mekan
-        restaurantId: "bebek-bogazici",
-        status: "active",
-        createdAt: new Date().toISOString(),
-      },
-      "table-bb-2": {
-        number: 2,
-        capacity: 4,
-        category_id: "-OSVBo0LgI-kgRDndQiT", // İç Mekan
-        restaurantId: "bebek-bogazici",
-        status: "active",
-        createdAt: new Date().toISOString(),
-      },
-      "table-bb-3": {
-        number: 3,
-        capacity: 6,
-        category_id: "-OSVBo0LgI-kgRDndQiU", // Bahçe
-        restaurantId: "bebek-bogazici",
-        status: "active",
-        createdAt: new Date().toISOString(),
-      },
-      "table-bb-4": {
-        number: 4,
-        capacity: 4,
-        category_id: "-OSVBo0LgI-kgRDndQiV", // Teras
-        restaurantId: "bebek-bogazici",
-        status: "active",
-        createdAt: new Date().toISOString(),
-      },
-      // Etiler Şubesi masaları
-      "table-et-1": {
-        number: 1,
-        capacity: 2,
-        category_id: "-OSVBo0LgI-kgRDndQiW", // Ana Salon
-        restaurantId: "etiler-branch",
-        status: "active",
-        createdAt: new Date().toISOString(),
-      },
-      "table-et-2": {
-        number: 2,
-        capacity: 4,
-        category_id: "-OSVBo0LgI-kgRDndQiW", // Ana Salon
-        restaurantId: "etiler-branch",
-        status: "active",
-        createdAt: new Date().toISOString(),
-      },
-      "table-et-3": {
-        number: 3,
-        capacity: 6,
-        category_id: "-OSVBo0LgI-kgRDndQiX", // VIP Bölüm
-        restaurantId: "etiler-branch",
-        status: "active",
-        createdAt: new Date().toISOString(),
-      },
-      "table-et-4": {
-        number: 4,
-        capacity: 8,
-        category_id: "-OSVBo0LgI-kgRDndQiY", // Cam Balkon
-        restaurantId: "etiler-branch",
-        status: "active",
-        createdAt: new Date().toISOString(),
-      },
-    };
+    // Mevcut restoran verilerini kontrol et
+    const restaurantsRef = ref(db, "restaurants");
+    const restaurantsSnapshot = await get(restaurantsRef);
 
-    // Verileri Firebase'e kaydet
+    let restaurantsData = {};
+    if (restaurantsSnapshot.exists()) {
+      restaurantsData = restaurantsSnapshot.val();
+      console.log(
+        "✅ Mevcut restoran verileri kullanılıyor:",
+        Object.keys(restaurantsData).length,
+        "restoran"
+      );
+    } else {
+      // Eğer hiç restoran yoksa demo restoran ekle
+      const firstCompanyId = Object.keys(companiesData)[0];
+      restaurantsData = {
+        "demo-restaurant": {
+          name: "Demo Restoran",
+          companyId: firstCompanyId,
+          address: "Demo Adres, İstanbul",
+          phone: "+902123333333",
+          email: "demo@restaurant.com",
+          capacity: 80,
+          openingTime: "08:00",
+          closingTime: "01:00",
+          isActive: true,
+          createdAt: new Date().toISOString(),
+        },
+      };
+      console.log("⚠️ Demo restoran oluşturuldu");
+    }
+
+    // Mevcut masa verilerini kontrol et
+    const tablesRef = ref(db, "tables");
+    const tablesSnapshot = await get(tablesRef);
+
+    let tablesData = {};
+    if (tablesSnapshot.exists()) {
+      tablesData = tablesSnapshot.val();
+      console.log(
+        "✅ Mevcut masa verileri kullanılıyor:",
+        Object.keys(tablesData).length,
+        "masa"
+      );
+    } else {
+      // Eğer hiç masa yoksa demo masalar ekle
+      const firstRestaurantId = Object.keys(restaurantsData)[0];
+      const firstCategoryId = Object.keys(categoriesData)[0];
+
+      tablesData = {
+        "demo-table-1": {
+          number: 1,
+          tableName: "Ana Salon Masa",
+          minCapacity: 2,
+          maxCapacity: 4,
+          capacity: 4,
+          category_id: firstCategoryId,
+          restaurantId: firstRestaurantId,
+          isAvailableForCustomers: true,
+          description: "Standart masa - müşteri rezervasyonuna açık",
+          status: "active",
+          createdAt: new Date().toISOString(),
+        },
+        "demo-table-2": {
+          number: 2,
+          tableName: "VIP Masa",
+          minCapacity: 2,
+          maxCapacity: 6,
+          capacity: 6,
+          category_id: firstCategoryId,
+          restaurantId: firstRestaurantId,
+          isAvailableForCustomers: false, // Sadece admin rezervasyonu
+          description:
+            "VIP masa - sadece yönetici panelinden rezerve edilebilir",
+          status: "active",
+          createdAt: new Date().toISOString(),
+        },
+      };
+      console.log("⚠️ Demo masalar oluşturuldu");
+    }
+
+    // Sadece eksik verileri Firebase'e kaydet
+    if (!companiesSnapshot.exists()) {
+      await set(ref(db, "companies"), companiesData);
+    }
+    if (!restaurantsSnapshot.exists()) {
+      await set(ref(db, "restaurants"), restaurantsData);
+    }
+    if (!tablesSnapshot.exists()) {
+      await set(ref(db, "tables"), tablesData);
+    }
+
+    // Kategoriler, müşteriler ve garsonlar her zaman güncellenir (demo data)
     await set(ref(db, "categories"), categoriesData);
     await set(ref(db, "customers"), customersData);
     await set(ref(db, "waiters"), waitersData);
-    await set(ref(db, "companies"), companiesData);
-    await set(ref(db, "restaurants"), restaurantsData);
-    await set(ref(db, "tables"), tablesData);
 
     console.log("✅ Firebase Realtime Database başarıyla başlatıldı!");
 

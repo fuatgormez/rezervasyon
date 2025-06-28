@@ -1,6 +1,11 @@
-Ad,Email,Telefon,Notlar
-Ahmet Yılmaz,ahmet@email.com,05551234567,VIP müşteri
-Ayşe Demir,ayse@email.com,05559876543,Vejetaryen tercihi
-Mehmet Kaya,mehmet@email.com,05557654321,Çocuklu aile
-Fatma Öz,fatma@email.com,05556543210,Doğum günü rezervasyonu
-Ali Çelik,ali@email.com,05555432109,İş yemeği tercihi 
+Ad,Email,Telefon,Notlar,City,Address,Birthday,Company name,Visit count,Total spent,Last updated
+Ahmet Yılmaz,ahmet@email.com,05551234567,VIP müşteri,İstanbul,Beşiktaş Mahallesi No:15,1985-03-15,ABC Şirketi,12,2450.00,2024-01-15
+Ayşe Demir,ayse@email.com,05559876543,Vejetaryen tercihi,Ankara,Çankaya Caddesi No:42,1990-07-22,XYZ Ltd,8,1680.50,2024-01-10
+Mehmet Kaya,mehmet@email.com,05557654321,Çocuklu aile,İzmir,Karşıyaka Sokak No:7,1982-11-08,DEF AŞ,15,3200.75,2024-01-20
+Fatma Öz,fatma@email.com,05556543210,Doğum günü rezervasyonu,Bursa,Nilüfer Bulvarı No:28,1988-05-14,,5,890.25,2024-01-05
+Ali Çelik,ali@email.com,05555432109,İş yemeği tercihi,Antalya,Muratpaşa Caddesi No:33,1975-12-30,GHI Holding,20,4150.00,2024-01-18
+Zeynep Aktaş,zeynep@email.com,05554321876,Gluten-free diyet,İstanbul,Kadıköy Mahallesi No:55,1993-09-12,JKL Teknoloji,6,1250.80,2024-01-12
+Osman Yıldız,osman@email.com,05553210987,Balık tercihi,Trabzon,Ortahisar Sokak No:19,1980-04-25,,3,675.40,2024-01-08
+Elif Şahin,elif@email.com,05552109876,Romantik akşam,Bodrum,Marina Caddesi No:12,1987-08-17,MNO Danışmanlık,9,1980.60,2024-01-22
+Hasan Koç,hasan@email.com,05551098765,Grup rezervasyonu,Ankara,Kızılay Meydanı No:8,1979-02-03,PQR İnşaat,25,5680.90,2024-01-25
+Seda Arslan,seda@email.com,05550987654,Özel diyet,İzmir,Alsancak Bulvarı No:67,1991-06-11,,7,1420.35,2024-01-14 

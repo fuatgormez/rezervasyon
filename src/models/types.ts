@@ -78,9 +78,17 @@ export interface ReservationType {
 export interface TableType {
   id: string;
   number: number;
-  capacity: number;
+  tableName?: string; // Masa ismi (örn: "Pencere Kenarı", "VIP Salon")
+  minCapacity: number; // Minimum kapasite
+  maxCapacity: number; // Maximum kapasite
+  capacity?: number; // Eski uyumluluk için
   status: "Available" | "Unavailable" | "Reserved";
   categoryId?: string;
+  restaurantId: string;
+  isAvailableForCustomers: boolean; // Müşterilerin rezerve edip edemeyeceği
+  description?: string; // Masa açıklaması
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface TableCategoryType {

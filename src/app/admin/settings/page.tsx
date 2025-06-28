@@ -7,6 +7,7 @@ import { ref, get, set, push, remove, update } from "firebase/database";
 import toast from "react-hot-toast";
 import Link from "next/link";
 import AdminHeader from "@/components/admin/AdminHeader";
+import { Customer } from "@/types/user";
 // XLSX will be imported dynamically
 
 export default function SettingsPage() {
@@ -88,6 +89,22 @@ export default function SettingsPage() {
         selectedRestaurant
       ) {
         contextualFormData.restaurantId = selectedRestaurant.id;
+      }
+
+      // Masa için özel işlemler
+      if (modalType === "tables") {
+        // Default değerler
+        if (!contextualFormData.minCapacity) {
+          contextualFormData.minCapacity = 1;
+        }
+        if (!contextualFormData.maxCapacity) {
+          contextualFormData.maxCapacity = contextualFormData.minCapacity || 4;
+        }
+        if (contextualFormData.isAvailableForCustomers === undefined) {
+          contextualFormData.isAvailableForCustomers = true;
+        }
+        // Eski uyumluluk için capacity alanını da set et
+        contextualFormData.capacity = contextualFormData.maxCapacity;
       }
 
       if (editingItem) {
@@ -185,15 +202,54 @@ export default function SettingsPage() {
                   row["Name"] ||
                   row["İsim"] ||
                   row["Müşteri Adı"] ||
+                  row["Customer"] ||
+                  row["İsim Soyisim"] ||
                   "",
-                email: row["Email"] || row["E-posta"] || row["Mail"] || "",
-                phone: row["Telefon"] || row["Phone"] || row["Tel"] || "",
-                notes: row["Notlar"] || row["Notes"] || row["Not"] || "",
+                email:
+                  row["Email"] ||
+                  row["E-posta"] ||
+                  row["Mail"] ||
+                  row["Email address"] ||
+                  "",
+                phone:
+                  row["Telefon"] ||
+                  row["Phone"] ||
+                  row["Tel"] ||
+                  row["Gsm"] ||
+                  row["Mobile"] ||
+                  row["Telephone number"] ||
+                  "",
+                notes:
+                  row["Notlar"] ||
+                  row["Notes"] ||
+                  row["Not"] ||
+                  row["Comments"] ||
+                  row["Description"] ||
+                  row["Açıklama"] ||
+                  "",
+                // Formitable özel alanları
+                city: row["City"] || row["Şehir"] || "",
+                address: row["Address"] || row["Adres"] || "",
+                birthday: row["Birthday"] || row["Doğum Günü"] || "",
+                company: row["Company name"] || row["Firma Adı"] || "",
+                // Rezervasyon bilgileri
+                lastVisit: row["Last updated"] || row["Son Güncelleme"] || "",
+                visitCount:
+                  parseInt(
+                    row["Visit count"] || row["Ziyaret Sayısı"] || "0"
+                  ) || 0,
+                totalSpent:
+                  parseFloat(
+                    row["Total spent"] || row["Toplam Harcama"] || "0"
+                  ) || 0,
+                // Sistem alanları
                 restaurantId: selectedRestaurant.id,
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
-                reservationCount: 0,
-                loyaltyPoints: 0,
+                reservationCount: parseInt(row["Visit count"] || "0") || 0,
+                loyaltyPoints: Math.floor(
+                  (parseFloat(row["Total spent"] || "0") || 0) / 10
+                ), // Her 10 TL için 1 puan
               };
 
               // Boş isim kontrolü
@@ -229,11 +285,17 @@ export default function SettingsPage() {
           // Verileri yenile
           await loadAllData();
 
-          let message = `✅ ${importedCount} müşteri import edildi!`;
-          if (skippedCount > 0) message += ` (${skippedCount} atlandı)`;
-          if (errorCount > 0) message += ` (${errorCount} hata)`;
+          // Detaylı import raporu
+          const totalProcessed = importedCount + skippedCount + errorCount;
+          const successRate =
+            totalProcessed > 0
+              ? Math.round((importedCount / totalProcessed) * 100)
+              : 0;
 
-          toast.success(message);
+          toast.success(
+            `🎉 Import Tamamlandı!\n\n📊 Toplam İşlenen: ${totalProcessed}\n✅ Başarılı: ${importedCount} (${successRate}%)\n⏭️ Atlandı: ${skippedCount} (duplikat/geçersiz)\n❌ Hata: ${errorCount}\n\n💡 Müşteriler "${selectedRestaurant.name}" restoranına eklendi`,
+            { duration: 8000 }
+          );
         } catch (error) {
           console.error("Import error:", error);
           toast.error("Excel dosyası işlenirken hata oluştu!");
@@ -540,11 +602,21 @@ export default function SettingsPage() {
                             <div className="flex-1">
                               <div className="font-medium text-sm">
                                 {customer.name}
+                                {customer.company && (
+                                  <span className="ml-2 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                                    🏢 {customer.company}
+                                  </span>
+                                )}
                               </div>
-                              <div className="text-xs text-gray-500">
-                                {customer.email}
+                              <div className="text-xs text-gray-500 flex items-center space-x-2">
+                                <span>{customer.email}</span>
+                                {customer.city && (
+                                  <span className="text-blue-600">
+                                    📍 {customer.city}
+                                  </span>
+                                )}
                               </div>
-                              <div className="flex items-center space-x-3 mt-1">
+                              <div className="flex items-center space-x-2 mt-1 flex-wrap">
                                 <div className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
                                   📊 {customer.reservationCount || 0}{" "}
                                   rezervasyon
@@ -552,6 +624,20 @@ export default function SettingsPage() {
                                 <div className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
                                   ⭐ {customer.loyaltyPoints || 0} puan
                                 </div>
+                                {customer.visitCount && (
+                                  <div className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                                    🔄 {customer.visitCount} ziyaret
+                                  </div>
+                                )}
+                                {customer.totalSpent && (
+                                  <div className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">
+                                    💰{" "}
+                                    {customer.totalSpent.toLocaleString(
+                                      "tr-TR"
+                                    )}{" "}
+                                    ₺
+                                  </div>
+                                )}
                               </div>
                             </div>
                             <div className="flex space-x-1">
@@ -585,22 +671,61 @@ export default function SettingsPage() {
                       <p className="text-xs text-blue-700 mb-2">
                         Desteklenen kolon başlıkları:
                       </p>
-                      <div className="grid grid-cols-2 gap-2 text-xs text-blue-600">
-                        <div>
-                          • <strong>Ad</strong> / Name / İsim
+                      <div className="grid grid-cols-1 gap-1 text-xs text-blue-600 mb-2">
+                        <div className="font-medium text-blue-800">
+                          📋 Temel Bilgiler:
                         </div>
-                        <div>
-                          • <strong>Email</strong> / E-posta / Mail
+                        <div className="pl-2">
+                          • <strong>Ad</strong> / Name / İsim / Customer / İsim
+                          Soyisim
                         </div>
-                        <div>
-                          • <strong>Telefon</strong> / Phone / Tel
+                        <div className="pl-2">
+                          • <strong>Email</strong> / E-posta / Mail / Email
+                          address
                         </div>
-                        <div>
-                          • <strong>Notlar</strong> / Notes / Not
+                        <div className="pl-2">
+                          • <strong>Telefon</strong> / Phone / Tel / Gsm /
+                          Mobile / Telephone number
+                        </div>
+                        <div className="pl-2">
+                          • <strong>Notlar</strong> / Notes / Not / Comments /
+                          Description / Açıklama
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 gap-1 text-xs text-blue-600 mb-2">
+                        <div className="font-medium text-blue-800">
+                          🏢 Formitable Özel Alanları:
+                        </div>
+                        <div className="pl-2">
+                          • <strong>City</strong> / Şehir
+                        </div>
+                        <div className="pl-2">
+                          • <strong>Address</strong> / Adres
+                        </div>
+                        <div className="pl-2">
+                          • <strong>Birthday</strong> / Doğum Günü
+                        </div>
+                        <div className="pl-2">
+                          • <strong>Company name</strong> / Firma Adı
+                        </div>
+                        <div className="pl-2">
+                          • <strong>Visit count</strong> / Ziyaret Sayısı
+                        </div>
+                        <div className="pl-2">
+                          • <strong>Total spent</strong> / Toplam Harcama
+                        </div>
+                        <div className="pl-2">
+                          • <strong>Last updated</strong> / Son Güncelleme
                         </div>
                       </div>
                       <p className="text-xs text-blue-600 mt-2">
                         💡 Aynı ad+telefon kombinasyonu varsa atlanır
+                        <br />
+                        🎯 Formitable'dan export edilen dosyalar otomatik
+                        desteklenir
+                        <br />
+                        💰 Harcama tutarından otomatik sadakat puanı hesaplanır
+                        (10 TL = 1 puan)
                       </p>
                     </div>
                   </div>
@@ -687,29 +812,68 @@ export default function SettingsPage() {
                       {getFilteredData("tables").map((table: any) => (
                         <div
                           key={table.id}
-                          className="bg-white rounded p-4 flex justify-between items-center shadow-sm"
+                          className={`bg-white rounded p-4 shadow-sm border-l-4 ${
+                            table.isAvailableForCustomers !== false
+                              ? "border-green-500"
+                              : "border-orange-500"
+                          }`}
                         >
-                          <div>
-                            <div className="font-medium text-sm">
-                              Masa {table.number}
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1">
+                              <div className="flex items-center space-x-2 mb-1">
+                                <div className="font-medium text-sm">
+                                  Masa {table.number}
+                                </div>
+                                {table.tableName && (
+                                  <div className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                                    {table.tableName}
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="text-xs text-gray-500 space-y-1">
+                                <div>
+                                  👥 Kapasite:{" "}
+                                  {table.minCapacity || table.capacity || 1} -{" "}
+                                  {table.maxCapacity || table.capacity || 4}{" "}
+                                  kişi
+                                </div>
+                                {table.description && (
+                                  <div className="text-gray-600">
+                                    📝 {table.description}
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="flex items-center space-x-2 mt-2">
+                                <div
+                                  className={`text-xs px-2 py-1 rounded ${
+                                    table.isAvailableForCustomers !== false
+                                      ? "bg-green-100 text-green-800"
+                                      : "bg-orange-100 text-orange-800"
+                                  }`}
+                                >
+                                  {table.isAvailableForCustomers !== false
+                                    ? "🌐 Müşteri Erişimi: Açık"
+                                    : "🔒 Sadece Admin"}
+                                </div>
+                              </div>
                             </div>
-                            <div className="text-xs text-gray-500">
-                              Kapasite: {table.capacity}
+
+                            <div className="flex space-x-1 ml-3">
+                              <button
+                                onClick={() => openModal("tables", table)}
+                                className="text-blue-600 hover:text-blue-800"
+                              >
+                                ✏️
+                              </button>
+                              <button
+                                onClick={() => handleDelete("tables", table.id)}
+                                className="text-red-600 hover:text-red-800"
+                              >
+                                🗑️
+                              </button>
                             </div>
-                          </div>
-                          <div className="flex space-x-1">
-                            <button
-                              onClick={() => openModal("tables", table)}
-                              className="text-blue-600 hover:text-blue-800"
-                            >
-                              ✏️
-                            </button>
-                            <button
-                              onClick={() => handleDelete("tables", table.id)}
-                              className="text-red-600 hover:text-red-800"
-                            >
-                              🗑️
-                            </button>
                           </div>
                         </div>
                       ))}
@@ -816,17 +980,19 @@ export default function SettingsPage() {
                 </div>
 
                 <div className="space-y-4">
-                  <input
-                    type="text"
-                    placeholder="İsim"
-                    value={formData.name || ""}
-                    onChange={(e) =>
-                      setFormData({ ...formData, name: e.target.value })
-                    }
-                    className="w-full p-3 border border-gray-300 rounded-lg"
-                  />
+                  {modalType !== "tables" && (
+                    <input
+                      type="text"
+                      placeholder="İsim"
+                      value={formData.name || ""}
+                      onChange={(e) =>
+                        setFormData({ ...formData, name: e.target.value })
+                      }
+                      className="w-full p-3 border border-gray-300 rounded-lg"
+                    />
+                  )}
 
-                  {modalType !== "categories" && (
+                  {modalType !== "categories" && modalType !== "tables" && (
                     <>
                       <input
                         type="email"
@@ -860,6 +1026,38 @@ export default function SettingsPage() {
 
                   {modalType === "customers" && (
                     <>
+                      <div className="grid grid-cols-2 gap-3">
+                        <input
+                          type="text"
+                          placeholder="Şehir"
+                          value={formData.city || ""}
+                          onChange={(e) =>
+                            setFormData({ ...formData, city: e.target.value })
+                          }
+                          className="w-full p-3 border border-gray-300 rounded-lg"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Firma"
+                          value={formData.company || ""}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              company: e.target.value,
+                            })
+                          }
+                          className="w-full p-3 border border-gray-300 rounded-lg"
+                        />
+                      </div>
+                      <input
+                        type="date"
+                        placeholder="Doğum Günü"
+                        value={formData.birthday || ""}
+                        onChange={(e) =>
+                          setFormData({ ...formData, birthday: e.target.value })
+                        }
+                        className="w-full p-3 border border-gray-300 rounded-lg"
+                      />
                       <textarea
                         placeholder="Notlar"
                         value={formData.notes || ""}
@@ -869,6 +1067,33 @@ export default function SettingsPage() {
                         className="w-full p-3 border border-gray-300 rounded-lg"
                         rows={3}
                       />
+                      <div className="grid grid-cols-2 gap-3">
+                        <input
+                          type="number"
+                          placeholder="Ziyaret Sayısı"
+                          value={formData.visitCount || 0}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              visitCount: parseInt(e.target.value) || 0,
+                            })
+                          }
+                          className="w-full p-3 border border-gray-300 rounded-lg"
+                        />
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder="Toplam Harcama (TL)"
+                          value={formData.totalSpent || 0}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              totalSpent: parseFloat(e.target.value) || 0,
+                            })
+                          }
+                          className="w-full p-3 border border-gray-300 rounded-lg"
+                        />
+                      </div>
                       <div className="grid grid-cols-2 gap-3">
                         <input
                           type="number"
@@ -952,30 +1177,60 @@ export default function SettingsPage() {
 
                   {modalType === "tables" && (
                     <>
-                      <input
-                        type="number"
-                        placeholder="Masa Numarası"
-                        value={formData.number || ""}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            number: parseInt(e.target.value),
-                          })
-                        }
-                        className="w-full p-3 border border-gray-300 rounded-lg"
-                      />
-                      <input
-                        type="number"
-                        placeholder="Kapasite"
-                        value={formData.capacity || ""}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            capacity: parseInt(e.target.value),
-                          })
-                        }
-                        className="w-full p-3 border border-gray-300 rounded-lg"
-                      />
+                      <div className="grid grid-cols-2 gap-3">
+                        <input
+                          type="number"
+                          placeholder="Masa Numarası"
+                          value={formData.number || ""}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              number: parseInt(e.target.value),
+                            })
+                          }
+                          className="w-full p-3 border border-gray-300 rounded-lg"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Masa İsmi (örn: Pencere Kenarı)"
+                          value={formData.tableName || ""}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              tableName: e.target.value,
+                            })
+                          }
+                          className="w-full p-3 border border-gray-300 rounded-lg"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <input
+                          type="number"
+                          placeholder="Min Kapasite"
+                          value={formData.minCapacity || ""}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              minCapacity: parseInt(e.target.value),
+                            })
+                          }
+                          className="w-full p-3 border border-gray-300 rounded-lg"
+                        />
+                        <input
+                          type="number"
+                          placeholder="Max Kapasite"
+                          value={formData.maxCapacity || ""}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              maxCapacity: parseInt(e.target.value),
+                            })
+                          }
+                          className="w-full p-3 border border-gray-300 rounded-lg"
+                        />
+                      </div>
+
                       <select
                         value={formData.category_id || ""}
                         onChange={(e) =>
@@ -993,6 +1248,46 @@ export default function SettingsPage() {
                           </option>
                         ))}
                       </select>
+
+                      <div className="space-y-3">
+                        <label className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            checked={formData.isAvailableForCustomers !== false}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                isAvailableForCustomers: e.target.checked,
+                              })
+                            }
+                            className="rounded"
+                          />
+                          <span className="text-sm">
+                            🌐 Müşteriler bu masayı rezerve edebilir
+                          </span>
+                        </label>
+
+                        <div className="text-xs text-gray-600 bg-gray-50 p-3 rounded-lg">
+                          💡 <strong>Açıklama:</strong>
+                          <br />
+                          ✅ İşaretli: Müşteriler online rezervasyon yapabilir
+                          <br />❌ İşaretsiz: Sadece yönetici panelinden
+                          rezervasyon
+                        </div>
+                      </div>
+
+                      <textarea
+                        placeholder="Masa Açıklaması (örn: Pencere manzaralı, sessiz alan)"
+                        value={formData.description || ""}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            description: e.target.value,
+                          })
+                        }
+                        className="w-full p-3 border border-gray-300 rounded-lg"
+                        rows={2}
+                      />
                     </>
                   )}
 

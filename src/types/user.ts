@@ -97,3 +97,36 @@ export interface UserContext {
   setSelectedRestaurant: (restaurant: Restaurant) => void;
   loading: boolean;
 }
+
+// Müşteri tanımı
+export interface Customer {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  notes?: string;
+  // Formitable özel alanları
+  city?: string;
+  address?: string;
+  birthday?: string;
+  company?: string;
+  // Rezervasyon bilgileri
+  lastVisit?: string;
+  visitCount?: number;
+  totalSpent?: number;
+  // Sistem alanları
+  restaurantId: string;
+  companyId?: string;
+  createdAt: string;
+  updatedAt: string;
+  reservationCount: number;
+  loyaltyPoints: number;
+  isActive?: boolean;
+  // Rating ve değerlendirme
+  rating?: {
+    stars: number;
+    reservationCount: number;
+    isBlacklisted: boolean;
+    badges: string[];
+  };
+}

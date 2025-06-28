@@ -32,18 +32,23 @@ export default function TimeGrid({
   // Hücre arka plan rengini belirle
   const getCellStyle = (time: string, table: any) => {
     const reservation = getReservationForCell(time, table.id);
+    const isAvailable = table.isAvailableForCustomers !== false;
 
     const isHovered = hoveredCell === `${time}-${table.id}`;
     const baseStyle =
-      "cursor-pointer transition-colors duration-150 h-12 border text-center relative";
+      "transition-colors duration-150 h-12 border text-center relative";
 
     if (reservation) {
-      return `${baseStyle} bg-blue-100 hover:bg-blue-200`;
+      return `${baseStyle} bg-blue-100 hover:bg-blue-200 cursor-pointer`;
+    }
+
+    if (!isAvailable) {
+      return `${baseStyle} bg-gray-100 cursor-not-allowed opacity-60`;
     }
 
     return isHovered
-      ? `${baseStyle} bg-green-50 hover:bg-green-100`
-      : `${baseStyle} bg-white hover:bg-gray-50`;
+      ? `${baseStyle} bg-green-50 hover:bg-green-100 cursor-pointer`
+      : `${baseStyle} bg-white hover:bg-gray-50 cursor-pointer`;
   };
 
   // Saati biçimlendir
@@ -53,7 +58,14 @@ export default function TimeGrid({
 
   // Masa başlığını biçimlendir
   const formatTableHeader = (table: any) => {
-    return `Masa ${table.number} (${table.capacity} kişi)`;
+    const capacity = table.maxCapacity || table.capacity || 4;
+    const minCapacity = table.minCapacity || 1;
+    const tableName = table.tableName ? ` - ${table.tableName}` : "";
+    const isAvailable = table.isAvailableForCustomers !== false;
+
+    return `Masa ${table.number}${tableName} (${minCapacity}-${capacity} kişi)${
+      !isAvailable ? " 🔒" : ""
+    }`;
   };
 
   // Başlık satırı oluştur
@@ -88,9 +100,16 @@ export default function TimeGrid({
               key={`${timeStr}-${table.id}`}
               className={getCellStyle(timeStr, table)}
               onClick={() => {
-                // Eğer hücre rezerve edilmemişse (boş hücre), onCellClick fonksiyonunu çağır
-                if (!getReservationForCell(timeStr, table.id)) {
+                // Eğer hücre rezerve edilmemişse ve masa müşterilere açıksa, onCellClick fonksiyonunu çağır
+                if (
+                  !getReservationForCell(timeStr, table.id) &&
+                  table.isAvailableForCustomers !== false
+                ) {
                   onCellClick(timeStr, table.id, formatTableHeader(table));
+                } else if (table.isAvailableForCustomers === false) {
+                  alert(
+                    "Bu masa sadece yönetici panelinden rezerve edilebilir."
+                  );
                 }
               }}
               onMouseEnter={() => setHoveredCell(`${timeStr}-${table.id}`)}
