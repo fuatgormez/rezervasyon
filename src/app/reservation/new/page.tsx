@@ -266,6 +266,7 @@ export default function NewReservationPage() {
                 id="customerName"
                 name="customerName"
                 required
+                placeholder="Örn: Ahmet Yılmaz"
                 value={formData.customerName}
                 onChange={handleInputChange}
                 className="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500"
@@ -284,6 +285,7 @@ export default function NewReservationPage() {
                 id="phone"
                 name="phone"
                 required
+                placeholder="Örn: +90 532 123 45 67"
                 value={formData.phone}
                 onChange={handleInputChange}
                 className="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500"
@@ -295,12 +297,13 @@ export default function NewReservationPage() {
                 htmlFor="email"
                 className="block text-sm font-medium text-gray-700 mb-1"
               >
-                E-posta
+                E-posta (Opsiyonel)
               </label>
               <input
                 type="email"
                 id="email"
                 name="email"
+                placeholder="Örn: ahmet@email.com"
                 value={formData.email}
                 onChange={handleInputChange}
                 className="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500"
@@ -383,6 +386,7 @@ export default function NewReservationPage() {
                   id="guestCount"
                   name="guestCount"
                   required
+                  placeholder="Kaç kişi?"
                   value={formData.guestCount}
                   onChange={handleInputChange}
                   className="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500"
@@ -418,12 +422,13 @@ export default function NewReservationPage() {
                 htmlFor="specialRequests"
                 className="block text-sm font-medium text-gray-700 mb-1"
               >
-                Özel İstekler
+                Özel İstekler (Opsiyonel)
               </label>
               <textarea
                 id="specialRequests"
                 name="specialRequests"
                 rows={3}
+                placeholder="Örn: Doğum günü kutlaması, bebek sandalyesi, vejetaryen menü, pencere kenarı masa tercihi"
                 value={formData.specialRequests}
                 onChange={handleInputChange}
                 className="w-full border border-gray-300 rounded-md p-2 focus:ring-blue-500 focus:border-blue-500"

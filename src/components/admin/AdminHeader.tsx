@@ -40,7 +40,6 @@ export default function AdminHeader({
         <div className="flex items-center space-x-6">
           <div className="flex items-center space-x-4">
             <div className="text-2xl font-bold text-blue-600">Zonekult</div>
-            <div className="text-sm text-gray-500">Reservation Management</div>
           </div>
           <div className="flex space-x-4">
             <Link

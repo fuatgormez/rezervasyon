@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useFirestore, useAuthContext } from "@/lib/firebase";
+import { useAuth } from "@/lib/firebase/hooks";
 import { format } from "date-fns";
 import { tr } from "date-fns/locale";
 
@@ -23,8 +23,7 @@ interface Reservation {
 
 export default function ReservationForm() {
   const router = useRouter();
-  const { user } = useAuthContext();
-  const { add, loading, error } = useFirestore<Reservation>("reservations");
+  const { user } = useAuth();
 
   // Form durumu
   const [formData, setFormData] = useState<
@@ -88,8 +87,18 @@ export default function ReservationForm() {
         status: "pending",
       };
 
-      // Firestore'a kaydet
-      await add(reservationData);
+      // API'ye kaydet
+      const response = await fetch("/api/reservations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(reservationData),
+      });
+
+      if (!response.ok) {
+        throw new Error("Rezervasyon kaydedilemedi");
+      }
 
       // Başarılı işlem sonrası yönlendirme
       router.push("/reservations/success");
@@ -127,6 +136,7 @@ export default function ReservationForm() {
               type="text"
               id="name"
               name="name"
+              placeholder="Örn: Ahmet Yılmaz"
               value={formData.name}
               onChange={handleChange}
               className="w-full p-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
@@ -145,6 +155,7 @@ export default function ReservationForm() {
               type="email"
               id="email"
               name="email"
+              placeholder="Örn: ahmet@email.com"
               value={formData.email}
               onChange={handleChange}
               className="w-full p-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
@@ -163,6 +174,7 @@ export default function ReservationForm() {
               type="tel"
               id="phone"
               name="phone"
+              placeholder="Örn: +90 532 123 45 67"
               value={formData.phone}
               onChange={handleChange}
               className="w-full p-2 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500"
@@ -262,11 +274,12 @@ export default function ReservationForm() {
             htmlFor="notes"
             className="block text-sm font-medium text-gray-700 mb-1"
           >
-            Notlar
+            Notlar (Opsiyonel)
           </label>
           <textarea
             id="notes"
             name="notes"
+            placeholder="Örn: Doğum günü kutlaması, özel diyet, allerji bilgileri, masa tercihi"
             value={formData.notes}
             onChange={handleChange}
             rows={3}

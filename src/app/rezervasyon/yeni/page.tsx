@@ -251,9 +251,10 @@ export default function NewReservationPage() {
                     id="customerName"
                     name="customerName"
                     required
+                    placeholder="Örn: Ahmet Yılmaz"
                     value={formData.customerName}
                     onChange={handleInputChange}
-                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
 
@@ -269,9 +270,10 @@ export default function NewReservationPage() {
                     id="phone"
                     name="phone"
                     required
+                    placeholder="Örn: +90 532 123 45 67"
                     value={formData.phone}
                     onChange={handleInputChange}
-                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
 
@@ -280,15 +282,16 @@ export default function NewReservationPage() {
                     htmlFor="email"
                     className="block text-sm font-medium text-gray-700"
                   >
-                    E-posta
+                    E-posta (Opsiyonel)
                   </label>
                   <input
                     type="email"
                     id="email"
                     name="email"
+                    placeholder="Örn: ahmet@email.com"
                     value={formData.email}
                     onChange={handleInputChange}
-                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
 
@@ -306,9 +309,10 @@ export default function NewReservationPage() {
                     min="1"
                     max="20"
                     required
+                    placeholder="Kaç kişi? (örn: 4)"
                     value={formData.guestCount}
                     onChange={handleInputChange}
-                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
               </div>
@@ -324,7 +328,7 @@ export default function NewReservationPage() {
                     htmlFor="startTime"
                     className="block text-sm font-medium text-gray-700"
                   >
-                    Saat *
+                    Rezervasyon Başlangıç Saati *
                   </label>
                   <input
                     type="time"
@@ -333,8 +337,11 @@ export default function NewReservationPage() {
                     required
                     value={formData.startTime}
                     onChange={handleInputChange}
-                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Örn: 19:30 (Akşam 7:30)
+                  </p>
                 </div>
 
                 <div>
@@ -342,7 +349,7 @@ export default function NewReservationPage() {
                     htmlFor="duration"
                     className="block text-sm font-medium text-gray-700"
                   >
-                    Süre (dakika) *
+                    Rezervasyon Süresi *
                   </label>
                   <select
                     id="duration"
@@ -350,14 +357,17 @@ export default function NewReservationPage() {
                     required
                     value={formData.duration}
                     onChange={handleInputChange}
-                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
-                    <option value="60">1 saat</option>
-                    <option value="90">1.5 saat</option>
-                    <option value="120">2 saat</option>
-                    <option value="150">2.5 saat</option>
-                    <option value="180">3 saat</option>
+                    <option value="60">1 saat (Hızlı yemek)</option>
+                    <option value="90">1.5 saat (Normal yemek)</option>
+                    <option value="120">2 saat (Rahat yemek)</option>
+                    <option value="150">2.5 saat (Özel etkinlik)</option>
+                    <option value="180">3 saat (Uzun etkinlik)</option>
                   </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Masanın ne kadar süreyle kullanılacağını belirtin
+                  </p>
                 </div>
 
                 <div>
@@ -365,7 +375,7 @@ export default function NewReservationPage() {
                     htmlFor="selectedTableId"
                     className="block text-sm font-medium text-gray-700"
                   >
-                    Masa *
+                    Masa Seçimi *
                   </label>
                   <select
                     id="selectedTableId"
@@ -373,9 +383,11 @@ export default function NewReservationPage() {
                     required
                     value={formData.selectedTableId}
                     onChange={handleInputChange}
-                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   >
-                    <option value="">Masa Seçin</option>
+                    <option value="">
+                      Uygun masa seçin (konum, kapasite, kategori)
+                    </option>
                     {availableTables.map((table) => (
                       <option key={table.id} value={table.id}>
                         Masa {table.number} - {table.categoryName} (
@@ -383,6 +395,9 @@ export default function NewReservationPage() {
                       </option>
                     ))}
                   </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Misafir sayınıza uygun masa seçin
+                  </p>
                 </div>
 
                 <div>
@@ -390,16 +405,21 @@ export default function NewReservationPage() {
                     htmlFor="notes"
                     className="block text-sm font-medium text-gray-700"
                   >
-                    Notlar
+                    Özel İstekler ve Notlar (Opsiyonel)
                   </label>
                   <textarea
                     id="notes"
                     name="notes"
                     rows={3}
+                    placeholder="Örn: Doğum günü kutlaması, vejetaryen menü, allerji bilgileri, pencere kenarı tercihi, bebek sandalyesi"
                     value={formData.notes}
                     onChange={handleInputChange}
-                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2"
+                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Özel isteklerinizi ve dikkat edilmesi gereken noktaları
+                    belirtin
+                  </p>
                 </div>
               </div>
             </div>

@@ -809,74 +809,107 @@ export default function SettingsPage() {
                       </button>
                     </div>
                     <div className="space-y-2 flex-1 overflow-y-auto">
-                      {getFilteredData("tables").map((table: any) => (
-                        <div
-                          key={table.id}
-                          className={`bg-white rounded p-4 shadow-sm border-l-4 ${
-                            table.isAvailableForCustomers !== false
-                              ? "border-green-500"
-                              : "border-orange-500"
-                          }`}
-                        >
-                          <div className="flex justify-between items-start">
-                            <div className="flex-1">
-                              <div className="flex items-center space-x-2 mb-1">
-                                <div className="font-medium text-sm">
-                                  Masa {table.number}
-                                </div>
-                                {table.tableName && (
-                                  <div className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                                    {table.tableName}
+                      {getFilteredData("tables").map((table: any) => {
+                        // Masanın kategorisini bul
+                        const category = getFilteredData("categories").find(
+                          (cat: any) => cat.id === table.category_id
+                        );
+
+                        return (
+                          <div
+                            key={table.id}
+                            className={`bg-white rounded p-4 shadow-sm border-l-4 ${
+                              table.isAvailableForCustomers !== false
+                                ? "border-green-500"
+                                : "border-orange-500"
+                            }`}
+                          >
+                            <div className="flex justify-between items-start">
+                              <div className="flex-1">
+                                <div className="flex items-center space-x-2 mb-1">
+                                  <div className="font-medium text-sm">
+                                    Masa {table.number}
                                   </div>
-                                )}
+                                  {table.tableName && (
+                                    <div className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                                      {table.tableName}
+                                    </div>
+                                  )}
+                                  {category && (
+                                    <div
+                                      className="text-xs px-2 py-1 rounded flex items-center space-x-1"
+                                      style={{
+                                        backgroundColor: category.color + "20",
+                                        color: category.color,
+                                        border: `1px solid ${category.color}40`,
+                                      }}
+                                    >
+                                      <div
+                                        className="w-2 h-2 rounded-full"
+                                        style={{
+                                          backgroundColor: category.color,
+                                        }}
+                                      ></div>
+                                      <span>{category.name}</span>
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="text-xs text-gray-500 space-y-1">
+                                  <div>
+                                    👥 Kapasite:{" "}
+                                    {table.minCapacity || table.capacity || 1} -{" "}
+                                    {table.maxCapacity || table.capacity || 4}{" "}
+                                    kişi
+                                  </div>
+                                  {table.description && (
+                                    <div className="text-gray-600">
+                                      📝 {table.description}
+                                    </div>
+                                  )}
+                                  {!category && table.category_id && (
+                                    <div className="text-red-500">
+                                      ⚠️ Kategori bulunamadı (ID:{" "}
+                                      {table.category_id})
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center space-x-2 mt-2">
+                                  <div
+                                    className={`text-xs px-2 py-1 rounded ${
+                                      table.isAvailableForCustomers !== false
+                                        ? "bg-green-100 text-green-800"
+                                        : "bg-orange-100 text-orange-800"
+                                    }`}
+                                  >
+                                    {table.isAvailableForCustomers !== false
+                                      ? "🌐 Müşteri Erişimi: Açık"
+                                      : "🔒 Sadece Admin"}
+                                  </div>
+                                </div>
                               </div>
 
-                              <div className="text-xs text-gray-500 space-y-1">
-                                <div>
-                                  👥 Kapasite:{" "}
-                                  {table.minCapacity || table.capacity || 1} -{" "}
-                                  {table.maxCapacity || table.capacity || 4}{" "}
-                                  kişi
-                                </div>
-                                {table.description && (
-                                  <div className="text-gray-600">
-                                    📝 {table.description}
-                                  </div>
-                                )}
-                              </div>
-
-                              <div className="flex items-center space-x-2 mt-2">
-                                <div
-                                  className={`text-xs px-2 py-1 rounded ${
-                                    table.isAvailableForCustomers !== false
-                                      ? "bg-green-100 text-green-800"
-                                      : "bg-orange-100 text-orange-800"
-                                  }`}
+                              <div className="flex space-x-1 ml-3">
+                                <button
+                                  onClick={() => openModal("tables", table)}
+                                  className="text-blue-600 hover:text-blue-800"
                                 >
-                                  {table.isAvailableForCustomers !== false
-                                    ? "🌐 Müşteri Erişimi: Açık"
-                                    : "🔒 Sadece Admin"}
-                                </div>
+                                  ✏️
+                                </button>
+                                <button
+                                  onClick={() =>
+                                    handleDelete("tables", table.id)
+                                  }
+                                  className="text-red-600 hover:text-red-800"
+                                >
+                                  🗑️
+                                </button>
                               </div>
-                            </div>
-
-                            <div className="flex space-x-1 ml-3">
-                              <button
-                                onClick={() => openModal("tables", table)}
-                                className="text-blue-600 hover:text-blue-800"
-                              >
-                                ✏️
-                              </button>
-                              <button
-                                onClick={() => handleDelete("tables", table.id)}
-                                className="text-red-600 hover:text-red-800"
-                              >
-                                🗑️
-                              </button>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
 
@@ -981,167 +1014,265 @@ export default function SettingsPage() {
 
                 <div className="space-y-4">
                   {modalType !== "tables" && (
-                    <input
-                      type="text"
-                      placeholder="İsim"
-                      value={formData.name || ""}
-                      onChange={(e) =>
-                        setFormData({ ...formData, name: e.target.value })
-                      }
-                      className="w-full p-3 border border-gray-300 rounded-lg"
-                    />
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        {modalType === "companies"
+                          ? "Firma Adı"
+                          : modalType === "restaurants"
+                          ? "Restoran Adı"
+                          : modalType === "customers"
+                          ? "Müşteri Adı"
+                          : modalType === "waiters"
+                          ? "Garson Adı"
+                          : modalType === "categories"
+                          ? "Kategori Adı"
+                          : "İsim"}{" "}
+                        *
+                      </label>
+                      <input
+                        type="text"
+                        placeholder={
+                          modalType === "companies"
+                            ? "Örn: ABC Restoran Grubu"
+                            : modalType === "restaurants"
+                            ? "Örn: Bebek Şubesi"
+                            : modalType === "customers"
+                            ? "Örn: Ahmet Yılmaz"
+                            : modalType === "waiters"
+                            ? "Örn: Ali Demir"
+                            : modalType === "categories"
+                            ? "Örn: VIP Salon"
+                            : "İsim giriniz"
+                        }
+                        value={formData.name || ""}
+                        onChange={(e) =>
+                          setFormData({ ...formData, name: e.target.value })
+                        }
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
                   )}
 
                   {modalType !== "categories" && modalType !== "tables" && (
                     <>
-                      <input
-                        type="email"
-                        placeholder="Email"
-                        value={formData.email || ""}
-                        onChange={(e) =>
-                          setFormData({ ...formData, email: e.target.value })
-                        }
-                        className="w-full p-3 border border-gray-300 rounded-lg"
-                      />
-                      <input
-                        type="tel"
-                        placeholder="Telefon"
-                        value={formData.phone || ""}
-                        onChange={(e) =>
-                          setFormData({ ...formData, phone: e.target.value })
-                        }
-                        className="w-full p-3 border border-gray-300 rounded-lg"
-                      />
-                      <input
-                        type="text"
-                        placeholder="Adres"
-                        value={formData.address || ""}
-                        onChange={(e) =>
-                          setFormData({ ...formData, address: e.target.value })
-                        }
-                        className="w-full p-3 border border-gray-300 rounded-lg"
-                      />
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          E-posta Adresi
+                        </label>
+                        <input
+                          type="email"
+                          placeholder="Örn: info@restaurant.com"
+                          value={formData.email || ""}
+                          onChange={(e) =>
+                            setFormData({ ...formData, email: e.target.value })
+                          }
+                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Telefon Numarası
+                        </label>
+                        <input
+                          type="tel"
+                          placeholder="Örn: +90 212 123 45 67"
+                          value={formData.phone || ""}
+                          onChange={(e) =>
+                            setFormData({ ...formData, phone: e.target.value })
+                          }
+                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Adres
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Örn: Bebek Mahallesi, Cevdetpaşa Cad. No:123, Beşiktaş/İstanbul"
+                          value={formData.address || ""}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              address: e.target.value,
+                            })
+                          }
+                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
                     </>
                   )}
 
                   {modalType === "customers" && (
                     <>
                       <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Şehir
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Örn: İstanbul"
+                            value={formData.city || ""}
+                            onChange={(e) =>
+                              setFormData({ ...formData, city: e.target.value })
+                            }
+                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Çalıştığı Firma
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Örn: ABC Şirketi"
+                            value={formData.company || ""}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                company: e.target.value,
+                              })
+                            }
+                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Doğum Tarihi
+                        </label>
                         <input
-                          type="text"
-                          placeholder="Şehir"
-                          value={formData.city || ""}
-                          onChange={(e) =>
-                            setFormData({ ...formData, city: e.target.value })
-                          }
-                          className="w-full p-3 border border-gray-300 rounded-lg"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Firma"
-                          value={formData.company || ""}
+                          type="date"
+                          value={formData.birthday || ""}
                           onChange={(e) =>
                             setFormData({
                               ...formData,
-                              company: e.target.value,
+                              birthday: e.target.value,
                             })
                           }
-                          className="w-full p-3 border border-gray-300 rounded-lg"
+                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         />
                       </div>
-                      <input
-                        type="date"
-                        placeholder="Doğum Günü"
-                        value={formData.birthday || ""}
-                        onChange={(e) =>
-                          setFormData({ ...formData, birthday: e.target.value })
-                        }
-                        className="w-full p-3 border border-gray-300 rounded-lg"
-                      />
-                      <textarea
-                        placeholder="Notlar"
-                        value={formData.notes || ""}
-                        onChange={(e) =>
-                          setFormData({ ...formData, notes: e.target.value })
-                        }
-                        className="w-full p-3 border border-gray-300 rounded-lg"
-                        rows={3}
-                      />
-                      <div className="grid grid-cols-2 gap-3">
-                        <input
-                          type="number"
-                          placeholder="Ziyaret Sayısı"
-                          value={formData.visitCount || 0}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Notlar ve Özel Talepler
+                        </label>
+                        <textarea
+                          placeholder="Örn: Vejetaryen, glutensiz diyet, doğum günü kutlaması vb."
+                          value={formData.notes || ""}
                           onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              visitCount: parseInt(e.target.value) || 0,
-                            })
+                            setFormData({ ...formData, notes: e.target.value })
                           }
-                          className="w-full p-3 border border-gray-300 rounded-lg"
-                        />
-                        <input
-                          type="number"
-                          step="0.01"
-                          placeholder="Toplam Harcama (TL)"
-                          value={formData.totalSpent || 0}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              totalSpent: parseFloat(e.target.value) || 0,
-                            })
-                          }
-                          className="w-full p-3 border border-gray-300 rounded-lg"
+                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          rows={3}
                         />
                       </div>
                       <div className="grid grid-cols-2 gap-3">
-                        <input
-                          type="number"
-                          placeholder="Rezervasyon Sayısı"
-                          value={formData.reservationCount || 0}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              reservationCount: parseInt(e.target.value) || 0,
-                            })
-                          }
-                          className="w-full p-3 border border-gray-300 rounded-lg"
-                        />
-                        <input
-                          type="number"
-                          placeholder="Sadakat Puanı"
-                          value={formData.loyaltyPoints || 0}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              loyaltyPoints: parseInt(e.target.value) || 0,
-                            })
-                          }
-                          className="w-full p-3 border border-gray-300 rounded-lg"
-                        />
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Toplam Ziyaret Sayısı
+                          </label>
+                          <input
+                            type="number"
+                            placeholder="Örn: 5"
+                            min="0"
+                            value={formData.visitCount || 0}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                visitCount: parseInt(e.target.value) || 0,
+                              })
+                            }
+                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Toplam Harcama (TL)
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            placeholder="Örn: 1250.50"
+                            min="0"
+                            value={formData.totalSpent || 0}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                totalSpent: parseFloat(e.target.value) || 0,
+                              })
+                            }
+                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Rezervasyon Sayısı
+                          </label>
+                          <input
+                            type="number"
+                            placeholder="Örn: 12"
+                            min="0"
+                            value={formData.reservationCount || 0}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                reservationCount: parseInt(e.target.value) || 0,
+                              })
+                            }
+                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Sadakat Puanı
+                          </label>
+                          <input
+                            type="number"
+                            placeholder="Örn: 150"
+                            min="0"
+                            value={formData.loyaltyPoints || 0}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                loyaltyPoints: parseInt(e.target.value) || 0,
+                              })
+                            }
+                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
                       </div>
                     </>
                   )}
 
                   {modalType === "restaurants" && (
                     <>
-                      <input
-                        type="number"
-                        placeholder="Kapasite"
-                        value={formData.capacity || ""}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            capacity: parseInt(e.target.value),
-                          })
-                        }
-                        className="w-full p-3 border border-gray-300 rounded-lg"
-                      />
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Toplam Kapasite (Kişi Sayısı)
+                        </label>
+                        <input
+                          type="number"
+                          placeholder="Örn: 120 (restoranın toplam müşteri kapasitesi)"
+                          min="1"
+                          value={formData.capacity || ""}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              capacity: parseInt(e.target.value),
+                            })
+                          }
+                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
 
                       <div className="grid grid-cols-2 gap-3">
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Açılış Saati
+                            Açılış Saati *
                           </label>
                           <input
                             type="time"
@@ -1152,12 +1283,15 @@ export default function SettingsPage() {
                                 openingTime: e.target.value,
                               })
                             }
-                            className="w-full p-3 border border-gray-300 rounded-lg"
+                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                           />
+                          <p className="text-xs text-gray-500 mt-1">
+                            Restoranın sabah açılış saati
+                          </p>
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Kapanış Saati
+                            Kapanış Saati *
                           </label>
                           <input
                             type="time"
@@ -1168,8 +1302,11 @@ export default function SettingsPage() {
                                 closingTime: e.target.value,
                               })
                             }
-                            className="w-full p-3 border border-gray-300 rounded-lg"
+                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                           />
+                          <p className="text-xs text-gray-500 mt-1">
+                            Restoranın gece kapanış saati
+                          </p>
                         </div>
                       </div>
                     </>
@@ -1178,76 +1315,108 @@ export default function SettingsPage() {
                   {modalType === "tables" && (
                     <>
                       <div className="grid grid-cols-2 gap-3">
-                        <input
-                          type="number"
-                          placeholder="Masa Numarası"
-                          value={formData.number || ""}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              number: parseInt(e.target.value),
-                            })
-                          }
-                          className="w-full p-3 border border-gray-300 rounded-lg"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Masa İsmi (örn: Pencere Kenarı)"
-                          value={formData.tableName || ""}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              tableName: e.target.value,
-                            })
-                          }
-                          className="w-full p-3 border border-gray-300 rounded-lg"
-                        />
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Masa Numarası *
+                          </label>
+                          <input
+                            type="number"
+                            placeholder="Örn: 1, 2, 3..."
+                            min="1"
+                            value={formData.number || ""}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                number: parseInt(e.target.value),
+                              })
+                            }
+                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Masa İsmi (Opsiyonel)
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Örn: Pencere Kenarı, VIP Salon"
+                            value={formData.tableName || ""}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                tableName: e.target.value,
+                              })
+                            }
+                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
                       </div>
 
                       <div className="grid grid-cols-2 gap-3">
-                        <input
-                          type="number"
-                          placeholder="Min Kapasite"
-                          value={formData.minCapacity || ""}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              minCapacity: parseInt(e.target.value),
-                            })
-                          }
-                          className="w-full p-3 border border-gray-300 rounded-lg"
-                        />
-                        <input
-                          type="number"
-                          placeholder="Max Kapasite"
-                          value={formData.maxCapacity || ""}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              maxCapacity: parseInt(e.target.value),
-                            })
-                          }
-                          className="w-full p-3 border border-gray-300 rounded-lg"
-                        />
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Minimum Kapasite *
+                          </label>
+                          <input
+                            type="number"
+                            placeholder="Örn: 1 (en az kaç kişi)"
+                            min="1"
+                            value={formData.minCapacity || ""}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                minCapacity: parseInt(e.target.value),
+                              })
+                            }
+                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Maximum Kapasite *
+                          </label>
+                          <input
+                            type="number"
+                            placeholder="Örn: 4 (en fazla kaç kişi)"
+                            min="1"
+                            value={formData.maxCapacity || ""}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                maxCapacity: parseInt(e.target.value),
+                              })
+                            }
+                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
                       </div>
 
-                      <select
-                        value={formData.category_id || ""}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            category_id: e.target.value,
-                          })
-                        }
-                        className="w-full p-3 border border-gray-300 rounded-lg"
-                      >
-                        <option value="">Kategori Seçin</option>
-                        {getFilteredData("categories").map((category: any) => (
-                          <option key={category.id} value={category.id}>
-                            {category.name}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Masa Kategorisi
+                        </label>
+                        <select
+                          value={formData.category_id || ""}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              category_id: e.target.value,
+                            })
+                          }
+                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        >
+                          <option value="">
+                            Kategori seçin (İç Salon, Bahçe, Teras vb.)
                           </option>
-                        ))}
-                      </select>
+                          {getFilteredData("categories").map(
+                            (category: any) => (
+                              <option key={category.id} value={category.id}>
+                                {category.name}
+                              </option>
+                            )
+                          )}
+                        </select>
+                      </div>
 
                       <div className="space-y-3">
                         <label className="flex items-center space-x-2">
@@ -1262,44 +1431,58 @@ export default function SettingsPage() {
                             }
                             className="rounded"
                           />
-                          <span className="text-sm">
-                            🌐 Müşteriler bu masayı rezerve edebilir
+                          <span className="text-sm font-medium">
+                            🌐 Müşteriler bu masayı online rezerve edebilir
                           </span>
                         </label>
 
                         <div className="text-xs text-gray-600 bg-gray-50 p-3 rounded-lg">
-                          💡 <strong>Açıklama:</strong>
-                          <br />
-                          ✅ İşaretli: Müşteriler online rezervasyon yapabilir
-                          <br />❌ İşaretsiz: Sadece yönetici panelinden
-                          rezervasyon
+                          💡 <strong>Müşteri Erişim Kontrolü:</strong>
+                          <br />✅ <strong>İşaretli:</strong> Müşteriler bu
+                          masayı web sitesinden rezerve edebilir
+                          <br />❌ <strong>İşaretsiz:</strong> Sadece yönetici
+                          panelinden rezervasyon yapılabilir (VIP masalar için
+                          ideal)
                         </div>
                       </div>
 
-                      <textarea
-                        placeholder="Masa Açıklaması (örn: Pencere manzaralı, sessiz alan)"
-                        value={formData.description || ""}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            description: e.target.value,
-                          })
-                        }
-                        className="w-full p-3 border border-gray-300 rounded-lg"
-                        rows={2}
-                      />
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Masa Açıklaması
+                        </label>
+                        <textarea
+                          placeholder="Örn: Boğaz manzaralı, sessiz alan, çocuk sandalyesi mevcut, engelli erişimi var"
+                          value={formData.description || ""}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              description: e.target.value,
+                            })
+                          }
+                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          rows={2}
+                        />
+                      </div>
                     </>
                   )}
 
                   {modalType === "categories" && (
-                    <input
-                      type="color"
-                      value={formData.color || "#3b82f6"}
-                      onChange={(e) =>
-                        setFormData({ ...formData, color: e.target.value })
-                      }
-                      className="w-full h-12 border border-gray-300 rounded-lg"
-                    />
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Kategori Rengi *
+                      </label>
+                      <input
+                        type="color"
+                        value={formData.color || "#3b82f6"}
+                        onChange={(e) =>
+                          setFormData({ ...formData, color: e.target.value })
+                        }
+                        className="w-full h-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Bu renk masa kategorisini ayırt etmek için kullanılır
+                      </p>
+                    </div>
                   )}
 
                   {(modalType === "companies" ||
