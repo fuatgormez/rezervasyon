@@ -166,10 +166,10 @@ export default function NewReservationPage() {
       const endTime = new Date(`${dateStr}T${formData.endTime}:00`);
 
       // API üzerinden rezervasyon oluştur
-      const response = await fetch('/api/reservations', {
-        method: 'POST',
+      const response = await fetch("/api/reservations", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           customer: {
@@ -183,7 +183,7 @@ export default function NewReservationPage() {
           endTime: formData.endTime,
           guests: parseInt(formData.guestCount.toString()),
           notes: formData.specialRequests,
-          status: 'confirmed',
+          status: "confirmed",
         }),
       });
 
@@ -193,9 +193,6 @@ export default function NewReservationPage() {
         setLoading(false);
         return;
       }
-        created_at: Timestamp.now(),
-        updated_at: Timestamp.now(),
-      });
 
       toast.success("Rezervasyon başarıyla oluşturuldu!");
       router.push("/reservation");
