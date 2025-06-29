@@ -1313,6 +1313,32 @@ export default function SettingsPage() {
                         />
                       </div>
 
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Default Rezervasyon Süresi *
+                        </label>
+                        <select
+                          value={formData.reservationDuration || "120"}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              reservationDuration: parseInt(e.target.value),
+                            })
+                          }
+                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        >
+                          <option value="60">1 Saat</option>
+                          <option value="90">1.5 Saat</option>
+                          <option value="120">2 Saat</option>
+                          <option value="150">2.5 Saat</option>
+                          <option value="180">3 Saat</option>
+                          <option value="240">4 Saat</option>
+                        </select>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Yeni rezervasyonlar için varsayılan süre
+                        </p>
+                      </div>
+
                       <div className="grid grid-cols-2 gap-3">
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">

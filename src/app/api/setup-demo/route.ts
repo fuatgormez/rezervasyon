@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
             sunday: { open: "10:00", close: "22:00" },
           },
           settings: {
-            reservationDuration: 120,
+            reservationDuration: 90,
             maxAdvanceBooking: 30,
             minAdvanceBooking: 2,
           },
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
             sunday: { open: "10:00", close: "22:00" },
           },
           settings: {
-            reservationDuration: 120,
+            reservationDuration: 150,
             maxAdvanceBooking: 30,
             minAdvanceBooking: 2,
           },
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
             sunday: { open: "10:00", close: "22:00" },
           },
           settings: {
-            reservationDuration: 120,
+            reservationDuration: 180,
             maxAdvanceBooking: 30,
             minAdvanceBooking: 2,
           },

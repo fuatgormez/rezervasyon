@@ -72,13 +72,22 @@ const addTimeMinutes = (time: string, minutesToAdd: number) => {
 interface Reservation {
   id: string;
   tableId: string;
+  customerType: "individual" | "company";
   customerName: string;
+  customerSurname: string;
+  customerGender: "bay" | "bayan" | "";
+  customerEmail: string;
+  customerPhone: string;
+  companyName: string;
   guestCount: number;
   startTime: string;
   endTime: string;
   status: "confirmed" | "pending" | "cancelled";
+  arrivalStatus: "waiting" | "arrived" | "departed";
   note: string;
   date: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 interface Table {
@@ -204,7 +213,15 @@ export default function ReservationPanel() {
     string | null
   >(null);
   const [staffInfoModalOpen, setStaffInfoModalOpen] = useState(false);
+  const [restaurantSettings, setRestaurantSettings] = useState<any>(null);
   const [waitersData, setWaitersData] = useState<any[]>([]);
+
+  // Customer autocomplete states
+  const [customers, setCustomers] = useState<any[]>([]);
+  const [filteredCustomers, setFilteredCustomers] = useState<any[]>([]);
+  const [showCustomerSuggestions, setShowCustomerSuggestions] = useState(false);
+  const [loadingCustomers, setLoadingCustomers] = useState(false);
+  const [activeSearchField, setActiveSearchField] = useState<string>("");
 
   // Refs
   const calendarRef = useRef<HTMLDivElement>(null);
@@ -214,12 +231,19 @@ export default function ReservationPanel() {
 
   // Form values
   const [formValues, setFormValues] = useState<Partial<Reservation>>({
+    customerType: "individual",
     customerName: "",
+    customerSurname: "",
+    customerGender: "",
+    customerEmail: "",
+    customerPhone: "",
+    companyName: "",
     guestCount: 2,
     tableId: "",
     startTime: "19:00",
     endTime: "20:00",
     status: "confirmed",
+    arrivalStatus: "waiting",
     note: "",
     date: format(new Date(), "yyyy-MM-dd"),
   });
@@ -766,13 +790,22 @@ export default function ReservationPanel() {
               .map(([id, data]: [string, any]) => ({
                 id,
                 tableId: data.tableId,
-                customerName: data.customerName,
+                customerType: data.customerType || "individual",
+                customerName: data.customerName || "",
+                customerSurname: data.customerSurname || "",
+                customerGender: data.customerGender || "",
+                customerEmail: data.customerEmail || "",
+                customerPhone: data.customerPhone || "",
+                companyName: data.companyName || "",
                 guestCount: data.guestCount || 1,
                 startTime: data.startTime,
                 endTime: data.endTime,
                 status: data.status || "confirmed",
+                arrivalStatus: data.arrivalStatus || "waiting",
                 note: data.note || "",
                 date: data.date || format(new Date(), "yyyy-MM-dd"),
+                createdAt: data.createdAt,
+                updatedAt: data.updatedAt,
               }));
             console.log("🔍 Debug: Filtered reservations:", loadedReservations);
             setReservations(loadedReservations);
@@ -847,6 +880,158 @@ export default function ReservationPanel() {
 
     loadStaffData();
   }, [currentRestaurant, selectedDate]);
+
+  // Restaurant ayarlarını yükle
+  useEffect(() => {
+    const loadRestaurantSettings = async () => {
+      if (!currentRestaurant?.id) return;
+
+      try {
+        const settingsRef = ref(db, `restaurants/${currentRestaurant.id}`);
+        const settingsSnapshot = await get(settingsRef);
+
+        if (settingsSnapshot.exists()) {
+          const settings = settingsSnapshot.val();
+          console.log(
+            "🎯 RESERVATION DEBUG - Restaurant settings loaded:",
+            settings
+          );
+          setRestaurantSettings(settings);
+        } else {
+          console.log(
+            "⚠️ No restaurant settings found for:",
+            currentRestaurant.id
+          );
+        }
+      } catch (error) {
+        console.error("Restaurant settings loading error:", error);
+      }
+    };
+
+    loadRestaurantSettings();
+  }, [currentRestaurant]);
+
+  // Load customers for autocomplete
+  useEffect(() => {
+    const loadCustomers = async () => {
+      if (!currentRestaurant?.id) return;
+
+      try {
+        setLoadingCustomers(true);
+        const customersRef = ref(db, "customers");
+        const customersSnapshot = await get(customersRef);
+
+        if (customersSnapshot.exists()) {
+          const customersData = customersSnapshot.val();
+          const loadedCustomers = Object.entries(customersData)
+            .filter(
+              ([_, customer]: [string, any]) =>
+                customer.restaurantId === currentRestaurant.id
+            )
+            .map(([id, customer]: [string, any]) => ({
+              id,
+              ...customer,
+            }));
+
+          setCustomers(loadedCustomers);
+          console.log(
+            "📋 Customers loaded:",
+            loadedCustomers.length,
+            "customers"
+          );
+        } else {
+          console.log("📋 No customers found in Firebase");
+        }
+      } catch (error) {
+        console.error("Customers loading error:", error);
+      } finally {
+        setLoadingCustomers(false);
+      }
+    };
+
+    loadCustomers();
+  }, [currentRestaurant]);
+
+  // Customer autocomplete functions
+  const filterCustomers = (searchTerm: string, searchField: string = "all") => {
+    if (!searchTerm.trim()) {
+      setFilteredCustomers([]);
+      setShowCustomerSuggestions(false);
+      return;
+    }
+
+    const searchTermLower = searchTerm.toLowerCase();
+    const filtered = customers.filter((customer) => {
+      switch (searchField) {
+        case "name":
+          return customer.name?.toLowerCase().includes(searchTermLower);
+        case "surname":
+          return customer.surname?.toLowerCase().includes(searchTermLower);
+        case "email":
+          return customer.email?.toLowerCase().includes(searchTermLower);
+        case "phone":
+          return customer.phone?.includes(searchTerm);
+        case "company":
+          return customer.companyName?.toLowerCase().includes(searchTermLower);
+        default: // "all"
+          return (
+            customer.name?.toLowerCase().includes(searchTermLower) ||
+            customer.surname?.toLowerCase().includes(searchTermLower) ||
+            customer.email?.toLowerCase().includes(searchTermLower) ||
+            customer.phone?.includes(searchTerm) ||
+            customer.companyName?.toLowerCase().includes(searchTermLower)
+          );
+      }
+    });
+
+    setFilteredCustomers(filtered.slice(0, 5)); // Show max 5 suggestions
+    setShowCustomerSuggestions(filtered.length > 0);
+  };
+
+  const selectCustomer = (customer: any) => {
+    setFormValues({
+      ...formValues,
+      customerType:
+        customer.customerType ||
+        (customer.companyName ? "company" : "individual"),
+      customerName: customer.name || "",
+      customerSurname: customer.surname || "",
+      customerGender: customer.gender || "",
+      customerEmail: customer.email || "",
+      customerPhone: customer.phone || "",
+      companyName: customer.companyName || "",
+    });
+    setShowCustomerSuggestions(false);
+    setActiveSearchField("");
+  };
+
+  const handleCustomerFieldChange = (field: string, value: string) => {
+    setFormValues({
+      ...formValues,
+      [field]: value,
+    });
+
+    // Set active search field and trigger autocomplete for different fields
+    setActiveSearchField(field);
+
+    if (field === "customerName") {
+      filterCustomers(value, "name");
+    } else if (field === "customerSurname") {
+      filterCustomers(value, "surname");
+    } else if (field === "customerEmail") {
+      filterCustomers(value, "email");
+    } else if (field === "customerPhone") {
+      filterCustomers(value, "phone");
+    } else if (field === "companyName") {
+      filterCustomers(value, "company");
+    }
+
+    // Clear suggestions if field is empty
+    if (!value.trim()) {
+      setShowCustomerSuggestions(false);
+      setActiveSearchField("");
+    }
+  };
 
   // Close calendar when clicking outside
   useEffect(() => {
@@ -991,6 +1176,24 @@ export default function ReservationPanel() {
       };
     }
 
+    // First check arrival status for color priority
+    switch (reservation.arrivalStatus) {
+      case "arrived":
+        return {
+          backgroundColor: "#f8bbd9", // Pink tone for arrived customers
+          borderColor: "#ec4899",
+          isWarning: false,
+        };
+      case "departed":
+        return {
+          backgroundColor: "#9ca3af", // Gray tone for departed customers
+          borderColor: "#6b7280",
+          isWarning: false,
+        };
+      default: // "waiting"
+        break;
+    }
+
     const minCapacity = table.minCapacity || table.capacity || 1;
     const maxCapacity = table.maxCapacity || table.capacity || 10;
     const guestCount = reservation.guestCount || 0;
@@ -1018,12 +1221,19 @@ export default function ReservationPanel() {
     console.log(`🎯 handleCardClick called with reservation:`, reservation);
     setEditingReservation(reservation);
     setFormValues({
+      customerType: reservation.customerType,
       customerName: reservation.customerName,
+      customerSurname: reservation.customerSurname || "",
+      customerGender: reservation.customerGender || "",
+      customerEmail: reservation.customerEmail || "",
+      customerPhone: reservation.customerPhone || "",
+      companyName: reservation.companyName || "",
       guestCount: reservation.guestCount,
       startTime: reservation.startTime,
       endTime: reservation.endTime,
       tableId: reservation.tableId,
       status: reservation.status,
+      arrivalStatus: reservation.arrivalStatus || "waiting",
       note: reservation.note || "",
     });
     setIsReservationModalOpen(true);
@@ -1041,38 +1251,64 @@ export default function ReservationPanel() {
       );
       setEditingReservation(existingReservation);
       setFormValues({
+        customerType: existingReservation.customerType,
         customerName: existingReservation.customerName,
+        customerSurname: existingReservation.customerSurname || "",
+        customerGender: existingReservation.customerGender || "",
+        customerEmail: existingReservation.customerEmail || "",
+        customerPhone: existingReservation.customerPhone || "",
+        companyName: existingReservation.companyName || "",
         guestCount: existingReservation.guestCount,
         startTime: existingReservation.startTime,
         endTime: existingReservation.endTime,
         tableId: existingReservation.tableId,
         status: existingReservation.status,
+        arrivalStatus: existingReservation.arrivalStatus || "waiting",
         note: existingReservation.note || "",
       });
     } else {
       console.log(`🎯 No existing reservation found, creating new one`);
 
-      // timeSlots'tan bir sonraki saati bul
-      const currentIndex = timeSlots.findIndex((slot) => slot === time);
-      const nextIndex = currentIndex + 1;
-      const endTime =
-        nextIndex < timeSlots.length ? timeSlots[nextIndex] : timeSlots[0];
+      // Restaurant ayarlarından default süreyi al (dakika cinsinden)
+      const defaultDurationMinutes =
+        restaurantSettings?.settings?.reservationDuration ||
+        restaurantSettings?.reservationDuration ||
+        120;
 
-      console.log("🔧 Cell click - setting end time:", {
+      // Seçilen saati parse et
+      const [startHour, startMinute] = time.split(":").map(Number);
+
+      // Bitiş saatini hesapla
+      const endTimeMinutes =
+        startHour * 60 + startMinute + defaultDurationMinutes;
+      const endHour = Math.floor(endTimeMinutes / 60) % 24;
+      const endMinute = endTimeMinutes % 60;
+      const endTime = `${endHour.toString().padStart(2, "0")}:${endMinute
+        .toString()
+        .padStart(2, "0")}`;
+
+      console.log("🎯 RESERVATION DEBUG - Cell click duration:", {
         startTime: time,
-        currentIndex,
-        nextIndex,
-        endTime,
+        defaultDurationMinutes,
+        calculatedEndTime: endTime,
+        restaurantSettings,
       });
 
       setEditingReservation(null);
       setFormValues({
+        customerType: "individual",
         customerName: "",
+        customerSurname: "",
+        customerGender: "",
+        customerEmail: "",
+        customerPhone: "",
+        companyName: "",
         guestCount: 2,
         startTime: time,
-        endTime,
-        tableId,
+        endTime: endTime,
+        tableId: tableId,
         status: "confirmed",
+        arrivalStatus: "waiting",
         note: "",
       });
     }
@@ -1090,12 +1326,19 @@ export default function ReservationPanel() {
 
     try {
       const {
+        customerType,
         customerName,
+        customerSurname,
+        customerGender,
+        customerEmail,
+        customerPhone,
+        companyName,
         guestCount,
         startTime,
         endTime,
         tableId,
         status,
+        arrivalStatus,
         note,
       } = formValues;
 
@@ -1153,12 +1396,19 @@ export default function ReservationPanel() {
         companyId:
           company?.id || activeRestaurant.companyId || "default-company",
         restaurantId: activeRestaurant.id,
+        customerType,
         customerName,
+        customerSurname: customerSurname || "",
+        customerGender: customerGender || "",
+        customerEmail: customerEmail || "",
+        customerPhone: customerPhone || "",
+        companyName: companyName || "",
         guestCount: Number(guestCount),
         startTime,
         endTime,
         tableId,
         status,
+        arrivalStatus: arrivalStatus || "waiting",
         note,
         date: reservationDate,
         createdAt: new Date().toISOString(),
@@ -1175,6 +1425,68 @@ export default function ReservationPanel() {
         const newReservationKey = newReservation.tableId + "_" + Date.now();
         await set(ref(db, `reservations/${newReservationKey}`), newReservation);
         toast.success("Reservation created");
+      }
+
+      // Save customer data to customers collection
+      if (customerName && (customerEmail || customerPhone)) {
+        try {
+          const customerData = {
+            customerType,
+            name: customerName,
+            surname: customerSurname || "",
+            gender: customerGender || "",
+            email: customerEmail || "",
+            phone: customerPhone || "",
+            companyName: companyName || "",
+            restaurantId: activeRestaurant.id,
+            companyId:
+              company?.id || activeRestaurant.companyId || "default-company",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+
+          // Create a unique customer ID based on email or phone
+          const customerId = customerEmail
+            ? `customer_${customerEmail.replace(/[^a-zA-Z0-9]/g, "_")}`
+            : `customer_${(customerPhone || "").replace(/[^0-9]/g, "")}`;
+
+          console.log("🔥 Saving customer data:", customerData);
+          console.log("🔥 Customer ID:", customerId);
+
+          const customerRef = ref(db, `customers/${customerId}`);
+          await set(customerRef, customerData);
+
+          console.log("✅ Customer saved successfully!");
+          toast.success("Müşteri bilgileri kaydedildi");
+
+          // Add the new customer to the customers list immediately
+          setCustomers((prevCustomers) => {
+            const existingIndex = prevCustomers.findIndex(
+              (c) => c.id === customerId
+            );
+            if (existingIndex >= 0) {
+              // Update existing customer
+              const updatedCustomers = [...prevCustomers];
+              updatedCustomers[existingIndex] = {
+                id: customerId,
+                ...customerData,
+              };
+              return updatedCustomers;
+            } else {
+              // Add new customer
+              return [...prevCustomers, { id: customerId, ...customerData }];
+            }
+          });
+        } catch (customerError) {
+          console.error("❌ Error saving customer:", customerError);
+          toast.error("Müşteri bilgileri kaydedilemedi");
+        }
+      } else {
+        console.log("⚠️ Customer not saved - missing required fields:", {
+          customerName,
+          customerEmail,
+          customerPhone,
+        });
       }
 
       setIsReservationModalOpen(false);
@@ -1636,6 +1948,66 @@ export default function ReservationPanel() {
     return assignment && (assignment.waiterId || assignment.buserId);
   };
 
+  // Masa numarasına tıklayınca rezervasyon popup'ını aç
+  const handleTableNumberClick = (tableId: string) => {
+    // Handle table number click to create new reservation
+
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+
+    // Geçerli saati en yakın 15 dakikaya yuvarla
+    const roundedMinute = Math.ceil(currentMinute / 15) * 15;
+    let startHour = currentHour;
+    let startMinute = roundedMinute;
+
+    if (startMinute >= 60) {
+      startHour += 1;
+      startMinute = 0;
+    }
+
+    const startTime = `${startHour.toString().padStart(2, "0")}:${startMinute
+      .toString()
+      .padStart(2, "0")}`;
+
+    // Restaurant ayarlarından default süreyi al (dakika cinsinden), yoksa 120 dakika (2 saat)
+    const defaultDurationMinutes =
+      restaurantSettings?.settings?.reservationDuration ||
+      restaurantSettings?.reservationDuration ||
+      120;
+
+    // Bitiş saatini hesapla
+    const endTimeMinutes =
+      startHour * 60 + startMinute + defaultDurationMinutes;
+    const endHour = Math.floor(endTimeMinutes / 60) % 24;
+    const endMinute = endTimeMinutes % 60;
+    const endTime = `${endHour.toString().padStart(2, "0")}:${endMinute
+      .toString()
+      .padStart(2, "0")}`;
+
+    // Table clicked - creating new reservation with current time
+
+    // Form değerlerini ayarla
+    setFormValues({
+      customerType: "individual",
+      customerName: "",
+      customerSurname: "",
+      customerGender: "",
+      customerEmail: "",
+      customerPhone: "",
+      companyName: "",
+      guestCount: 2,
+      startTime: startTime,
+      endTime: endTime,
+      tableId: tableId,
+      status: "confirmed",
+      note: "",
+    });
+
+    setEditingReservation(null);
+    setIsReservationModalOpen(true);
+  };
+
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-gray-50 text-gray-800">
       <AdminHeader title="📅 Rezervasyon Yönetimi">
@@ -1720,7 +2092,24 @@ export default function ReservationPanel() {
                 className="pl-10 pr-4 py-2 bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
-            <button className="p-2 rounded-lg hover:bg-gray-100">
+            <button
+              className="p-2 rounded-lg hover:bg-gray-100"
+              onClick={async () => {
+                console.log("🔍 Current customers:", customers);
+                try {
+                  const customersRef = ref(db, "customers");
+                  const snapshot = await get(customersRef);
+                  if (snapshot.exists()) {
+                    console.log("🔍 Firebase customers data:", snapshot.val());
+                  } else {
+                    console.log("🔍 No customers in Firebase");
+                  }
+                } catch (error) {
+                  console.error("🔍 Error fetching customers:", error);
+                }
+              }}
+              title="Debug Customers"
+            >
               <RefreshCw className="w-5 h-5 text-gray-600" />
             </button>
 
@@ -1736,12 +2125,60 @@ export default function ReservationPanel() {
             <button
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center space-x-1"
               onClick={() => {
+                console.log("🎯 RESERVATION DEBUG - Yeni Rezervasyon butonu", {
+                  restaurantSettings,
+                  currentRestaurant: currentRestaurant?.name,
+                });
+
+                // Güncel saati al ve ayarla
+                const now = new Date();
+                const currentHour = now.getHours();
+                const currentMinute = now.getMinutes();
+
+                // En yakın 15 dakikaya yuvarla
+                const roundedMinute = Math.ceil(currentMinute / 15) * 15;
+                let startHour = currentHour;
+                let startMinute = roundedMinute;
+
+                if (startMinute >= 60) {
+                  startHour += 1;
+                  startMinute = 0;
+                }
+
+                const startTime = `${startHour
+                  .toString()
+                  .padStart(2, "0")}:${startMinute
+                  .toString()
+                  .padStart(2, "0")}`;
+
+                // Restaurant ayarlarından default süreyi al
+                const defaultDurationMinutes =
+                  restaurantSettings?.settings?.reservationDuration ||
+                  restaurantSettings?.reservationDuration ||
+                  120;
+
+                // Bitiş saatini hesapla
+                const endTimeMinutes =
+                  startHour * 60 + startMinute + defaultDurationMinutes;
+                const endHour = Math.floor(endTimeMinutes / 60) % 24;
+                const endMinute = endTimeMinutes % 60;
+                const endTime = `${endHour
+                  .toString()
+                  .padStart(2, "0")}:${endMinute.toString().padStart(2, "0")}`;
+
+                console.log("🔧 New reservation button clicked", {
+                  currentTime: `${currentHour}:${currentMinute}`,
+                  startTime,
+                  endTime,
+                  defaultDurationMinutes,
+                });
+
                 setEditingReservation(null);
                 setFormValues({
-                  customerName: "",
+                  customerType: "individual",
                   guestCount: 2,
-                  startTime: "19:00",
-                  endTime: "20:00",
+                  startTime: startTime,
+                  endTime: endTime,
                   tableId: tables.length > 0 ? tables[0].id : "",
                   status: "confirmed",
                   note: "",
@@ -1922,20 +2359,25 @@ export default function ReservationPanel() {
 
                             return (
                               <div
-                                className={`h-[30px] py-1 px-3 flex justify-between items-center cursor-pointer hover:bg-gray-50 bg-white border-b border-gray-200 ${
+                                className={`h-[30px] py-1 px-3 flex justify-between items-center bg-white border-b border-gray-200 ${
                                   formValues.tableId === table.id
                                     ? "bg-blue-50"
                                     : ""
                                 }`}
                                 key={table.id}
-                                onClick={() => {
-                                  setFormValues({
-                                    ...formValues,
-                                    tableId: table.id,
-                                  });
-                                }}
                               >
-                                <div className="font-medium text-sm">
+                                <div
+                                  className="font-medium text-sm cursor-pointer hover:text-blue-600 transition-colors hover:bg-blue-50 px-2 py-1 rounded"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    console.log(
+                                      "🎯 RESERVATION DEBUG - Table number clicked:",
+                                      table.id
+                                    );
+                                    handleTableNumberClick(table.id);
+                                  }}
+                                  title="📅 Rezervasyon oluştur"
+                                >
                                   {table.number}
                                 </div>
                                 <div className="flex items-center space-x-2">
@@ -2374,8 +2816,23 @@ export default function ReservationPanel() {
                                                     <div className="flex items-center space-x-2">
                                                       <div className="w-2 h-2 rounded-full bg-white/80 flex-shrink-0" />
                                                       <div className="font-semibold text-white text-xs truncate">
-                                                        {reservation.customerName ||
-                                                          "İsimsiz"}
+                                                        {reservation.customerType ===
+                                                          "company" &&
+                                                        reservation.companyName ? (
+                                                          <>
+                                                            🏢{" "}
+                                                            {
+                                                              reservation.companyName
+                                                            }
+                                                          </>
+                                                        ) : (
+                                                          <>
+                                                            {reservation.customerName ||
+                                                              "İsimsiz"}
+                                                            {reservation.customerSurname &&
+                                                              ` ${reservation.customerSurname}`}
+                                                          </>
+                                                        )}
                                                       </div>
                                                     </div>
                                                     <div className="flex items-center space-x-1">
@@ -2463,247 +2920,617 @@ export default function ReservationPanel() {
       {/* Add/Edit Reservation Modal */}
       {isReservationModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
-            <div className="flex justify-between items-center p-4 border-b border-gray-200">
-              <h3 className="text-lg font-medium text-gray-900">
-                {editingReservation ? "Edit Reservation" : "New Reservation"}
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center p-6 border-b border-gray-200">
+              <h3 className="text-xl font-semibold text-gray-900">
+                {editingReservation
+                  ? "🔧 Rezervasyon Düzenle"
+                  : "➕ Yeni Rezervasyon"}
               </h3>
               <button
-                className="text-gray-400 hover:text-gray-500"
-                onClick={() => setIsReservationModalOpen(false)}
+                className="text-gray-400 hover:text-gray-500 transition-colors"
+                onClick={() => {
+                  setIsReservationModalOpen(false);
+                  setShowCustomerSuggestions(false);
+                }}
               >
-                <X className="w-5 h-5" />
+                <X className="w-6 h-6" />
               </button>
             </div>
 
-            <div className="p-4 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Customer Name
-                </label>
-                <input
-                  type="text"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  value={formValues.customerName}
-                  onChange={(e) =>
-                    setFormValues({
-                      ...formValues,
-                      customerName: e.target.value,
-                    })
-                  }
-                  placeholder="Customer name"
-                />
-              </div>
+            <div className="p-6 space-y-6">
+              {/* Customer Information Section */}
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <h4 className="text-lg font-medium text-blue-900 mb-4">
+                  👤 Müşteri Bilgileri
+                </h4>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Kişi Sayısı *
+                {/* Customer Type Selection */}
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Müşteri Türü *
                   </label>
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="Kaç kişi?"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    value={formValues.guestCount || ""}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      setFormValues({
-                        ...formValues,
-                        guestCount: value === "" ? 0 : parseInt(value) || 0,
-                      });
-                    }}
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    En az 1 kişi gerekli. Masa kapasitesi dışında rezervasyon
-                    yapılabilir ancak kahverengi renkte görünür.
-                  </p>
+                  <div className="flex space-x-4">
+                    <label className="flex items-center">
+                      <input
+                        type="radio"
+                        name="customerType"
+                        value="individual"
+                        checked={formValues.customerType === "individual"}
+                        onChange={(e) =>
+                          setFormValues({
+                            ...formValues,
+                            customerType: e.target.value as
+                              | "individual"
+                              | "company",
+                          })
+                        }
+                        className="mr-2"
+                      />
+                      <span>👤 Bireysel</span>
+                    </label>
+                    <label className="flex items-center">
+                      <input
+                        type="radio"
+                        name="customerType"
+                        value="company"
+                        checked={formValues.customerType === "company"}
+                        onChange={(e) =>
+                          setFormValues({
+                            ...formValues,
+                            customerType: e.target.value as
+                              | "individual"
+                              | "company",
+                          })
+                        }
+                        className="mr-2"
+                      />
+                      <span>🏢 Firma</span>
+                    </label>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Table
-                  </label>
-                  <select
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    value={formValues.tableId}
-                    onChange={(e) =>
-                      setFormValues({ ...formValues, tableId: e.target.value })
-                    }
-                  >
-                    <option value="">Select Table</option>
-                    {tables.map((table) => {
-                      const category = categories.find(
-                        (c) => c.id === table.categoryId
-                      );
-                      const minCapacity =
-                        table.minCapacity || table.capacity || 1;
-                      const maxCapacity =
-                        table.maxCapacity || table.capacity || 10;
-                      return (
-                        <option key={table.id} value={table.id}>
-                          Table {table.number} -{" "}
-                          {category?.name || "No Category"}({minCapacity}-
-                          {maxCapacity} kişi)
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Start Time
-                  </label>
-                  <select
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    value={formValues.startTime}
-                    onChange={(e) => {
-                      const newStartTime = e.target.value;
-
-                      // timeSlots'tan bir sonraki saati bul
-                      const currentIndex = timeSlots.findIndex(
-                        (slot) => slot === newStartTime
-                      );
-                      const nextIndex = currentIndex + 1;
-                      const newEndTime =
-                        nextIndex < timeSlots.length
-                          ? timeSlots[nextIndex]
-                          : timeSlots[0];
-
-                      console.log("🔧 Start time changed:", {
-                        newStartTime,
-                        currentIndex,
-                        nextIndex,
-                        newEndTime,
-                        timeSlots: timeSlots.slice(0, 5), // İlk 5 slot'u göster
-                      });
-
-                      setFormValues({
-                        ...formValues,
-                        startTime: newStartTime,
-                        endTime: newEndTime,
-                      });
-                    }}
-                  >
-                    {timeSlots.map((time) => (
-                      <option key={`start-${time}`} value={time}>
-                        {time}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    End Time
-                  </label>
-                  <select
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    value={formValues.endTime}
-                    onChange={(e) =>
-                      setFormValues({ ...formValues, endTime: e.target.value })
-                    }
-                  >
-                    {timeSlots.map((time) => {
-                      const isDisabled =
-                        getTimeInMinutes(time) <=
-                        getTimeInMinutes(formValues.startTime || "19:00");
-                      if (time === formValues.endTime) {
-                        console.log("🔧 End time option check:", {
-                          time,
-                          formValuesStartTime: formValues.startTime,
-                          formValuesEndTime: formValues.endTime,
-                          isDisabled,
-                          startTimeMinutes: getTimeInMinutes(
-                            formValues.startTime || "19:00"
-                          ),
-                          endTimeMinutes: getTimeInMinutes(time),
-                        });
+                {/* Company Name Field (visible when company is selected) */}
+                {formValues.customerType === "company" && (
+                  <div className="mb-4 relative">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Firma Adı *
+                    </label>
+                    <input
+                      type="text"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      value={formValues.companyName || ""}
+                      onChange={(e) =>
+                        handleCustomerFieldChange("companyName", e.target.value)
                       }
-                      return (
-                        <option
-                          key={`end-${time}`}
-                          value={time}
-                          disabled={isDisabled}
-                        >
-                          {time}
-                        </option>
-                      );
-                    })}
-                  </select>
+                      placeholder="Firma adı"
+                      autoComplete="off"
+                    />
+
+                    {/* Company Name Autocomplete Suggestions */}
+                    {activeSearchField === "companyName" &&
+                      showCustomerSuggestions &&
+                      filteredCustomers.length > 0 && (
+                        <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-40 overflow-y-auto">
+                          {filteredCustomers.map((customer, index) => (
+                            <div
+                              key={`company-${customer.id || index}`}
+                              className="px-3 py-2 cursor-pointer hover:bg-blue-50 border-b border-gray-100 last:border-b-0"
+                              onClick={() => selectCustomer(customer)}
+                            >
+                              <div className="font-medium text-gray-900">
+                                <span className="text-blue-600 mr-2">🏢</span>
+                                {customer.companyName}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {customer.name} {customer.surname} •{" "}
+                                {customer.email} • {customer.phone}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Name Field with Autocomplete */}
+                  <div className="relative">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Ad *
+                    </label>
+                    <input
+                      type="text"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      value={formValues.customerName || ""}
+                      onChange={(e) =>
+                        handleCustomerFieldChange(
+                          "customerName",
+                          e.target.value
+                        )
+                      }
+                      placeholder="Müşteri adı"
+                      autoComplete="off"
+                    />
+
+                    {/* Autocomplete Suggestions */}
+                    {activeSearchField === "customerName" &&
+                      showCustomerSuggestions &&
+                      filteredCustomers.length > 0 && (
+                        <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-40 overflow-y-auto">
+                          {filteredCustomers.map((customer, index) => (
+                            <div
+                              key={customer.id || index}
+                              className="px-3 py-2 cursor-pointer hover:bg-blue-50 border-b border-gray-100 last:border-b-0"
+                              onClick={() => selectCustomer(customer)}
+                            >
+                              <div className="font-medium text-gray-900">
+                                {customer.companyName && (
+                                  <span className="text-blue-600 mr-2">🏢</span>
+                                )}
+                                {customer.name} {customer.surname}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {customer.email} • {customer.phone}
+                                {customer.companyName && (
+                                  <span className="ml-2">
+                                    • {customer.companyName}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                  </div>
+
+                  {/* Surname */}
+                  <div className="relative">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Soyad
+                    </label>
+                    <input
+                      type="text"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      value={formValues.customerSurname || ""}
+                      onChange={(e) =>
+                        handleCustomerFieldChange(
+                          "customerSurname",
+                          e.target.value
+                        )
+                      }
+                      placeholder="Müşteri soyadı"
+                      autoComplete="off"
+                    />
+
+                    {/* Surname Autocomplete Suggestions */}
+                    {activeSearchField === "customerSurname" &&
+                      showCustomerSuggestions &&
+                      filteredCustomers.length > 0 && (
+                        <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-40 overflow-y-auto">
+                          {filteredCustomers.map((customer, index) => (
+                            <div
+                              key={`surname-${customer.id || index}`}
+                              className="px-3 py-2 cursor-pointer hover:bg-blue-50 border-b border-gray-100 last:border-b-0"
+                              onClick={() => selectCustomer(customer)}
+                            >
+                              <div className="font-medium text-gray-900">
+                                {customer.companyName && (
+                                  <span className="text-blue-600 mr-2">🏢</span>
+                                )}
+                                {customer.name} {customer.surname}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {customer.email} • {customer.phone}
+                                {customer.companyName && (
+                                  <span className="ml-2">
+                                    • {customer.companyName}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                  </div>
+
+                  {/* Gender */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Cinsiyet
+                    </label>
+                    <select
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      value={formValues.customerGender || ""}
+                      onChange={(e) =>
+                        handleCustomerFieldChange(
+                          "customerGender",
+                          e.target.value
+                        )
+                      }
+                    >
+                      <option value="">Seçiniz</option>
+                      <option value="bay">👨 Bay</option>
+                      <option value="bayan">👩 Bayan</option>
+                    </select>
+                  </div>
+
+                  {/* Email */}
+                  <div className="relative">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      E-posta
+                    </label>
+                    <input
+                      type="email"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      value={formValues.customerEmail || ""}
+                      onChange={(e) =>
+                        handleCustomerFieldChange(
+                          "customerEmail",
+                          e.target.value
+                        )
+                      }
+                      placeholder="ornek@email.com"
+                      autoComplete="off"
+                    />
+
+                    {/* Email Autocomplete Suggestions */}
+                    {activeSearchField === "customerEmail" &&
+                      showCustomerSuggestions &&
+                      filteredCustomers.length > 0 && (
+                        <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-40 overflow-y-auto">
+                          {filteredCustomers.map((customer, index) => (
+                            <div
+                              key={`email-${customer.id || index}`}
+                              className="px-3 py-2 cursor-pointer hover:bg-blue-50 border-b border-gray-100 last:border-b-0"
+                              onClick={() => selectCustomer(customer)}
+                            >
+                              <div className="font-medium text-gray-900">
+                                {customer.companyName && (
+                                  <span className="text-blue-600 mr-2">🏢</span>
+                                )}
+                                {customer.name} {customer.surname}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {customer.email} • {customer.phone}
+                                {customer.companyName && (
+                                  <span className="ml-2">
+                                    • {customer.companyName}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                  </div>
+
+                  {/* Phone */}
+                  <div className="relative">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Telefon
+                    </label>
+                    <input
+                      type="tel"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      value={formValues.customerPhone || ""}
+                      onChange={(e) =>
+                        handleCustomerFieldChange(
+                          "customerPhone",
+                          e.target.value
+                        )
+                      }
+                      placeholder="0555 123 45 67"
+                      autoComplete="off"
+                    />
+
+                    {/* Phone Autocomplete Suggestions */}
+                    {activeSearchField === "customerPhone" &&
+                      showCustomerSuggestions &&
+                      filteredCustomers.length > 0 && (
+                        <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-40 overflow-y-auto">
+                          {filteredCustomers.map((customer, index) => (
+                            <div
+                              key={`phone-${customer.id || index}`}
+                              className="px-3 py-2 cursor-pointer hover:bg-blue-50 border-b border-gray-100 last:border-b-0"
+                              onClick={() => selectCustomer(customer)}
+                            >
+                              <div className="font-medium text-gray-900">
+                                {customer.companyName && (
+                                  <span className="text-blue-600 mr-2">🏢</span>
+                                )}
+                                {customer.name} {customer.surname}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {customer.email} • {customer.phone}
+                                {customer.companyName && (
+                                  <span className="ml-2">
+                                    • {customer.companyName}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                  </div>
+
+                  {/* Guest Count */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Kişi Sayısı *
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      value={formValues.guestCount || ""}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setFormValues({
+                          ...formValues,
+                          guestCount: value === "" ? 0 : parseInt(value) || 0,
+                        });
+                      }}
+                      placeholder="Kaç kişi?"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Status
-                </label>
-                <select
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  value={formValues.status}
-                  onChange={(e) =>
-                    setFormValues({
-                      ...formValues,
-                      status: e.target.value as
-                        | "confirmed"
-                        | "pending"
-                        | "cancelled",
-                    })
-                  }
-                >
-                  <option value="confirmed">Confirmed</option>
-                  <option value="pending">Pending</option>
-                  <option value="cancelled">Cancelled</option>
-                </select>
+              {/* Reservation Details Section */}
+              <div className="bg-green-50 p-4 rounded-lg">
+                <h4 className="text-lg font-medium text-green-900 mb-4">
+                  📅 Rezervasyon Detayları
+                </h4>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Table Selection */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Masa *
+                    </label>
+                    <select
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      value={formValues.tableId || ""}
+                      onChange={(e) =>
+                        setFormValues({
+                          ...formValues,
+                          tableId: e.target.value,
+                        })
+                      }
+                    >
+                      <option value="">Masa Seçiniz</option>
+                      {tables.map((table) => {
+                        const category = categories.find(
+                          (c) => c.id === table.categoryId
+                        );
+                        const minCapacity =
+                          table.minCapacity || table.capacity || 1;
+                        const maxCapacity =
+                          table.maxCapacity || table.capacity || 10;
+                        return (
+                          <option key={table.id} value={table.id}>
+                            🍽️ Masa {table.number} - {category?.name || "Genel"}{" "}
+                            ({minCapacity}-{maxCapacity} kişi)
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+
+                  {/* Start Time */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Başlangıç Saati *
+                    </label>
+                    <select
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      value={formValues.startTime || ""}
+                      onChange={(e) => {
+                        const newStartTime = e.target.value;
+                        const currentIndex = timeSlots.findIndex(
+                          (slot) => slot === newStartTime
+                        );
+                        const nextIndex = currentIndex + 1;
+                        const newEndTime =
+                          nextIndex < timeSlots.length
+                            ? timeSlots[nextIndex]
+                            : timeSlots[0];
+
+                        setFormValues({
+                          ...formValues,
+                          startTime: newStartTime,
+                          endTime: newEndTime,
+                        });
+                      }}
+                    >
+                      {timeSlots.map((time) => (
+                        <option key={`start-${time}`} value={time}>
+                          🕐 {time}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* End Time */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Bitiş Saati *
+                    </label>
+                    <select
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      value={formValues.endTime || ""}
+                      onChange={(e) =>
+                        setFormValues({
+                          ...formValues,
+                          endTime: e.target.value,
+                        })
+                      }
+                    >
+                      {timeSlots.map((time) => {
+                        const isDisabled =
+                          getTimeInMinutes(time) <=
+                          getTimeInMinutes(formValues.startTime || "19:00");
+                        return (
+                          <option
+                            key={`end-${time}`}
+                            value={time}
+                            disabled={isDisabled}
+                          >
+                            🕐 {time}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+
+                  {/* Status */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Durum
+                    </label>
+                    <select
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      value={formValues.status || "confirmed"}
+                      onChange={(e) =>
+                        setFormValues({
+                          ...formValues,
+                          status: e.target.value as
+                            | "confirmed"
+                            | "pending"
+                            | "cancelled",
+                        })
+                      }
+                    >
+                      <option value="confirmed">✅ Onaylandı</option>
+                      <option value="pending">⏳ Beklemede</option>
+                      <option value="cancelled">❌ İptal</option>
+                    </select>
+                  </div>
+
+                  {/* Notes */}
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Notlar
+                    </label>
+                    <textarea
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      value={formValues.note || ""}
+                      onChange={(e) =>
+                        setFormValues({ ...formValues, note: e.target.value })
+                      }
+                      rows={2}
+                      placeholder="Rezervasyon ile ilgili notlar..."
+                    />
+                  </div>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Note
-                </label>
-                <textarea
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  value={formValues.note}
-                  onChange={(e) =>
-                    setFormValues({ ...formValues, note: e.target.value })
-                  }
-                  rows={3}
-                  placeholder="Add a note about the reservation"
-                />
+              {/* Arrival Status Section */}
+              <div className="bg-purple-50 p-4 rounded-lg">
+                <h4 className="text-lg font-medium text-purple-900 mb-4">
+                  📍 Müşteri Durumu
+                </h4>
+
+                <div className="flex space-x-4">
+                  {/* Waiting Button */}
+                  <button
+                    type="button"
+                    className={`flex-1 px-4 py-3 rounded-lg font-medium transition-all duration-200 ${
+                      formValues.arrivalStatus === "waiting"
+                        ? "bg-yellow-500 text-white shadow-lg transform scale-105"
+                        : "bg-yellow-100 text-yellow-800 hover:bg-yellow-200"
+                    }`}
+                    onClick={() =>
+                      setFormValues({ ...formValues, arrivalStatus: "waiting" })
+                    }
+                  >
+                    ⏰ Bekliyor
+                  </button>
+
+                  {/* Arrived Button */}
+                  <button
+                    type="button"
+                    className={`flex-1 px-4 py-3 rounded-lg font-medium transition-all duration-200 ${
+                      formValues.arrivalStatus === "arrived"
+                        ? "bg-pink-500 text-white shadow-lg transform scale-105"
+                        : "bg-pink-100 text-pink-800 hover:bg-pink-200"
+                    }`}
+                    onClick={() =>
+                      setFormValues({ ...formValues, arrivalStatus: "arrived" })
+                    }
+                  >
+                    🎉 Geldi
+                  </button>
+
+                  {/* Departed Button */}
+                  <button
+                    type="button"
+                    className={`flex-1 px-4 py-3 rounded-lg font-medium transition-all duration-200 ${
+                      formValues.arrivalStatus === "departed"
+                        ? "bg-gray-500 text-white shadow-lg transform scale-105"
+                        : "bg-gray-100 text-gray-800 hover:bg-gray-200"
+                    }`}
+                    onClick={() =>
+                      setFormValues({
+                        ...formValues,
+                        arrivalStatus: "departed",
+                      })
+                    }
+                  >
+                    👋 Gitti
+                  </button>
+                </div>
+
+                <p className="text-sm text-purple-700 mt-2">
+                  💡 Müşteri durumu rezervasyon kartının rengini belirler
+                </p>
               </div>
             </div>
 
-            <div className="p-4 border-t border-gray-200 flex justify-end space-x-3">
-              {editingReservation && (
+            {/* Modal Footer */}
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-between items-center bg-gray-50">
+              <div className="flex space-x-3">
+                {editingReservation && (
+                  <button
+                    type="button"
+                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center space-x-2"
+                    onClick={handleDeleteReservation}
+                  >
+                    <span>🗑️</span>
+                    <span>Sil</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="flex space-x-3">
                 <button
-                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-                  onClick={handleDeleteReservation}
+                  type="button"
+                  className="px-6 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors"
+                  onClick={() => {
+                    setIsReservationModalOpen(false);
+                    setShowCustomerSuggestions(false);
+                  }}
                 >
-                  Delete
+                  İptal (Esc)
                 </button>
-              )}
-              <button
-                className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
-                onClick={() => setIsReservationModalOpen(false)}
-              >
-                Cancel (Esc)
-              </button>
-              <button
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                onClick={handleSaveReservation}
-              >
-                Save (Enter)
-              </button>
+                <button
+                  type="button"
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
+                  onClick={handleSaveReservation}
+                >
+                  <span>💾</span>
+                  <span>Kaydet (Enter)</span>
+                </button>
+              </div>
             </div>
 
-            {/* Shortcut info */}
-            <div className="px-4 pb-4 text-center">
+            {/* Help Text */}
+            <div className="px-6 pb-4 text-center">
               <p className="text-xs text-gray-500">
-                💡 <strong>Enter</strong> to save, <strong>Esc</strong> to
-                cancel
+                💡 <strong>Enter</strong> ile kaydet, <strong>Esc</strong> ile
+                iptal et
               </p>
             </div>
           </div>
