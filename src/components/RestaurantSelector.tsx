@@ -50,10 +50,6 @@ export default function RestaurantSelector() {
           {/* Dropdown */}
           <div className="absolute top-full left-0 mt-1 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-[9999]">
             <div className="p-2">
-              <div className="text-xs font-medium text-gray-500 px-3 py-2">
-                {company?.name} - Restoranları
-              </div>
-
               {restaurants.map((restaurant) => (
                 <button
                   key={restaurant.id}
