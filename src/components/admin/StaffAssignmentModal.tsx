@@ -569,6 +569,30 @@ export default function StaffAssignmentModal({
     return waiter?.name || "Bilinmeyen";
   };
 
+  // Garsonun atanmış masalarını getir
+  const getWaiterAssignedTables = (
+    waiterId: string,
+    position: "waiter" | "busboy"
+  ) => {
+    const assignedTables: string[] = [];
+
+    Object.entries(assignments).forEach(([tableId, assignment]) => {
+      if (position === "waiter" && assignment.waiterId === waiterId) {
+        const table = tables.find((t) => t.id === tableId);
+        if (table) {
+          assignedTables.push(`Masa ${table.number}`);
+        }
+      } else if (position === "busboy" && assignment.buserId === waiterId) {
+        const table = tables.find((t) => t.id === tableId);
+        if (table) {
+          assignedTables.push(`Masa ${table.number}`);
+        }
+      }
+    });
+
+    return assignedTables;
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -726,24 +750,35 @@ export default function StaffAssignmentModal({
                   </h4>
                   {waiters
                     .filter((w) => w.position === "waiter")
-                    .map((waiter) => (
-                      <div key={waiter.id} className="mb-2">
-                        <button
-                          onClick={() => assignWaiter(waiter.id, "waiter")}
-                          disabled={loading || selectedTables.length === 0}
-                          className="w-full text-left p-3 bg-blue-50 hover:bg-blue-100 disabled:bg-gray-100 disabled:cursor-not-allowed border border-blue-200 rounded-lg transition-colors"
-                        >
-                          <div className="font-medium text-blue-900">
-                            {waiter.name}
-                          </div>
-                          {waiter.phone && (
-                            <div className="text-xs text-blue-600">
-                              {waiter.phone}
+                    .map((waiter) => {
+                      const assignedTables = getWaiterAssignedTables(
+                        waiter.id,
+                        "waiter"
+                      );
+                      return (
+                        <div key={waiter.id} className="mb-2">
+                          <button
+                            onClick={() => assignWaiter(waiter.id, "waiter")}
+                            disabled={loading || selectedTables.length === 0}
+                            className="w-full text-left p-3 bg-blue-50 hover:bg-blue-100 disabled:bg-gray-100 disabled:cursor-not-allowed border border-blue-200 rounded-lg transition-colors"
+                          >
+                            <div className="font-medium text-blue-900">
+                              {waiter.name}
                             </div>
-                          )}
-                        </button>
-                      </div>
-                    ))}
+                            {waiter.phone && (
+                              <div className="text-xs text-blue-600">
+                                {waiter.phone}
+                              </div>
+                            )}
+                            {assignedTables.length > 0 && (
+                              <div className="text-xs text-blue-700 mt-1 font-medium">
+                                🍽️ {assignedTables.join(", ")}
+                              </div>
+                            )}
+                          </button>
+                        </div>
+                      );
+                    })}
                 </div>
 
                 {/* Komiler */}
@@ -761,24 +796,35 @@ export default function StaffAssignmentModal({
                   ) : (
                     waiters
                       .filter((w) => w.position === "busboy")
-                      .map((waiter) => (
-                        <div key={waiter.id} className="mb-2">
-                          <button
-                            onClick={() => assignWaiter(waiter.id, "busboy")}
-                            disabled={loading || selectedTables.length === 0}
-                            className="w-full text-left p-3 bg-orange-50 hover:bg-orange-100 disabled:bg-gray-100 disabled:cursor-not-allowed border border-orange-200 rounded-lg transition-colors"
-                          >
-                            <div className="font-medium text-orange-900">
-                              {waiter.name}
-                            </div>
-                            {waiter.phone && (
-                              <div className="text-xs text-orange-600">
-                                {waiter.phone}
+                      .map((waiter) => {
+                        const assignedTables = getWaiterAssignedTables(
+                          waiter.id,
+                          "busboy"
+                        );
+                        return (
+                          <div key={waiter.id} className="mb-2">
+                            <button
+                              onClick={() => assignWaiter(waiter.id, "busboy")}
+                              disabled={loading || selectedTables.length === 0}
+                              className="w-full text-left p-3 bg-orange-50 hover:bg-orange-100 disabled:bg-gray-100 disabled:cursor-not-allowed border border-orange-200 rounded-lg transition-colors"
+                            >
+                              <div className="font-medium text-orange-900">
+                                {waiter.name}
                               </div>
-                            )}
-                          </button>
-                        </div>
-                      ))
+                              {waiter.phone && (
+                                <div className="text-xs text-orange-600">
+                                  {waiter.phone}
+                                </div>
+                              )}
+                              {assignedTables.length > 0 && (
+                                <div className="text-xs text-orange-700 mt-1 font-medium">
+                                  🍽️ {assignedTables.join(", ")}
+                                </div>
+                              )}
+                            </button>
+                          </div>
+                        );
+                      })
                   )}
                 </div>
               </div>
