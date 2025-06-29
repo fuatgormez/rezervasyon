@@ -72,7 +72,7 @@ const addTimeMinutes = (time: string, minutesToAdd: number) => {
 interface Reservation {
   id: string;
   tableId: string;
-  customerType: "individual" | "company";
+  customerType: "individual" | "company" | "walkin";
   customerName: string;
   customerSurname: string;
   customerGender: "bay" | "bayan" | "";
@@ -231,7 +231,7 @@ export default function ReservationPanel() {
 
   // Form values
   const [formValues, setFormValues] = useState<Partial<Reservation>>({
-    customerType: "individual",
+    customerType: "walkin",
     customerName: "",
     customerSurname: "",
     customerGender: "",
@@ -790,7 +790,7 @@ export default function ReservationPanel() {
               .map(([id, data]: [string, any]) => ({
                 id,
                 tableId: data.tableId,
-                customerType: data.customerType || "individual",
+                customerType: data.customerType || "walkin",
                 customerName: data.customerName || "",
                 customerSurname: data.customerSurname || "",
                 customerGender: data.customerGender || "",
@@ -1296,7 +1296,7 @@ export default function ReservationPanel() {
 
       setEditingReservation(null);
       setFormValues({
-        customerType: "individual",
+        customerType: "walkin",
         customerName: "",
         customerSurname: "",
         customerGender: "",
@@ -1342,7 +1342,13 @@ export default function ReservationPanel() {
         note,
       } = formValues;
 
-      if (!customerName || !tableId || !startTime || !endTime) {
+      // Walk-in müşteriler için ad zorunlu değil
+      if (customerType !== "walkin" && !customerName) {
+        toast.error("Lütfen müşteri adını girin");
+        return;
+      }
+
+      if (!tableId || !startTime || !endTime) {
         toast.error("Lütfen zorunlu alanları doldurun");
         return;
       }
@@ -1397,7 +1403,10 @@ export default function ReservationPanel() {
           company?.id || activeRestaurant.companyId || "default-company",
         restaurantId: activeRestaurant.id,
         customerType,
-        customerName,
+        customerName:
+          customerType === "walkin" && !customerName
+            ? "Walk-in Müşteri"
+            : customerName,
         customerSurname: customerSurname || "",
         customerGender: customerGender || "",
         customerEmail: customerEmail || "",
@@ -1427,8 +1436,12 @@ export default function ReservationPanel() {
         toast.success("Reservation created");
       }
 
-      // Save customer data to customers collection
-      if (customerName && (customerEmail || customerPhone)) {
+      // Save customer data to customers collection (skip for walk-in without details)
+      if (
+        customerType !== "walkin" &&
+        customerName &&
+        (customerEmail || customerPhone)
+      ) {
         try {
           const customerData = {
             customerType,
@@ -1989,7 +2002,7 @@ export default function ReservationPanel() {
 
     // Form değerlerini ayarla
     setFormValues({
-      customerType: "individual",
+      customerType: "walkin",
       customerName: "",
       customerSurname: "",
       customerGender: "",
@@ -2175,7 +2188,7 @@ export default function ReservationPanel() {
 
                 setEditingReservation(null);
                 setFormValues({
-                  customerType: "individual",
+                  customerType: "walkin",
                   guestCount: 2,
                   startTime: startTime,
                   endTime: endTime,
@@ -2817,8 +2830,15 @@ export default function ReservationPanel() {
                                                       <div className="w-2 h-2 rounded-full bg-white/80 flex-shrink-0" />
                                                       <div className="font-semibold text-white text-xs truncate">
                                                         {reservation.customerType ===
-                                                          "company" &&
-                                                        reservation.companyName ? (
+                                                        "walkin" ? (
+                                                          <>
+                                                            🚶 Walk-in
+                                                            {reservation.customerName &&
+                                                              ` - ${reservation.customerName}`}
+                                                          </>
+                                                        ) : reservation.customerType ===
+                                                            "company" &&
+                                                          reservation.companyName ? (
                                                           <>
                                                             🏢{" "}
                                                             {
@@ -2920,7 +2940,7 @@ export default function ReservationPanel() {
       {/* Add/Edit Reservation Modal */}
       {isReservationModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4 max-h-[95vh] overflow-y-auto">
             <div className="flex justify-between items-center p-6 border-b border-gray-200">
               <h3 className="text-xl font-semibold text-gray-900">
                 {editingReservation
@@ -2950,7 +2970,26 @@ export default function ReservationPanel() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Müşteri Türü *
                   </label>
-                  <div className="flex space-x-4">
+                  <div className="flex space-x-4 flex-wrap">
+                    <label className="flex items-center">
+                      <input
+                        type="radio"
+                        name="customerType"
+                        value="walkin"
+                        checked={formValues.customerType === "walkin"}
+                        onChange={(e) =>
+                          setFormValues({
+                            ...formValues,
+                            customerType: e.target.value as
+                              | "individual"
+                              | "company"
+                              | "walkin",
+                          })
+                        }
+                        className="mr-2"
+                      />
+                      <span>🚶 Walk-in</span>
+                    </label>
                     <label className="flex items-center">
                       <input
                         type="radio"
@@ -2962,7 +3001,8 @@ export default function ReservationPanel() {
                             ...formValues,
                             customerType: e.target.value as
                               | "individual"
-                              | "company",
+                              | "company"
+                              | "walkin",
                           })
                         }
                         className="mr-2"
@@ -2980,7 +3020,8 @@ export default function ReservationPanel() {
                             ...formValues,
                             customerType: e.target.value as
                               | "individual"
-                              | "company",
+                              | "company"
+                              | "walkin",
                           })
                         }
                         className="mr-2"
@@ -3037,7 +3078,10 @@ export default function ReservationPanel() {
                   {/* Name Field with Autocomplete */}
                   <div className="relative">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Ad *
+                      Ad{" "}
+                      {formValues.customerType !== "walkin"
+                        ? "*"
+                        : "(Opsiyonel)"}
                     </label>
                     <input
                       type="text"
@@ -3049,7 +3093,11 @@ export default function ReservationPanel() {
                           e.target.value
                         )
                       }
-                      placeholder="Müşteri adı"
+                      placeholder={
+                        formValues.customerType === "walkin"
+                          ? "Walk-in müşteri (opsiyonel)"
+                          : "Müşteri adı"
+                      }
                       autoComplete="off"
                     />
 
