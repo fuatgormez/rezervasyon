@@ -43,6 +43,7 @@ interface Assignment {
   waiterId?: string;
   buserId?: string;
   shift: "morning" | "evening" | "all_day";
+  assignedAt?: string;
 }
 
 export default function StaffAssignmentModal({
@@ -121,40 +122,160 @@ export default function StaffAssignmentModal({
       const tablesSnapshot = await get(tablesRef);
       if (tablesSnapshot.exists()) {
         const tablesData = tablesSnapshot.val();
+        console.log("🔧 All tables from Firebase:", tablesData);
+
         const restaurantTables = Object.entries(tablesData)
           .filter(
             ([_, table]: [string, any]) =>
               table.restaurantId === selectedRestaurant.id
           )
-          .map(([id, table]: [string, any]) => ({ id, ...table })) as Table[];
+          .map(([id, table]: [string, any]) => {
+            // Kategori ID'sini farklı fieldlardan al
+            let categoryId =
+              table.categoryId || table.category_id || table.category;
+
+            console.log(`🔧 Table ${id} category mapping:`, {
+              tableData: table,
+              categoryId: table.categoryId,
+              category_id: table.category_id,
+              category: table.category,
+              finalCategoryId: categoryId || "uncategorized",
+            });
+
+            return {
+              id,
+              number: table.number || parseInt(id.replace(/\D/g, "")) || 0,
+              capacity: table.capacity || 2,
+              categoryId: categoryId || "uncategorized",
+              restaurantId: table.restaurantId,
+              status: table.status || "available",
+            };
+          }) as Table[];
 
         console.log("🔧 Restaurant tables loaded:", restaurantTables);
+        console.log(
+          "🔧 Table categories summary:",
+          restaurantTables.reduce((acc: any, table) => {
+            acc[table.categoryId] = (acc[table.categoryId] || 0) + 1;
+            return acc;
+          }, {})
+        );
+
         setTables(restaurantTables);
       } else {
         console.log("❌ No tables found in Firebase");
         setTables([]);
       }
 
-      // Kategorileri yükle
+      // Kategorileri yükle - farklı Firebase path'lerini dene
+      let categoriesLoaded = false;
+
+      // 1. "categories" path'ini dene
       const categoriesRef = ref(db, "categories");
       const categoriesSnapshot = await get(categoriesRef);
+
+      // 2. "tableCategories" path'ini dene
+      const tableCategoriesRef = ref(db, "tableCategories");
+      const tableCategoriesSnapshot = await get(tableCategoriesRef);
+
+      // 3. "table_categories" path'ini dene
+      const oldCategoriesRef = ref(db, "table_categories");
+      const oldCategoriesSnapshot = await get(oldCategoriesRef);
+
+      console.log("🔧 Category paths check:", {
+        categories: categoriesSnapshot.exists(),
+        tableCategories: tableCategoriesSnapshot.exists(),
+        table_categories: oldCategoriesSnapshot.exists(),
+      });
+
+      let allCategoriesData = {};
+
+      // Hangi path'de veri varsa onu kullan
       if (categoriesSnapshot.exists()) {
-        const categoriesData = categoriesSnapshot.val();
-        const restaurantCategories = Object.entries(categoriesData)
+        allCategoriesData = categoriesSnapshot.val();
+        console.log("🔧 Using 'categories' path");
+      } else if (tableCategoriesSnapshot.exists()) {
+        allCategoriesData = tableCategoriesSnapshot.val();
+        console.log("🔧 Using 'tableCategories' path");
+      } else if (oldCategoriesSnapshot.exists()) {
+        allCategoriesData = oldCategoriesSnapshot.val();
+        console.log("🔧 Using 'table_categories' path");
+      }
+
+      console.log("🔧 All categories from Firebase:", allCategoriesData);
+
+      if (Object.keys(allCategoriesData).length > 0) {
+        // Önce restaurant'a ait kategorileri kontrol et
+        let restaurantCategories = Object.entries(allCategoriesData)
           .filter(
             ([_, category]: [string, any]) =>
               category.restaurantId === selectedRestaurant.id
           )
           .map(([id, category]: [string, any]) => ({
             id,
-            ...category,
+            name: category.name,
+            color: category.color || "#6B7280",
+            backgroundColor: category.backgroundColor || "#F3F4F6",
+            borderColor: category.borderColor || "#D1D5DB",
           })) as Category[];
 
-        console.log("🔧 Restaurant categories loaded:", restaurantCategories);
+        console.log("🔧 Filtered restaurant categories:", restaurantCategories);
+
+        // Eğer restaurant'a ait kategori yoksa, tüm kategorileri al
+        if (restaurantCategories.length === 0) {
+          console.log(
+            "🔧 No restaurant-specific categories, using all categories"
+          );
+          restaurantCategories = Object.entries(allCategoriesData).map(
+            ([id, category]: [string, any]) => ({
+              id,
+              name: category.name,
+              color: category.color || "#6B7280",
+              backgroundColor: category.backgroundColor || "#F3F4F6",
+              borderColor: category.borderColor || "#D1D5DB",
+            })
+          ) as Category[];
+        }
+
+        console.log("🔧 Final categories loaded:", restaurantCategories);
         setCategories(restaurantCategories);
-      } else {
-        console.log("❌ No categories found in Firebase");
-        setCategories([]);
+        categoriesLoaded = true;
+      }
+
+      // Eğer hiç kategori bulunamadıysa, fallback kategoriler oluştur
+      if (!categoriesLoaded) {
+        console.log("❌ No categories found, creating fallback categories");
+        const fallbackCategories = [
+          {
+            id: "salon",
+            name: "Salon",
+            color: "#3B82F6",
+            backgroundColor: "#DBEAFE",
+            borderColor: "#1D4ED8",
+          },
+          {
+            id: "grill",
+            name: "Grill",
+            color: "#EF4444",
+            backgroundColor: "#FEE2E2",
+            borderColor: "#DC2626",
+          },
+          {
+            id: "terrace",
+            name: "Terrace",
+            color: "#10B981",
+            backgroundColor: "#D1FAE5",
+            borderColor: "#047857",
+          },
+          {
+            id: "bahce",
+            name: "Bahçe",
+            color: "#F59E0B",
+            backgroundColor: "#FEF3C7",
+            borderColor: "#D97706",
+          },
+        ];
+        setCategories(fallbackCategories);
       }
 
       // Mevcut atamaları yükle (sadece başlangıç tarihi için önizleme)
@@ -187,6 +308,47 @@ export default function StaffAssignmentModal({
         ? prev.filter((id) => id !== tableId)
         : [...prev, tableId]
     );
+  };
+
+  // Tüm masaları seç
+  const selectAllTables = () => {
+    const allTableIds = tables.map((table) => table.id);
+    setSelectedTables(allTableIds);
+  };
+
+  // Tüm seçimi temizle
+  const clearAllSelection = () => {
+    setSelectedTables([]);
+  };
+
+  // Kategori bazlı toplu seçim
+  const toggleCategorySelection = (categoryId: string) => {
+    const groupedTables = groupTablesByCategory();
+    const categoryTables = groupedTables[categoryId] || [];
+    const categoryTableIds = categoryTables.map((table) => table.id);
+
+    // Bu kategorideki masalardan kaç tanesi seçili?
+    const selectedInCategory = categoryTableIds.filter((id) =>
+      selectedTables.includes(id)
+    );
+
+    if (selectedInCategory.length === categoryTableIds.length) {
+      // Tüm kategori seçiliyse, kategorideki seçimleri kaldır
+      setSelectedTables((prev) =>
+        prev.filter((id) => !categoryTableIds.includes(id))
+      );
+    } else {
+      // Kategorideki tüm masaları seç
+      setSelectedTables((prev) => {
+        const newSelection = [...prev];
+        categoryTableIds.forEach((id) => {
+          if (!newSelection.includes(id)) {
+            newSelection.push(id);
+          }
+        });
+        return newSelection;
+      });
+    }
   };
 
   // Garson atama - tarih aralığında
@@ -322,18 +484,68 @@ export default function StaffAssignmentModal({
     setLoading(false);
   };
 
+  // Vardiya değiştir
+  const changeShift = async (
+    tableId: string,
+    newShift: "morning" | "evening" | "all_day"
+  ) => {
+    if (!selectedRestaurant) {
+      toast.error("Restoran seçilmemiş");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const currentAssignment = assignments[tableId] || {};
+      const updatedAssignment = {
+        ...currentAssignment,
+        shift: newShift,
+        assignedAt: new Date().toISOString(),
+      };
+
+      await set(
+        ref(db, `assignments/${selectedRestaurant.id}/${startDate}/${tableId}`),
+        updatedAssignment
+      );
+
+      setAssignments((prev) => ({
+        ...prev,
+        [tableId]: updatedAssignment,
+      }));
+
+      const shiftNames = {
+        morning: "Sabah",
+        evening: "Akşam",
+        all_day: "Tüm Gün",
+      };
+
+      toast.success(`Vardiya ${shiftNames[newShift]} olarak değiştirildi`);
+    } catch (error) {
+      console.error("Vardiya değiştirme hatası:", error);
+      toast.error("Vardiya değiştirilemedi");
+    }
+    setLoading(false);
+  };
+
   // Kategorilere göre masaları grupla
   const groupTablesByCategory = () => {
+    console.log("🔧 Grouping tables by category...");
+    console.log("🔧 Tables to group:", tables);
+    console.log("🔧 Available categories:", categories);
+
     const grouped: Record<string, Table[]> = {};
 
     tables.forEach((table) => {
       const categoryId = table.categoryId || "uncategorized";
+      console.log(`🔧 Table ${table.number} -> category: ${categoryId}`);
+
       if (!grouped[categoryId]) {
         grouped[categoryId] = [];
       }
       grouped[categoryId].push(table);
     });
 
+    console.log("🔧 Final grouped result:", grouped);
     return grouped;
   };
 
@@ -574,119 +786,233 @@ export default function StaffAssignmentModal({
           </div>
 
           {/* Masalar */}
-          <div className="flex-1 p-6 overflow-y-auto">
-            <h3 className="text-lg font-semibold mb-4">Masalar</h3>
+          <div className="flex-1 flex flex-col">
+            {/* Sticky Header - Seçim Bilgileri */}
+            <div className="sticky top-0 bg-white border-b border-gray-200 p-4 z-10 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-4">
+                  <h3 className="text-lg font-semibold">Masalar</h3>
 
-            {loading ? (
-              <div className="text-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-                <p className="text-sm text-gray-500 mt-2">Yükleniyor...</p>
-              </div>
-            ) : tables.length === 0 ? (
-              <div className="text-center py-8">
-                <div className="text-4xl mb-2">🍽️</div>
-                <p className="text-gray-500">Bu restoranda masa bulunamadı</p>
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {Object.entries(groupTablesByCategory()).map(
-                  ([categoryId, categoryTables]) => (
-                    <div key={categoryId}>
-                      <h4
-                        className="text-sm font-medium mb-3 pb-2 border-b"
-                        style={{ color: getCategoryColor(categoryId) }}
-                      >
-                        {getCategoryName(categoryId)} ({categoryTables.length})
-                      </h4>
-                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                        {categoryTables.map((table) => {
-                          const assignment = assignments[table.id];
-                          const isSelected = selectedTables.includes(table.id);
-
-                          return (
-                            <div
-                              key={table.id}
-                              className={`relative p-4 border-2 rounded-lg cursor-pointer transition-all ${
-                                isSelected
-                                  ? "border-blue-500 bg-blue-50"
-                                  : "border-gray-200 hover:border-gray-300"
-                              }`}
-                              onClick={() => toggleTableSelection(table.id)}
-                            >
-                              {/* Masa Numarası */}
-                              <div className="text-center mb-2">
-                                <div className="text-lg font-bold">
-                                  Masa {table.number}
-                                </div>
-                                <div className="text-xs text-gray-500">
-                                  {table.capacity} kişi
-                                </div>
-                              </div>
-
-                              {/* Atamalar */}
-                              {assignment && (
-                                <div className="space-y-1">
-                                  {assignment.waiterId && (
-                                    <div className="flex items-center justify-between text-xs bg-blue-100 px-2 py-1 rounded">
-                                      <span>
-                                        👨‍💼 {getWaiterName(assignment.waiterId)}
-                                      </span>
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          removeAssignment(table.id, "waiter");
-                                        }}
-                                        className="text-red-500 hover:text-red-700"
-                                      >
-                                        <Trash2 className="w-3 h-3" />
-                                      </button>
-                                    </div>
-                                  )}
-                                  {assignment.buserId && (
-                                    <div className="flex items-center justify-between text-xs bg-orange-100 px-2 py-1 rounded">
-                                      <span>
-                                        🧑‍🍳 {getWaiterName(assignment.buserId)}
-                                      </span>
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          removeAssignment(table.id, "busboy");
-                                        }}
-                                        className="text-red-500 hover:text-red-700"
-                                      >
-                                        <Trash2 className="w-3 h-3" />
-                                      </button>
-                                    </div>
-                                  )}
-                                  {assignment.shift && (
-                                    <div className="text-xs text-gray-600 text-center">
-                                      {assignment.shift === "morning"
-                                        ? "Sabah"
-                                        : assignment.shift === "evening"
-                                        ? "Akşam"
-                                        : "Tüm Gün"}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-
-                              {/* Seçim İndikatörü */}
-                              {isSelected && (
-                                <div className="absolute top-2 right-2">
-                                  <div className="w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center">
-                                    <div className="w-2 h-2 bg-white rounded-full"></div>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
+                  {/* Seçim Durumu */}
+                  <div className="flex items-center space-x-2 text-sm">
+                    <div className="px-3 py-1 bg-blue-50 border border-blue-200 rounded-full">
+                      <span className="font-medium text-blue-900">
+                        {selectedTables.length > 0
+                          ? `${selectedTables.length} masa seçildi`
+                          : "Masa seçilmedi"}
+                      </span>
                     </div>
-                  )
-                )}
+
+                    {tables.length > 0 && (
+                      <div className="text-gray-500">
+                        / {tables.length} toplam masa
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Toplu Seçim Butonları */}
+                <div className="flex items-center space-x-2">
+                  <button
+                    onClick={selectAllTables}
+                    disabled={loading || tables.length === 0}
+                    className="px-3 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Tümünü Seç ({tables.length})
+                  </button>
+                  <button
+                    onClick={clearAllSelection}
+                    disabled={loading || selectedTables.length === 0}
+                    className="px-3 py-1 text-xs bg-gray-500 text-white rounded hover:bg-gray-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Seçimi Temizle
+                  </button>
+                </div>
               </div>
-            )}
+            </div>
+
+            {/* Scrollable Content */}
+            <div className="flex-1 p-4 overflow-y-auto">
+              {loading ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                  <p className="text-sm text-gray-500 mt-2">Yükleniyor...</p>
+                </div>
+              ) : tables.length === 0 ? (
+                <div className="text-center py-8">
+                  <div className="text-4xl mb-2">🍽️</div>
+                  <p className="text-gray-500">Bu restoranda masa bulunamadı</p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {Object.entries(groupTablesByCategory()).map(
+                    ([categoryId, categoryTables]) => {
+                      const categoryTableIds = categoryTables.map(
+                        (table) => table.id
+                      );
+                      const selectedInCategory = categoryTableIds.filter((id) =>
+                        selectedTables.includes(id)
+                      );
+                      const isAllCategorySelected =
+                        selectedInCategory.length === categoryTableIds.length;
+                      const isPartiallySelected =
+                        selectedInCategory.length > 0 &&
+                        selectedInCategory.length < categoryTableIds.length;
+
+                      return (
+                        <div key={categoryId}>
+                          <div className="flex items-center justify-between mb-3 pb-2 border-b">
+                            <h4
+                              className="text-sm font-medium"
+                              style={{ color: getCategoryColor(categoryId) }}
+                            >
+                              {getCategoryName(categoryId)} (
+                              {categoryTables.length})
+                            </h4>
+
+                            {/* Kategori Toplu Seçim Butonu */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleCategorySelection(categoryId);
+                              }}
+                              disabled={loading}
+                              className={`px-2 py-1 text-xs rounded transition-colors ${
+                                isAllCategorySelected
+                                  ? "bg-green-500 text-white hover:bg-green-600"
+                                  : isPartiallySelected
+                                  ? "bg-yellow-500 text-white hover:bg-yellow-600"
+                                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                              } disabled:opacity-50 disabled:cursor-not-allowed`}
+                            >
+                              {isAllCategorySelected
+                                ? `✓ Seçildi (${selectedInCategory.length})`
+                                : isPartiallySelected
+                                ? `⚬ Kısmi (${selectedInCategory.length}/${categoryTableIds.length})`
+                                : `○ Seç (${categoryTableIds.length})`}
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                            {categoryTables.map((table) => {
+                              const assignment = assignments[table.id];
+                              const isSelected = selectedTables.includes(
+                                table.id
+                              );
+
+                              return (
+                                <div
+                                  key={table.id}
+                                  className={`relative p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                                    isSelected
+                                      ? "border-blue-500 bg-blue-50"
+                                      : "border-gray-200 hover:border-gray-300"
+                                  }`}
+                                  onClick={() => toggleTableSelection(table.id)}
+                                >
+                                  {/* Masa Numarası */}
+                                  <div className="text-center mb-2">
+                                    <div className="text-lg font-bold">
+                                      Masa {table.number}
+                                    </div>
+                                    <div className="text-xs text-gray-500">
+                                      {table.capacity} kişi
+                                    </div>
+                                  </div>
+
+                                  {/* Atamalar */}
+                                  {assignment && (
+                                    <div className="space-y-1">
+                                      {assignment.waiterId && (
+                                        <div className="flex items-center justify-between text-xs bg-blue-100 px-2 py-1 rounded">
+                                          <span>
+                                            👨‍💼{" "}
+                                            {getWaiterName(assignment.waiterId)}
+                                          </span>
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              removeAssignment(
+                                                table.id,
+                                                "waiter"
+                                              );
+                                            }}
+                                            className="text-red-500 hover:text-red-700"
+                                          >
+                                            <Trash2 className="w-3 h-3" />
+                                          </button>
+                                        </div>
+                                      )}
+                                      {assignment.buserId && (
+                                        <div className="flex items-center justify-between text-xs bg-orange-100 px-2 py-1 rounded">
+                                          <span>
+                                            🧑‍🍳{" "}
+                                            {getWaiterName(assignment.buserId)}
+                                          </span>
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              removeAssignment(
+                                                table.id,
+                                                "busboy"
+                                              );
+                                            }}
+                                            className="text-red-500 hover:text-red-700"
+                                          >
+                                            <Trash2 className="w-3 h-3" />
+                                          </button>
+                                        </div>
+                                      )}
+                                      {assignment.shift && (
+                                        <div className="text-xs text-center">
+                                          <select
+                                            value={assignment.shift}
+                                            onChange={(e) => {
+                                              e.stopPropagation();
+                                              changeShift(
+                                                table.id,
+                                                e.target.value as
+                                                  | "morning"
+                                                  | "evening"
+                                                  | "all_day"
+                                              );
+                                            }}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="text-xs bg-gray-100 border border-gray-300 rounded px-1 py-0.5 cursor-pointer hover:bg-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                          >
+                                            <option value="morning">
+                                              Sabah
+                                            </option>
+                                            <option value="evening">
+                                              Akşam
+                                            </option>
+                                            <option value="all_day">
+                                              Tüm Gün
+                                            </option>
+                                          </select>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {/* Seçim İndikatörü */}
+                                  {isSelected && (
+                                    <div className="absolute top-2 right-2">
+                                      <div className="w-4 h-4 bg-blue-500 rounded-full flex items-center justify-center">
+                                        <div className="w-2 h-2 bg-white rounded-full"></div>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    }
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -704,13 +1030,6 @@ export default function StaffAssignmentModal({
                 className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
               >
                 İptal
-              </button>
-              <button
-                onClick={() => setSelectedTables([])}
-                disabled={selectedTables.length === 0}
-                className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                Seçimi Temizle
               </button>
             </div>
           </div>
