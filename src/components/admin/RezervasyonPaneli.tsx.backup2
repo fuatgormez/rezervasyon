@@ -69,58 +69,12 @@ const addTimeMinutes = (time: string, minutesToAdd: number) => {
   return formatTime(totalMinutes);
 };
 
-// Restoran işletme günü mantığı için helper fonksiyonlar
-const getBusinessDateForTime = (
-  baseDate: Date,
-  time: string,
-  openingHour: number = 7
-) => {
-  const [hours] = time.split(":").map(Number);
-
-  // Eğer saat açılış saatinden önce ise (örn: 00:00-06:59), önceki güne ait
-  if (hours < openingHour) {
-    const previousDay = new Date(baseDate);
-    previousDay.setDate(previousDay.getDate() - 1);
-    return format(previousDay, "yyyy-MM-dd");
-  }
-
-  // Diğer durumda aynı gün
-  return format(baseDate, "yyyy-MM-dd");
-};
-
-const getBusinessDayReservations = (
-  reservationsData: any,
-  selectedDate: Date,
-  restaurantId: string,
-  openingHour: number = 7
-) => {
-  const selectedDateStr = format(selectedDate, "yyyy-MM-dd");
-  const nextDateStr = format(addDays(selectedDate, 1), "yyyy-MM-dd");
-
-  return Object.entries(reservationsData).filter(([_, data]: [string, any]) => {
-    const reservationDate = data.date || format(new Date(), "yyyy-MM-dd");
-    const isCorrectRestaurant = data.restaurantId === restaurantId;
-
-    // Seçilen işletme günü için rezervasyonları getir
-    // 1. Aynı tarihli rezervasyonlar (07:00-23:59)
-    // 2. Ertesi günlü rezervasyonlar ama gece saatleri (00:00-06:59)
-    const isCurrentDay = reservationDate === selectedDateStr;
-    const isNextDayNightShift =
-      reservationDate === nextDateStr &&
-      data.startTime &&
-      parseInt(data.startTime.split(":")[0]) < openingHour;
-
-    return isCorrectRestaurant && (isCurrentDay || isNextDayNightShift);
-  });
-};
-
 interface Reservation {
   id: string;
   tableId: string;
   tableIds?: string[]; // Birleştirilmiş masalar için
   isCombined?: boolean; // Masa birleştirme durumu
   combinedTables?: Array<{ id: string; number: number }>; // Birleştirilmiş masa detayları
-  masterReservationId?: string; // Ana rezervasyon ID'si
   customerType: "individual" | "company" | "walkin";
   customerName: string;
   customerSurname: string;
@@ -137,6 +91,7 @@ interface Reservation {
   date: string;
   createdAt?: string;
   updatedAt?: string;
+  masterReservationId?: string; // Optional master reservation ID
 }
 
 interface Table {
@@ -272,7 +227,7 @@ export default function ReservationPanel() {
   const [loadingCustomers, setLoadingCustomers] = useState(false);
   const [activeSearchField, setActiveSearchField] = useState<string>("");
 
-  // Masa birleştirme states
+  // Table combination states
   const [selectedTablesForCombination, setSelectedTablesForCombination] =
     useState<string[]>([]);
   const [isTableCombinationMode, setIsTableCombinationMode] = useState(false);
@@ -306,6 +261,7 @@ export default function ReservationPanel() {
   // Auto scroll to current time on load
   useEffect(() => {
     const scrollToCurrentTime = () => {
+      console.log("🔧 scrollToCurrentTime called");
       if (mainScrollRef.current) {
         const now = new Date();
         const hour = now.getHours();
@@ -313,6 +269,14 @@ export default function ReservationPanel() {
         const currentMinutes = hour * 60 + minute;
         const baseMinutes = 7 * 60; // 07:00
         const relativeMinutes = currentMinutes - baseMinutes;
+
+        console.log("🔧 Current time:", {
+          hour,
+          minute,
+          currentMinutes,
+          baseMinutes,
+          relativeMinutes,
+        });
 
         // Eğer saat 07:00'dan önce ise (gece saatleri), ertesi güne ekle
         let scrollPosition;
@@ -329,16 +293,32 @@ export default function ReservationPanel() {
         const centerOffset = containerWidth / 2;
         const finalScrollPosition = Math.max(0, scrollPosition - centerOffset);
 
+        console.log("🔧 Scroll calculation:", {
+          scrollPosition,
+          containerWidth,
+          centerOffset,
+          finalScrollPosition,
+        });
+
         setTimeout(() => {
           if (mainScrollRef.current) {
             mainScrollRef.current.scrollLeft = finalScrollPosition;
+            console.log("🔧 Scrolled to position:", finalScrollPosition);
           }
         }, 100); // Biraz gecikme ile scroll yap
+      } else {
+        console.log("🔧 mainScrollRef.current is null");
       }
     };
 
     // Data yüklendikten sonra scroll yap
     if (!loading && tables.length > 0) {
+      console.log(
+        "🔧 Triggering scrollToCurrentTime. Loading:",
+        loading,
+        "Tables:",
+        tables.length
+      );
       scrollToCurrentTime();
     }
   }, [loading, tables.length]);
@@ -346,20 +326,51 @@ export default function ReservationPanel() {
   // Load data
   useEffect(() => {
     const loadData = async () => {
+      console.log("🔧 loadData called. currentRestaurant:", currentRestaurant);
       if (!currentRestaurant) {
+        console.log("🔧 No currentRestaurant, exiting loadData");
         setLoading(false);
         return;
       }
 
       try {
         setLoading(true);
+        console.log("🔧 Loading data for restaurant:", currentRestaurant.id);
 
         // Load categories for selected restaurant
         const categoriesRef = ref(db, "categories");
         const categoriesSnapshot = await get(categoriesRef);
 
+        console.log(
+          "🔧 Categories snapshot exists:",
+          categoriesSnapshot.exists()
+        );
         if (categoriesSnapshot.exists()) {
           const categoriesData = categoriesSnapshot.val();
+          console.log("🔧 Raw categories data:", categoriesData);
+
+          // Kategorilerin detaylarını göster
+          Object.entries(categoriesData).forEach(
+            ([id, data]: [string, any]) => {
+              console.log(`🔧 Category ${id}:`, {
+                name: data.name,
+                restaurantId: data.restaurantId,
+                color: data.color,
+                fullData: data,
+              });
+            }
+          );
+
+          // Mevcut restaurant ID'leri kontrol et
+          const restaurantIds = Object.values(categoriesData).map(
+            (data: any) => data.restaurantId
+          );
+          console.log("🔧 Available restaurant IDs in categories:", [
+            ...new Set(restaurantIds),
+          ]);
+          console.log("🔧 Looking for restaurant ID:", currentRestaurant.id);
+
+          // Tüm kategorileri yükle (restaurant filter olmadan önce test edelim)
           const allCategories = Object.entries(categoriesData).map(
             ([id, data]: [string, any]) => ({
               id,
@@ -371,17 +382,27 @@ export default function ReservationPanel() {
             })
           );
 
+          console.log("🔧 All available categories:", allCategories);
+
           const loadedCategories = allCategories.filter(
             (category) => category.restaurantId === currentRestaurant.id
           );
+          console.log(
+            "🔧 Filtered categories for restaurant:",
+            loadedCategories
+          );
 
           if (loadedCategories.length > 0) {
+            console.log("🔧 Using filtered categories for restaurant");
             setCategories(loadedCategories);
             // Set first category as default if none is selected
             if (!activeCategory) {
               setActiveCategory(loadedCategories[0].id);
             }
           } else {
+            console.log(
+              "🔧 No categories found for current restaurant, loading demo categories"
+            );
             // Demo kategoriler yükle
             const demoCategories = [
               {
@@ -434,6 +455,7 @@ export default function ReservationPanel() {
               backgroundColor: "#fef2f2",
             },
           ];
+          console.log("🔧 Loading demo categories:", demoCategories);
           setCategories(demoCategories);
           setActiveCategory(demoCategories[0].id);
         }
@@ -442,13 +464,44 @@ export default function ReservationPanel() {
         const tablesRef = ref(db, "tables");
         const tablesSnapshot = await get(tablesRef);
 
+        console.log("🔧 Tables snapshot exists:", tablesSnapshot.exists());
         if (tablesSnapshot.exists()) {
           const tablesData = tablesSnapshot.val();
+          console.log("🔧 Raw tables data:", tablesData);
+
+          // Masaların detaylarını göster
+          Object.entries(tablesData)
+            .slice(0, 5)
+            .forEach(([id, data]: [string, any]) => {
+              console.log(`🔧 Table ${id}:`, {
+                number: data.number,
+                category: data.category,
+                category_id: data.category_id,
+                restaurantId: data.restaurantId,
+                capacity: data.capacity,
+                fullData: data,
+              });
+            });
+
+          // Mevcut restaurant ID'leri kontrol et
+          const restaurantIds = Object.values(tablesData).map(
+            (data: any) => data.restaurantId
+          );
+          console.log("🔧 Available restaurant IDs in tables:", [
+            ...new Set(restaurantIds),
+          ]);
 
           const loadedTables = Object.entries(tablesData)
             .filter(([id, data]: [string, any]) => {
               // Sadece seçili restorana ait masaları getir
-              return data.restaurantId === currentRestaurant.id;
+              const restaurantMatch =
+                data.restaurantId === currentRestaurant.id;
+              console.log(`🔧 Table ${id} restaurant filter:`, {
+                tableRestaurantId: data.restaurantId,
+                currentRestaurantId: currentRestaurant.id,
+                match: restaurantMatch,
+              });
+              return restaurantMatch;
             })
             .map(([id, data]: [string, any]) => {
               // Masa numarasını temizle - uzun isimleri kısalt
@@ -533,6 +586,19 @@ export default function ReservationPanel() {
                 }
               }
 
+              console.log(`🔧 Table ${id} category mapping:`, {
+                originalCategoryId: data.category_id,
+                originalCategory: data.category,
+                finalCategoryId: categoryId,
+                tableNumber: data.number,
+                tableId: id,
+                inferredFromName: !data.category_id && !data.category,
+                availableCategories: categories.map((c) => ({
+                  id: c.id,
+                  name: c.name,
+                })),
+              });
+
               return {
                 id,
                 number: tableNumber,
@@ -541,7 +607,12 @@ export default function ReservationPanel() {
                 status: data.status === "active" ? "Available" : "Unavailable",
               };
             });
+          console.log("🔧 Filtered tables for restaurant:", loadedTables);
+
           if (loadedTables.length === 0) {
+            console.log(
+              "🔧 No tables found for restaurant, loading demo tables"
+            );
             // Demo masalar yükle
             const demoTables = [
               // Salon masaları
@@ -618,8 +689,10 @@ export default function ReservationPanel() {
                 status: "Available",
               },
             ];
+            console.log("🔧 Setting demo tables:", demoTables.length);
             setTables(demoTables);
           } else {
+            console.log("🔧 Setting loaded tables:", loadedTables.length);
             setTables(loadedTables);
           }
         } else {
@@ -699,6 +772,7 @@ export default function ReservationPanel() {
               status: "Available",
             },
           ];
+          console.log("🔧 Loading demo tables:", demoTables);
           setTables(demoTables);
         }
 
@@ -707,28 +781,25 @@ export default function ReservationPanel() {
         onValue(reservationsRef, (snapshot) => {
           if (snapshot.exists()) {
             const reservationsData = snapshot.val();
+            const selectedDateStr = format(selectedDate, "yyyy-MM-dd");
+            console.log("🔍 Debug: Selected date:", selectedDateStr);
+            console.log("🔍 Debug: All reservations data:", reservationsData);
 
-            // Restoran açılış saatini al
-            const openingHour = parseInt(
-              currentRestaurant.openingTime?.split(":")[0] || "7"
-            );
-
-            // İşletme günü mantığına göre rezervasyonları filtrele
-            const businessDayReservations = getBusinessDayReservations(
-              reservationsData,
-              selectedDate,
-              currentRestaurant.id,
-              openingHour
-            );
-
-            const loadedReservations = businessDayReservations.map(
-              ([id, data]: [string, any]) => ({
+            const loadedReservations = Object.entries(reservationsData)
+              .filter(([_, data]: [string, any]) => {
+                const reservationDate =
+                  data.date || format(new Date(), "yyyy-MM-dd");
+                const isCorrectRestaurant =
+                  data.restaurantId === currentRestaurant.id;
+                const isCorrectDate = reservationDate === selectedDateStr;
+                console.log(
+                  `🔍 Debug: Reservation date: ${reservationDate}, Selected date: ${selectedDateStr}, Restaurant match: ${isCorrectRestaurant}, Date match: ${isCorrectDate}`
+                );
+                return isCorrectDate && isCorrectRestaurant;
+              })
+              .map(([id, data]: [string, any]) => ({
                 id,
                 tableId: data.tableId,
-                tableIds: data.tableIds, // Birleştirilmiş masalar için
-                isCombined: data.isCombined, // Masa birleştirme durumu
-                combinedTables: data.combinedTables, // Birleştirilmiş masa detayları
-                masterReservationId: data.masterReservationId, // Ana rezervasyon ID'si
                 customerType: data.customerType || "walkin",
                 customerName: data.customerName || "",
                 customerSurname: data.customerSurname || "",
@@ -745,11 +816,12 @@ export default function ReservationPanel() {
                 date: data.date || format(new Date(), "yyyy-MM-dd"),
                 createdAt: data.createdAt,
                 updatedAt: data.updatedAt,
-              })
-            );
-
+                masterReservationId: data.masterReservationId,
+              }));
+            console.log("🔍 Debug: Filtered reservations:", loadedReservations);
             setReservations(loadedReservations);
           } else {
+            console.log("🔍 Debug: No reservations found in Firebase");
             setReservations([]);
           }
         });
@@ -764,6 +836,15 @@ export default function ReservationPanel() {
 
     loadData();
   }, [selectedDate, activeCategory, currentRestaurant]);
+
+  // State güncellemelerini takip et
+  useEffect(() => {
+    console.log("🔧 Categories state updated:", categories.length);
+  }, [categories]);
+
+  useEffect(() => {
+    console.log("🔧 Tables state updated:", tables.length);
+  }, [tables]);
 
   // Staff assignments ve waiter verilerini yükle
   useEffect(() => {
@@ -822,7 +903,16 @@ export default function ReservationPanel() {
 
         if (settingsSnapshot.exists()) {
           const settings = settingsSnapshot.val();
+          console.log(
+            "🎯 RESERVATION DEBUG - Restaurant settings loaded:",
+            settings
+          );
           setRestaurantSettings(settings);
+        } else {
+          console.log(
+            "⚠️ No restaurant settings found for:",
+            currentRestaurant.id
+          );
         }
       } catch (error) {
         console.error("Restaurant settings loading error:", error);
@@ -855,6 +945,13 @@ export default function ReservationPanel() {
             }));
 
           setCustomers(loadedCustomers);
+          console.log(
+            "📋 Customers loaded:",
+            loadedCustomers.length,
+            "customers"
+          );
+        } else {
+          console.log("📋 No customers found in Firebase");
         }
       } catch (error) {
         console.error("Customers loading error:", error);
@@ -1120,6 +1217,11 @@ export default function ReservationPanel() {
 
   // Get reservation at specific time for a table
   const getReservationAtTime = (tableId: string, time: string) => {
+    console.log(
+      `🔍 getReservationAtTime called: tableId=${tableId}, time=${time}`
+    );
+    console.log(`🔍 Available reservations:`, reservations);
+
     const found = reservations.find(
       (res) =>
         res.tableId === tableId &&
@@ -1127,6 +1229,7 @@ export default function ReservationPanel() {
         getTimeInMinutes(res.endTime) > getTimeInMinutes(time)
     );
 
+    console.log(`🔍 Found reservation:`, found);
     return found;
   };
 
@@ -1183,6 +1286,7 @@ export default function ReservationPanel() {
 
   // Handle card click - directly with reservation object
   const handleCardClick = (reservation: Reservation) => {
+    console.log(`🎯 handleCardClick called with reservation:`, reservation);
     setEditingReservation(reservation);
     setFormValues({
       customerType: reservation.customerType,
@@ -1205,9 +1309,14 @@ export default function ReservationPanel() {
 
   // Handle cell click
   const handleCellClick = (tableId: string, time: string) => {
+    console.log(`🎯 handleCellClick called: tableId=${tableId}, time=${time}`);
     const existingReservation = getReservationAtTime(tableId, time);
 
     if (existingReservation) {
+      console.log(
+        `🎯 Found existing reservation, editing:`,
+        existingReservation
+      );
       setEditingReservation(existingReservation);
       setFormValues({
         customerType: existingReservation.customerType,
@@ -1226,6 +1335,8 @@ export default function ReservationPanel() {
         note: existingReservation.note || "",
       });
     } else {
+      console.log(`🎯 No existing reservation found, creating new one`);
+
       // Restaurant ayarlarından default süreyi al (dakika cinsinden)
       const defaultDurationMinutes =
         restaurantSettings?.settings?.reservationDuration ||
@@ -1243,6 +1354,13 @@ export default function ReservationPanel() {
       const endTime = `${endHour.toString().padStart(2, "0")}:${endMinute
         .toString()
         .padStart(2, "0")}`;
+
+      console.log("🎯 RESERVATION DEBUG - Cell click duration:", {
+        startTime: time,
+        defaultDurationMinutes,
+        calculatedEndTime: endTime,
+        restaurantSettings,
+      });
 
       setEditingReservation(null);
       setFormValues({
@@ -1326,31 +1444,14 @@ export default function ReservationPanel() {
         }
       }
 
-      // İşletme günü mantığına göre rezervasyon tarihi belirle
-      const openingHour = parseInt(
-        activeRestaurant.openingTime?.split(":")[0] || "7"
-      );
-      const reservationDate = getBusinessDateForTime(
-        selectedDate,
-        startTime,
-        openingHour
-      );
+      const reservationDate = format(selectedDate, "yyyy-MM-dd");
 
-      // Check for overlapping reservations - İşletme günü mantığına göre
+      // Check for overlapping reservations
       const isOverlapping = reservations.some((res) => {
         if (editingReservation && res.id === editingReservation.id)
           return false;
-        if (res.tableId !== tableId) return false;
-
-        // Rezervasyonun işletme günü tarihini hesapla
-        const resBusinessDate = getBusinessDateForTime(
-          new Date(res.date + "T12:00:00"), // Güvenli tarih parse
-          res.startTime,
-          openingHour
-        );
-
-        // Aynı işletme gününde değilse çakışma yok
-        if (resBusinessDate !== reservationDate) return false;
+        if (res.tableId !== tableId || res.date !== reservationDate)
+          return false;
 
         const newStart = getTimeInMinutes(startTime);
         const newEnd = getTimeInMinutes(endTime);
@@ -1430,8 +1531,13 @@ export default function ReservationPanel() {
             ? `customer_${customerEmail.replace(/[^a-zA-Z0-9]/g, "_")}`
             : `customer_${(customerPhone || "").replace(/[^0-9]/g, "")}`;
 
+          console.log("🔥 Saving customer data:", customerData);
+          console.log("🔥 Customer ID:", customerId);
+
           const customerRef = ref(db, `customers/${customerId}`);
           await set(customerRef, customerData);
+
+          console.log("✅ Customer saved successfully!");
           toast.success("Müşteri bilgileri kaydedildi");
 
           // Add the new customer to the customers list immediately
@@ -1456,6 +1562,12 @@ export default function ReservationPanel() {
           console.error("❌ Error saving customer:", customerError);
           toast.error("Müşteri bilgileri kaydedilemedi");
         }
+      } else {
+        console.log("⚠️ Customer not saved - missing required fields:", {
+          customerName,
+          customerEmail,
+          customerPhone,
+        });
       }
 
       setIsReservationModalOpen(false);
@@ -1494,114 +1606,6 @@ export default function ReservationPanel() {
     setHoveredCell({ tableId, time });
   };
 
-  // Birleştirilmiş rezervasyon taşıma fonksiyonu
-  const handleCombinedDrop = async (
-    masterReservation: Reservation,
-    targetTableId: string,
-    time: string
-  ) => {
-    if (!masterReservation.masterReservationId) return;
-
-    try {
-      const normalize = (t: string) => {
-        if (!t) return "";
-        const [h, m] = t.split(":");
-        const hours = parseInt(h || "0");
-        const minutes = parseInt(m || "0");
-        const roundedMinutes = Math.round(minutes / 15) * 15;
-        const finalHours = roundedMinutes === 60 ? hours + 1 : hours;
-        const finalMinutes = roundedMinutes === 60 ? 0 : roundedMinutes;
-        return `${finalHours.toString().padStart(2, "0")}:${finalMinutes
-          .toString()
-          .padStart(2, "0")}`;
-      };
-
-      const newStartTime = normalize(time);
-      const duration = getTimeDifference(
-        masterReservation.startTime,
-        masterReservation.endTime
-      );
-      const newEndTime = addTimeMinutes(newStartTime, duration);
-
-      // Tüm birleştirilmiş rezervasyonları bul
-      const allCombinedReservations = reservations.filter(
-        (r) => r.masterReservationId === masterReservation.masterReservationId
-      );
-
-      // Hedef masaları bul (birleştirilmiş rezervasyondaki masa sayısı kadar)
-      const targetTableObj = tables.find((t) => t.id === targetTableId);
-      if (!targetTableObj) return;
-
-      // Aynı kategorideki masaları bul
-      const categoryTables = tables
-        .filter((t) => t.categoryId === targetTableObj.categoryId)
-        .sort((a, b) => a.number - b.number);
-
-      const targetTableIndex = categoryTables.findIndex(
-        (t) => t.id === targetTableId
-      );
-      const targetTables = categoryTables.slice(
-        targetTableIndex,
-        targetTableIndex + allCombinedReservations.length
-      );
-
-      if (targetTables.length < allCombinedReservations.length) {
-        alert("Yeterli boş masa yok");
-        return;
-      }
-
-      // Hedef masaların müsait olup olmadığını kontrol et
-      const isAvailable = targetTables.every((table) => {
-        const existingReservation = getReservationAtTime(
-          table.id,
-          newStartTime
-        );
-        return (
-          !existingReservation ||
-          allCombinedReservations.some((r) => r.tableId === table.id)
-        );
-      });
-
-      if (!isAvailable) {
-        alert("Hedef masalar müsait değil");
-        return;
-      }
-
-      const updates: any = {};
-
-      // Eski rezervasyonları sil
-      allCombinedReservations.forEach((reservation) => {
-        updates[`reservations/${reservation.id}`] = null;
-      });
-
-      // Yeni konumda rezervasyonları oluştur
-      targetTables.forEach((table, index) => {
-        const oldReservation = allCombinedReservations[index];
-        if (oldReservation) {
-          const newReservationId = `${masterReservation.masterReservationId}_${table.id}`;
-          updates[`reservations/${newReservationId}`] = {
-            ...oldReservation,
-            id: newReservationId,
-            tableId: table.id,
-            startTime: newStartTime,
-            endTime: newEndTime,
-            updatedAt: new Date().toISOString(),
-          };
-        }
-      });
-
-      await update(ref(db), updates);
-      alert(
-        `Birleştirilmiş rezervasyon taşındı (${targetTables
-          .map((t) => t.number)
-          .join(", ")})`
-      );
-    } catch (error) {
-      console.error("Error moving combined reservation:", error);
-      alert("Rezervasyon taşınırken hata oluştu");
-    }
-  };
-
   const handleDrop = async (
     e: React.DragEvent,
     tableId: string,
@@ -1613,11 +1617,8 @@ export default function ReservationPanel() {
     try {
       const originalReservation = { ...draggingReservation };
 
-      // Birleştirilmiş rezervasyon ise özel işlem yap
-      if (
-        originalReservation.isCombined &&
-        originalReservation.masterReservationId
-      ) {
+      // If it's a combined reservation, use the special handler
+      if (originalReservation.isCombined && originalReservation.masterReservationId) {
         await handleCombinedDrop(originalReservation, tableId, time);
         setDraggingReservation(null);
         setHoveredCell(null);
@@ -2038,82 +2039,19 @@ export default function ReservationPanel() {
 
   // Masa numarasına tıklayınca rezervasyon popup'ını aç
   const handleTableNumberClick = (tableId: string) => {
-    // Masa birleştirme modu aktifse masa seçimi yap
-    if (isTableCombinationMode) {
-      toggleTableForCombination(tableId);
-      return;
-    }
-
-    // Handle table number click to create new reservation
-
-    const now = new Date();
-    const currentHour = now.getHours();
-    const currentMinute = now.getMinutes();
-
-    // Geçerli saati en yakın 15 dakikaya yuvarla
-    const roundedMinute = Math.ceil(currentMinute / 15) * 15;
-    let startHour = currentHour;
-    let startMinute = roundedMinute;
-
-    if (startMinute >= 60) {
-      startHour += 1;
-      startMinute = 0;
-    }
-
-    // Saat 24'ü geçerse 0'a döndür
-    if (startHour >= 24) {
-      startHour = 0;
-    }
-
-    const startTime = `${startHour.toString().padStart(2, "0")}:${startMinute
-      .toString()
-      .padStart(2, "0")}`;
-
-    // Restaurant ayarlarından default süreyi al (dakika cinsinden), yoksa 120 dakika (2 saat)
-    const defaultDurationMinutes =
-      restaurantSettings?.settings?.reservationDuration ||
-      restaurantSettings?.reservationDuration ||
-      120;
-
-    // Bitiş saatini hesapla
-    const endTimeMinutes =
-      startHour * 60 + startMinute + defaultDurationMinutes;
-    const endHour = Math.floor(endTimeMinutes / 60) % 24;
-    const endMinute = endTimeMinutes % 60;
-    const endTime = `${endHour.toString().padStart(2, "0")}:${endMinute
-      .toString()
-      .padStart(2, "0")}`;
-
-    // Table clicked - creating new reservation with current time
-
-    // Form değerlerini ayarla
-    setFormValues({
-      customerType: "walkin",
-      customerName: "",
-      customerSurname: "",
-      customerGender: "",
-      customerEmail: "",
-      customerPhone: "",
-      companyName: "",
-      guestCount: 2,
-      startTime: startTime,
-      endTime: endTime,
-      tableId: tableId,
-      status: "confirmed",
-      note: "",
-    });
-
-    setEditingReservation(null);
-    setIsReservationModalOpen(true);
+    setSelectedTableForStaffInfo(tableId);
+    setStaffInfoModalOpen(true);
   };
 
-  // Masa birleştirme fonksiyonları
+  // Table combination functions
   const toggleTableCombinationMode = () => {
     setIsTableCombinationMode(!isTableCombinationMode);
     setSelectedTablesForCombination([]);
   };
 
   const toggleTableForCombination = (tableId: string) => {
+    if (!isTableCombinationMode) return;
+
     setSelectedTablesForCombination((prev) => {
       if (prev.includes(tableId)) {
         return prev.filter((id) => id !== tableId);
@@ -2128,6 +2066,7 @@ export default function ReservationPanel() {
     startTime: string,
     endTime: string
   ) => {
+    // Check if all tables are available at the given time
     return tableIds.every((tableId) => {
       const existingReservation = getReservationAtTime(tableId, startTime);
       return !existingReservation;
@@ -2143,7 +2082,7 @@ export default function ReservationPanel() {
 
   const createCombinedReservation = () => {
     if (selectedTablesForCombination.length < 2) {
-      alert("En az 2 masa seçmelisiniz");
+      toast.error("En az 2 masa seçmelisiniz");
       return;
     }
 
@@ -2152,102 +2091,37 @@ export default function ReservationPanel() {
       return { id: tableId, number: table?.number || 0 };
     });
 
+    const totalCapacity = getTotalCapacityForCombination(
+      selectedTablesForCombination
+    );
+
+    // Set form values for combined reservation
     setFormValues({
       ...formValues,
+      tableId: selectedTablesForCombination[0], // Primary table
       tableIds: selectedTablesForCombination,
-      combinedTables,
       isCombined: true,
-      guestCount: getTotalCapacityForCombination(selectedTablesForCombination),
+      combinedTables: combinedTables,
+      guestCount: totalCapacity,
     });
 
     setShowCombinationModal(true);
   };
 
-  // Birleştirilmiş rezervasyonları gruplandırma fonksiyonları
-  const groupCombinedReservations = (reservations: Reservation[]) => {
-    const grouped: { [key: string]: Reservation[] } = {};
-    const standalone: Reservation[] = [];
-
-    reservations.forEach((reservation) => {
-      if (reservation.isCombined && reservation.masterReservationId) {
-        if (!grouped[reservation.masterReservationId]) {
-          grouped[reservation.masterReservationId] = [];
-        }
-        grouped[reservation.masterReservationId].push(reservation);
-      } else {
-        standalone.push(reservation);
-      }
-    });
-
-    return { grouped, standalone };
-  };
-
-  const getMasterReservation = (reservations: Reservation[]) => {
-    // İlk rezervasyonu ana rezervasyon olarak kullan
-    return reservations[0];
-  };
-
-  const shouldRenderCombinedReservation = (
-    reservation: Reservation,
-    table: Table
-  ) => {
-    if (!reservation.isCombined || !reservation.masterReservationId) {
-      return true; // Normal rezervasyon
-    }
-
-    // Birleştirilmiş rezervasyon için sadece ilk masada render et
-    const allCombinedReservations = reservations.filter(
-      (r) => r.masterReservationId === reservation.masterReservationId
-    );
-
-    if (allCombinedReservations.length === 0) return false;
-
-    // Masa numaralarına göre sırala ve en küçük numaralı masada render et
-    const sortedTables = allCombinedReservations
-      .map((r) => {
-        const tableObj = tables.find((t) => t.id === r.tableId);
-        return { reservation: r, tableNumber: tableObj?.number || 0 };
-      })
-      .sort((a, b) => a.tableNumber - b.tableNumber);
-
-    return sortedTables[0]?.reservation.tableId === table.id;
-  };
-
-  const getCombinedReservationWidth = (reservation: Reservation) => {
-    if (!reservation.isCombined || !reservation.masterReservationId) {
-      return 1; // Normal rezervasyon
-    }
-
-    // Birleştirilmiş rezervasyondaki masa sayısını döndür
-    const allCombinedReservations = reservations.filter(
-      (r) => r.masterReservationId === reservation.masterReservationId
-    );
-
-    return allCombinedReservations.length;
-  };
-
   const handleCombinedReservationSave = async () => {
     if (!formValues.tableIds || formValues.tableIds.length < 2) {
-      alert("Birleştirilmiş rezervasyon için en az 2 masa gerekli");
+      toast.error("Birleştirilmiş rezervasyon için en az 2 masa gerekli");
       return;
     }
 
     const activeRestaurant = selectedRestaurant || currentRestaurant;
     if (!activeRestaurant) {
-      alert("Lütfen bir restoran seçin");
+      toast.error("Lütfen bir restoran seçin");
       return;
     }
 
     try {
-      // İşletme günü mantığına göre rezervasyon tarihi belirle
-      const openingHour = parseInt(
-        activeRestaurant.openingTime?.split(":")[0] || "7"
-      );
-      const reservationDate = getBusinessDateForTime(
-        selectedDate,
-        formValues.startTime || "19:00",
-        openingHour
-      );
+      const reservationDate = format(selectedDate, "yyyy-MM-dd");
 
       // Check if all tables are available
       const isAvailable = canCombineTables(
@@ -2257,56 +2131,63 @@ export default function ReservationPanel() {
       );
 
       if (!isAvailable) {
-        alert("Seçilen saatlerde bazı masalar dolu");
+        toast.error("Seçilen saatlerde bazı masalar dolu");
         return;
       }
 
-      const masterReservationId = `combined_${Date.now()}`;
-      const updates: any = {};
-
       // Create reservation for each table
-      formValues.tableIds.forEach((tableId) => {
-        const reservationId = `${masterReservationId}_${tableId}`;
+      const reservationData = {
+        companyId:
+          company?.id || activeRestaurant.companyId || "default-company",
+        restaurantId: activeRestaurant.id,
+        customerType: formValues.customerType || "walkin",
+        customerName: formValues.customerName || "Birleştirilmiş Masa",
+        customerSurname: formValues.customerSurname || "",
+        customerGender: formValues.customerGender || "",
+        customerEmail: formValues.customerEmail || "",
+        customerPhone: formValues.customerPhone || "",
+        companyName: formValues.companyName || "",
+        guestCount: Number(formValues.guestCount),
+        startTime: formValues.startTime,
+        endTime: formValues.endTime,
+        status: formValues.status,
+        arrivalStatus: formValues.arrivalStatus || "waiting",
+        note: formValues.note || "",
+        date: reservationDate,
+        isCombined: true,
+        tableIds: formValues.tableIds,
+        combinedTables: formValues.combinedTables,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      const masterReservationId = `combined_${Date.now()}`;
+
+      // Create reservations for all tables with the same ID and data
+      const updates: Record<string, any> = {};
+
+      formValues.tableIds.forEach((tableId, index) => {
+        const reservationId =
+          index === 0 ? masterReservationId : `${masterReservationId}_${index}`;
         updates[`reservations/${reservationId}`] = {
+          ...reservationData,
           id: reservationId,
           tableId: tableId,
-          tableIds: formValues.tableIds,
-          isCombined: true,
-          combinedTables: formValues.combinedTables,
-          masterReservationId: masterReservationId,
-          customerType: formValues.customerType || "walkin",
-          customerName: formValues.customerName || "",
-          customerSurname: formValues.customerSurname || "",
-          customerGender: formValues.customerGender || "",
-          customerEmail: formValues.customerEmail || "",
-          customerPhone: formValues.customerPhone || "",
-          companyName: formValues.companyName || "",
-          guestCount: formValues.guestCount || 2,
-          startTime: formValues.startTime || "19:00",
-          endTime: formValues.endTime || "20:00",
-          status: formValues.status || "confirmed",
-          arrivalStatus: formValues.arrivalStatus || "waiting",
-          note: formValues.note || "",
-          date: reservationDate,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
+          masterReservationId: masterReservationId, // Link all reservations
         };
       });
 
       await update(ref(db), updates);
 
-      alert(
-        `Birleştirilmiş rezervasyon oluşturuldu (${formValues.tableIds
-          .map((id) => {
-            const table = tables.find((t) => t.id === id);
-            return table?.number;
-          })
-          .join(", ")})`
+      toast.success(
+        `${formValues.tableIds.length} masa birleştirilerek rezervasyon oluşturuldu`
       );
 
       setShowCombinationModal(false);
       setIsTableCombinationMode(false);
       setSelectedTablesForCombination([]);
+
+      // Reset form
       setFormValues({
         customerType: "walkin",
         customerName: "",
@@ -2326,7 +2207,135 @@ export default function ReservationPanel() {
       });
     } catch (error) {
       console.error("Error creating combined reservation:", error);
-      alert("Rezervasyon oluşturulurken hata oluştu");
+      toast.error("Birleştirilmiş rezervasyon oluşturulurken hata oluştu");
+    }
+  };
+
+  // Group combined reservations to show as single cards
+  const groupCombinedReservations = (reservations: Reservation[]) => {
+    const grouped: Record<string, Reservation[]> = {};
+    const singleReservations: Reservation[] = [];
+
+    reservations.forEach((reservation) => {
+      if (reservation.isCombined && reservation.masterReservationId) {
+        if (!grouped[reservation.masterReservationId]) {
+          grouped[reservation.masterReservationId] = [];
+        }
+        grouped[reservation.masterReservationId].push(reservation);
+      } else {
+        singleReservations.push(reservation);
+      }
+    });
+
+    return { grouped, singleReservations };
+  };
+
+  // Get master reservation from a combined group
+  const getMasterReservation = (combinedGroup: Reservation[]): Reservation => {
+    // Return the first reservation as master, with combined info
+    const master = combinedGroup[0];
+    const allTableIds = combinedGroup.map((r) => r.tableId);
+    const allTables = allTableIds.map((tableId) => {
+      const table = tables.find((t) => t.id === tableId);
+      return { id: tableId, number: table?.number || 0 };
+    });
+
+    return {
+      ...master,
+      tableIds: allTableIds,
+      combinedTables: allTables,
+    };
+  };
+
+  // Check if a reservation is part of a combined group that should be hidden
+  const shouldHideReservation = (
+    reservation: Reservation,
+    masterReservationId: string
+  ) => {
+    return (
+      reservation.isCombined &&
+      reservation.masterReservationId === masterReservationId &&
+      reservation.id !== masterReservationId
+    );
+  };
+
+  // Handle drag start for combined reservations
+  const handleCombinedDragStart = (masterReservation: Reservation) => {
+    setDraggingReservation(masterReservation);
+  };
+
+  // Handle drop for combined reservations
+  const handleCombinedDrop = async (
+    masterReservation: Reservation,
+    newTableId: string,
+    newTime: string
+  ) => {
+    if (!masterReservation.tableIds || !masterReservation.masterReservationId)
+      return;
+
+    try {
+      const updates: Record<string, any> = {};
+      const timeDiff =
+        getTimeInMinutes(newTime) -
+        getTimeInMinutes(masterReservation.startTime);
+      const newStartTime = newTime;
+      const newEndTime = addTimeMinutes(masterReservation.endTime, timeDiff);
+
+      // Get all reservations in the combined group
+      const reservationsInGroup = reservations.filter(
+        (r) => r.masterReservationId === masterReservation.masterReservationId
+      );
+
+      // Calculate target table positions based on the drop position
+      const dropTable = tables.find(t => t.id === newTableId);
+      if (!dropTable) {
+        toast.error("Hedef masa bulunamadı");
+        return;
+      }
+
+      // Find tables in the same category and nearby positions
+      const sameCategory = tables.filter(t => t.categoryId === dropTable.categoryId);
+      const sortedTables = sameCategory.sort((a, b) => a.number - b.number);
+      const dropTableIndex = sortedTables.findIndex(t => t.id === newTableId);
+      
+      // Get target tables starting from the drop position
+      const targetTables = sortedTables.slice(dropTableIndex, dropTableIndex + reservationsInGroup.length);
+
+      // Check if all target tables are available
+      const unavailableTables = targetTables.filter(table => {
+        const existingReservation = getReservationAtTime(table.id, newStartTime);
+        return existingReservation && !masterReservation.tableIds?.includes(table.id);
+      });
+
+      if (unavailableTables.length > 0) {
+        toast.error(`Masa ${unavailableTables.map(t => t.number).join(', ')} dolu`);
+        return;
+      }
+
+      if (targetTables.length < reservationsInGroup.length) {
+        toast.error("Yeterli ardışık masa yok");
+        return;
+      }
+
+      // Update all reservations in the combined group
+      reservationsInGroup.forEach((reservation, index) => {
+        const targetTable = targetTables[index];
+        if (targetTable) {
+          updates[`reservations/${reservation.id}`] = {
+            ...reservation,
+            tableId: targetTable.id,
+            startTime: newStartTime,
+            endTime: newEndTime,
+            updatedAt: new Date().toISOString(),
+          };
+        }
+      });
+
+      await update(ref(db), updates);
+      toast.success(`Birleştirilmiş rezervasyon taşındı (${targetTables.map(t => t.number).join(', ')})`);
+    } catch (error) {
+      console.error("Error moving combined reservation:", error);
+      toast.error("Rezervasyon taşınırken hata oluştu");
     }
   };
 
@@ -2417,14 +2426,17 @@ export default function ReservationPanel() {
             <button
               className="p-2 rounded-lg hover:bg-gray-100"
               onClick={async () => {
+                console.log("🔍 Current customers:", customers);
                 try {
                   const customersRef = ref(db, "customers");
                   const snapshot = await get(customersRef);
                   if (snapshot.exists()) {
-                    // Data exists
+                    console.log("🔍 Firebase customers data:", snapshot.val());
+                  } else {
+                    console.log("🔍 No customers in Firebase");
                   }
                 } catch (error) {
-                  console.error("Error fetching customers:", error);
+                  console.error("🔍 Error fetching customers:", error);
                 }
               }}
               title="Debug Customers"
@@ -2441,7 +2453,7 @@ export default function ReservationPanel() {
               <span>Garson Ataması</span>
             </button>
 
-            {/* Masa Birleştirme Butonları */}
+            {/* Masa Birleştirme Butonu */}
             <button
               onClick={toggleTableCombinationMode}
               className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
@@ -2450,27 +2462,59 @@ export default function ReservationPanel() {
                   : "bg-orange-500 text-white hover:bg-orange-600"
               }`}
             >
-              <span>🔗</span>
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 6h16M4 12h16m-7 6h7"
+                />
+              </svg>
               <span>
                 {isTableCombinationMode ? "İptal Et" : "Masa Birleştir"}
               </span>
             </button>
 
-            {selectedTablesForCombination.length >= 2 && (
-              <button
-                onClick={createCombinedReservation}
-                className="flex items-center space-x-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
-              >
-                <span>🔗</span>
-                <span>
-                  Birleştir ({selectedTablesForCombination.length} masa)
-                </span>
-              </button>
-            )}
+            {/* Birleştirme Onay Butonu - sadece masalar seçildiğinde görünür */}
+            {isTableCombinationMode &&
+              selectedTablesForCombination.length >= 2 && (
+                <button
+                  onClick={createCombinedReservation}
+                  className="flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 4v16m8-8H4"
+                    />
+                  </svg>
+                  <span>
+                    Birleştir ({selectedTablesForCombination.length} masa)
+                  </span>
+                </button>
+              )}
 
+            {/* Yeni Rezervasyon Butonu */}
             <button
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center space-x-1"
               onClick={() => {
+                console.log("🎯 RESERVATION DEBUG - Yeni Rezervasyon butonu", {
+                  restaurantSettings,
+                  currentRestaurant: currentRestaurant?.name,
+                });
+
                 // Güncel saati al ve ayarla
                 const now = new Date();
                 const currentHour = now.getHours();
@@ -2506,6 +2550,13 @@ export default function ReservationPanel() {
                 const endTime = `${endHour
                   .toString()
                   .padStart(2, "0")}:${endMinute.toString().padStart(2, "0")}`;
+
+                console.log("🔧 New reservation button clicked", {
+                  currentTime: `${currentHour}:${currentMinute}`,
+                  startTime,
+                  endTime,
+                  defaultDurationMinutes,
+                });
 
                 setEditingReservation(null);
                 setFormValues({
@@ -2706,25 +2757,37 @@ export default function ReservationPanel() {
                                       ? selectedTablesForCombination.includes(
                                           table.id
                                         )
-                                        ? "bg-orange-200 text-orange-800 hover:bg-orange-300"
-                                        : "hover:bg-orange-100 border border-dashed border-orange-300"
+                                        ? "bg-orange-500 text-white hover:bg-orange-600"
+                                        : "hover:bg-orange-100 hover:text-orange-700 border-2 border-dashed border-orange-300"
                                       : "hover:text-blue-600 hover:bg-blue-50"
                                   }`}
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    handleTableNumberClick(table.id);
+                                    console.log(
+                                      "🎯 RESERVATION DEBUG - Table number clicked:",
+                                      table.id
+                                    );
+
+                                    if (isTableCombinationMode) {
+                                      toggleTableForCombination(table.id);
+                                    } else {
+                                      handleTableNumberClick(table.id);
+                                    }
                                   }}
                                   title={
                                     isTableCombinationMode
-                                      ? "Masa seç/seçimi kaldır"
+                                      ? selectedTablesForCombination.includes(
+                                          table.id
+                                        )
+                                        ? "🔗 Seçili - Birleştirmeden çıkar"
+                                        : "🔗 Birleştirme için seç"
                                       : "📅 Rezervasyon oluştur"
                                   }
                                 >
                                   {isTableCombinationMode &&
                                     selectedTablesForCombination.includes(
                                       table.id
-                                    ) &&
-                                    "🔗 "}
+                                    ) && <span className="mr-1">🔗</span>}
                                   {table.number}
                                 </div>
                                 <div className="flex items-center space-x-2">
@@ -2960,22 +3023,33 @@ export default function ReservationPanel() {
                                     {/* Reservations - Only render in the starting time slot */}
                                     {timeIndex === 0 && (
                                       <div className="absolute inset-0 pointer-events-none">
-                                        {reservations
-                                          .filter(
+                                        {(() => {
+                                          // Filter reservations for this table and date
+                                          const tableReservations = reservations.filter(
                                             (reservation) =>
-                                              `${reservation.tableId}` ===
-                                                `${table.id}` &&
-                                              reservation.date ===
-                                                format(
-                                                  selectedDate,
-                                                  "yyyy-MM-dd"
-                                                ) &&
-                                              shouldRenderCombinedReservation(
-                                                reservation,
-                                                table
-                                              )
-                                          )
-                                          .map((reservation) => {
+                                              `${reservation.tableId}` === `${table.id}` &&
+                                              reservation.date === format(selectedDate, "yyyy-MM-dd")
+                                          );
+
+                                          // Group combined reservations
+                                          const { grouped, singleReservations } = groupCombinedReservations(tableReservations);
+                                          
+                                          // Create array of reservations to render
+                                          const reservationsToRender: Reservation[] = [];
+                                          
+                                          // Add single reservations
+                                          reservationsToRender.push(...singleReservations);
+                                          
+                                          // Add master reservations from combined groups (only if this table is the primary table)
+                                          Object.entries(grouped).forEach(([masterReservationId, combinedGroup]) => {
+                                            const masterReservation = getMasterReservation(combinedGroup);
+                                            // Only render on the first table of the combined group
+                                            if (masterReservation.tableId === table.id) {
+                                              reservationsToRender.push(masterReservation);
+                                            }
+                                          });
+
+                                          return reservationsToRender.map((reservation) => {
                                             const normalize = (t: string) => {
                                               if (!t) return "";
                                               const [h, m] = t.split(":");
@@ -3056,11 +3130,34 @@ export default function ReservationPanel() {
                                                 )
                                             );
 
+                                            console.log(
+                                              `🎯 Debug Card: ${reservation.customerName} (${reservation.id})`
+                                            );
+                                            console.log(
+                                              `🎯 Raw times: ${displayStartTime} - ${displayEndTime}`
+                                            );
+                                            console.log(
+                                              `🎯 Normalized times: ${normalize(
+                                                displayStartTime
+                                              )} - ${normalizeForEndTime(
+                                                displayEndTime
+                                              )}`
+                                            );
+                                            console.log(
+                                              `🎯 TimeSlots indices: start=${startIdx}, end=${endIdx}`
+                                            );
+                                            console.log(
+                                              `🎯 TimeSlots length: ${timeSlots.length}`
+                                            );
+
                                             if (
                                               startIdx === -1 ||
                                               endIdx === -1 ||
                                               endIdx <= startIdx
                                             ) {
+                                              console.log(
+                                                `🎯 Card not rendered: startIdx=${startIdx}, endIdx=${endIdx}`
+                                              );
                                               return null;
                                             }
 
@@ -3069,27 +3166,26 @@ export default function ReservationPanel() {
                                               0,
                                               startIdx * 150
                                             );
-
-                                            // Birleştirilmiş rezervasyon için genişlik hesaplama
-                                            const tableSpan =
-                                              getCombinedReservationWidth(
-                                                reservation
-                                              );
-                                            const baseWidth = Math.max(
+                                            const widthCalculation = Math.max(
                                               50,
                                               (endIdx - startIdx) * 150 - 2
                                             );
 
-                                            // Birleştirilmiş rezervasyon ise masa sayısı kadar genişlet
-                                            const widthCalculation =
-                                              reservation.isCombined
-                                                ? baseWidth +
-                                                  (tableSpan - 1) * 30 // Her ek masa için 30px ekle
-                                                : baseWidth;
+                                            // Birleştirilmiş rezervasyon için genişliği artır
+                                            const finalWidth = reservation.isCombined && reservation.combinedTables 
+                                              ? Math.max(widthCalculation, reservation.combinedTables.length * 150 - 2)
+                                              : widthCalculation;
 
                                             // Rezervasyon stilini al
                                             const reservationStyle =
                                               getReservationStyle(reservation);
+
+                                            // Birleştirilmiş rezervasyon için özel stil
+                                            const combinedStyle = reservation.isCombined ? {
+                                              background: `linear-gradient(45deg, ${reservationStyle.backgroundColor} 0%, ${reservationStyle.backgroundColor}dd 100%)`,
+                                              border: `2px solid ${reservationStyle.borderColor}`,
+                                              boxShadow: '0 4px 8px rgba(0,0,0,0.15), 0 0 0 1px rgba(255,255,255,0.2) inset',
+                                            } : {};
 
                                             return (
                                               <div
@@ -3109,10 +3205,14 @@ export default function ReservationPanel() {
                                                   reservationStyle.isWarning
                                                     ? "ring-2 ring-yellow-400"
                                                     : ""
+                                                } ${
+                                                  reservation.isCombined
+                                                    ? "ring-2 ring-orange-400 ring-opacity-50"
+                                                    : ""
                                                 }`}
                                                 style={{
                                                   left: `${leftPosition}px`,
-                                                  width: `${widthCalculation}px`,
+                                                  width: `${finalWidth}px`,
                                                   height: "26px",
                                                   top: "2px",
                                                   backgroundColor:
@@ -3127,6 +3227,7 @@ export default function ReservationPanel() {
                                                       ? "0 4px 6px -1px rgba(139, 69, 19, 0.3), 0 2px 4px -1px rgba(139, 69, 19, 0.2)"
                                                       : "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
                                                   zIndex: 10,
+                                                  ...combinedStyle,
                                                 }}
                                                 draggable={
                                                   !resizingReservation &&
@@ -3140,121 +3241,91 @@ export default function ReservationPanel() {
                                                     e.preventDefault();
                                                     return;
                                                   }
-                                                  handleDragStart(reservation);
+                                                  
+                                                  if (reservation.isCombined) {
+                                                    handleCombinedDragStart(reservation);
+                                                  } else {
+                                                    handleDragStart(reservation);
+                                                  }
                                                 }}
                                                 onClick={(e) => {
                                                   e.stopPropagation();
-                                                  handleCardClick(reservation);
+                                                  if (
+                                                    !resizingReservation &&
+                                                    !dragResizing
+                                                  ) {
+                                                    handleCardClick(reservation);
+                                                  }
                                                 }}
                                               >
-                                                {/* Modern gradient overlay */}
-                                                <div className="absolute inset-0 bg-gradient-to-r from-black/20 to-transparent pointer-events-none" />
-
-                                                {/* Ana içerik */}
-                                                <div className="relative z-10 h-full flex flex-col justify-center px-3 py-1">
-                                                  {/* Kompakt gösterim */}
-                                                  <div className="flex items-center justify-between">
-                                                    <div className="flex items-center space-x-2">
-                                                      <div
-                                                        className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                                                          reservation.isCombined
-                                                            ? "bg-orange-300"
-                                                            : "bg-white/80"
-                                                        }`}
-                                                      />
-                                                      {reservation.isCombined && (
-                                                        <span className="text-xs font-bold text-white/90">
-                                                          🔗
-                                                        </span>
+                                                {/* Reservation content */}
+                                                <div className="flex items-center justify-between h-full px-2 text-white text-xs font-medium">
+                                                  <div className="flex items-center space-x-1 truncate">
+                                                    {/* Customer type and name */}
+                                                    <span className="truncate">
+                                                      {reservation.isCombined ? (
+                                                        <>
+                                                          🔗 {reservation.combinedTables?.map(t => t.number).join(',')} - {
+                                                            reservation.customerType === "walkin"
+                                                              ? reservation.customerName
+                                                                ? `Walk-in - ${reservation.customerName}`
+                                                                : "🚶 Walk-in"
+                                                              : reservation.customerType === "company"
+                                                              ? `🏢 ${reservation.companyName || reservation.customerName}`
+                                                              : `${reservation.customerName} ${reservation.customerSurname || ""}`.trim()
+                                                          }
+                                                        </>
+                                                      ) : (
+                                                        reservation.customerType === "walkin"
+                                                          ? reservation.customerName
+                                                            ? `Walk-in - ${reservation.customerName}`
+                                                            : "🚶 Walk-in"
+                                                          : reservation.customerType === "company"
+                                                          ? `🏢 ${reservation.companyName || reservation.customerName}`
+                                                          : `${reservation.customerName} ${reservation.customerSurname || ""}`.trim()
                                                       )}
-                                                      <div className="font-semibold text-white text-xs truncate">
-                                                        {reservation.customerType ===
-                                                        "walkin" ? (
-                                                          <>
-                                                            🚶 Walk-in
-                                                            {reservation.customerName &&
-                                                              ` - ${reservation.customerName}`}
-                                                          </>
-                                                        ) : reservation.customerType ===
-                                                            "company" &&
-                                                          reservation.companyName ? (
-                                                          <>
-                                                            🏢{" "}
-                                                            {
-                                                              reservation.companyName
-                                                            }
-                                                          </>
-                                                        ) : (
-                                                          <>
-                                                            {reservation.customerName ||
-                                                              "İsimsiz"}
-                                                            {reservation.customerSurname &&
-                                                              ` ${reservation.customerSurname}`}
-                                                          </>
-                                                        )}
-                                                      </div>
-                                                    </div>
-                                                    <div className="flex items-center space-x-1">
-                                                      <span className="bg-white/20 backdrop-blur-sm px-1.5 py-0.5 rounded text-[10px] text-white font-medium">
-                                                        {reservation.guestCount}
+                                                    </span>
+                                                  </div>
+                                                  <div className="flex items-center space-x-1">
+                                                    <span className="bg-white/20 backdrop-blur-sm px-1.5 py-0.5 rounded text-[10px] text-white font-medium">
+                                                      {reservation.guestCount}
+                                                    </span>
+                                                    {reservation.note && reservation.note.trim() && (
+                                                      <span className="bg-white/30 backdrop-blur-sm px-1 py-0.5 rounded text-[10px] text-white" title={reservation.note}>
+                                                        💬
                                                       </span>
-                                                      {reservation.note &&
-                                                        reservation.note.trim() && (
-                                                          <span
-                                                            className="bg-white/30 backdrop-blur-sm px-1 py-0.5 rounded text-[10px] text-white"
-                                                            title={
-                                                              reservation.note
-                                                            }
-                                                          >
-                                                            💬
-                                                          </span>
-                                                        )}
-                                                    </div>
+                                                    )}
                                                   </div>
                                                 </div>
 
-                                                {/* Resize handle'ları - sadece resize aktif değilken */}
-                                                {!dragResizing && (
+                                                {/* Resize handles - only for non-combined reservations */}
+                                                {!reservation.isCombined && (
                                                   <>
-                                                    {/* Sol resize handle (başlangıç zamanı) */}
+                                                    {/* Left resize handle */}
                                                     <div
-                                                      className="absolute left-0 top-0 bottom-0 w-4 cursor-ew-resize hover:bg-white/40 transition-colors group z-20"
-                                                      onMouseDown={(e) => {
-                                                        e.stopPropagation();
-                                                        e.preventDefault();
+                                                      className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-white/20 transition-colors"
+                                                      onMouseDown={(e) =>
                                                         handleDragResizeStart(
                                                           e,
                                                           reservation.id,
                                                           "start"
-                                                        );
-                                                      }}
-                                                      onDragStart={(e) =>
-                                                        e.preventDefault()
+                                                        )
                                                       }
-                                                      title="Başlangıç zamanını değiştir"
-                                                    >
-                                                      <div className="absolute left-0.5 top-1/2 transform -translate-y-1/2 w-1 h-6 bg-white/80 rounded-full group-hover:bg-white transition-colors shadow-sm" />
-                                                    </div>
+                                                      title="Başlangıç saatini değiştir"
+                                                    ></div>
 
-                                                    {/* Sağ resize handle (bitiş zamanı) */}
+                                                    {/* Right resize handle */}
                                                     <div
-                                                      className="absolute right-0 top-0 bottom-0 w-4 cursor-ew-resize hover:bg-white/40 transition-colors group z-20"
-                                                      onMouseDown={(e) => {
-                                                        e.stopPropagation();
-                                                        e.preventDefault();
+                                                      className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-white/20 transition-colors"
+                                                      onMouseDown={(e) =>
                                                         handleDragResizeStart(
                                                           e,
                                                           reservation.id,
                                                           "end"
-                                                        );
-                                                      }}
-                                                      onDragStart={(e) =>
-                                                        e.preventDefault()
+                                                        )
                                                       }
-                                                      title="Bitiş zamanını değiştir"
-                                                    >
-                                                      <div className="absolute right-0.5 top-1/2 transform -translate-y-1/2 w-1 h-6 bg-white/80 rounded-full group-hover:bg-white transition-colors shadow-sm" />
-                                                    </div>
+                                                      title="Bitiş saatini değiştir"
+                                                    ></div>
                                                   </>
                                                 )}
                                               </div>
@@ -3990,114 +4061,182 @@ export default function ReservationPanel() {
         />
       )}
 
-      {/* Birleştirilmiş Masa Rezervasyon Modalı */}
+      {/* Table Combination Modal */}
       {showCombinationModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center p-4 border-b border-gray-200">
-              <h3 className="text-lg font-medium text-gray-900 flex items-center">
-                🔗 Birleştirilmiş Masa Rezervasyonu
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-gray-200 bg-orange-50">
+              <h3 className="text-lg font-semibold text-orange-900 flex items-center space-x-2">
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 6h16M4 12h16m-7 6h7"
+                  />
+                </svg>
+                <span>Masa Birleştirme - Rezervasyon Oluştur</span>
               </h3>
-              <button
-                className="text-gray-400 hover:text-gray-500"
-                onClick={() => setShowCombinationModal(false)}
-              >
-                ✕
-              </button>
+              <p className="text-sm text-orange-700 mt-1">
+                {selectedTablesForCombination.length} masa birleştiriliyor
+              </p>
             </div>
 
-            <div className="p-6 space-y-6">
-              {/* Birleştirilen Masalar */}
-              <div>
-                <h4 className="text-md font-semibold text-gray-800 mb-3">
-                  Birleştirilen Masalar
+            {/* Modal Body */}
+            <div className="px-6 py-4 space-y-6">
+              {/* Combined Tables Info */}
+              <div className="bg-orange-50 p-4 rounded-lg">
+                <h4 className="text-lg font-medium text-orange-900 mb-3 flex items-center space-x-2">
+                  <span>🔗</span>
+                  <span>Birleştirilen Masalar</span>
                 </h4>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                  {formValues.combinedTables?.map((table) => {
-                    const tableObj = tables.find((t) => t.id === table.id);
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  {selectedTablesForCombination.map((tableId) => {
+                    const table = tables.find((t) => t.id === tableId);
                     const category = categories.find(
-                      (c) => c.id === tableObj?.categoryId
+                      (c) => c.id === table?.categoryId
                     );
                     return (
                       <div
-                        key={table.id}
-                        className="bg-orange-50 border border-orange-200 rounded-lg p-3"
+                        key={tableId}
+                        className="bg-white p-3 rounded border border-orange-200"
                       >
-                        <div className="text-sm font-semibold text-orange-800">
-                          🔗 Masa {table.number}
+                        <div className="font-medium text-orange-900">
+                          Masa {table?.number}
                         </div>
-                        <div className="text-xs text-orange-600">
-                          {category?.name || "Kategori yok"}
+                        <div className="text-sm text-orange-700">
+                          {category?.name || "Genel"}
                         </div>
-                        <div className="text-xs text-orange-600">
-                          Kapasite: {tableObj?.capacity || 0}
+                        <div className="text-sm text-orange-600">
+                          {table?.capacity} kişilik
                         </div>
                       </div>
                     );
                   })}
                 </div>
-                <div className="mt-3 p-3 bg-orange-100 rounded-lg">
-                  <div className="text-sm font-semibold text-orange-800">
+                <div className="mt-3 p-3 bg-orange-100 rounded">
+                  <div className="text-sm font-medium text-orange-900">
                     Toplam Kapasite:{" "}
-                    {getTotalCapacityForCombination(formValues.tableIds || [])}{" "}
+                    {getTotalCapacityForCombination(
+                      selectedTablesForCombination
+                    )}{" "}
                     kişi
                   </div>
                 </div>
               </div>
 
-              {/* Müşteri Bilgileri */}
-              <div>
-                <h4 className="text-md font-semibold text-gray-800 mb-3">
-                  Müşteri Bilgileri
+              {/* Customer Information */}
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <h4 className="text-lg font-medium text-blue-900 mb-4 flex items-center space-x-2">
+                  <span>👤</span>
+                  <span>Müşteri Bilgileri</span>
                 </h4>
 
-                {/* Müşteri Türü Seçimi */}
+                {/* Customer Type Selection */}
                 <div className="mb-4">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Müşteri Türü
                   </label>
                   <div className="flex space-x-4">
-                    {[
-                      { value: "walkin", label: "Walk-in", icon: "🚶" },
-                      { value: "individual", label: "Bireysel", icon: "👤" },
-                      { value: "company", label: "Firma", icon: "🏢" },
-                    ].map((type) => (
-                      <label key={type.value} className="flex items-center">
-                        <input
-                          type="radio"
-                          name="customerType"
-                          value={type.value}
-                          checked={formValues.customerType === type.value}
-                          onChange={(e) =>
-                            setFormValues({
-                              ...formValues,
-                              customerType: e.target.value as
-                                | "individual"
-                                | "company"
-                                | "walkin",
-                            })
-                          }
-                          className="mr-2"
-                        />
-                        <span className="text-sm">
-                          {type.icon} {type.label}
-                        </span>
-                      </label>
-                    ))}
+                    <button
+                      type="button"
+                      className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                        formValues.customerType === "walkin"
+                          ? "bg-blue-600 text-white"
+                          : "bg-blue-100 text-blue-800 hover:bg-blue-200"
+                      }`}
+                      onClick={() =>
+                        setFormValues({ ...formValues, customerType: "walkin" })
+                      }
+                    >
+                      🚶 Walk-in
+                    </button>
+                    <button
+                      type="button"
+                      className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                        formValues.customerType === "individual"
+                          ? "bg-blue-600 text-white"
+                          : "bg-blue-100 text-blue-800 hover:bg-blue-200"
+                      }`}
+                      onClick={() =>
+                        setFormValues({
+                          ...formValues,
+                          customerType: "individual",
+                        })
+                      }
+                    >
+                      👤 Bireysel
+                    </button>
+                    <button
+                      type="button"
+                      className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                        formValues.customerType === "company"
+                          ? "bg-blue-600 text-white"
+                          : "bg-blue-100 text-blue-800 hover:bg-blue-200"
+                      }`}
+                      onClick={() =>
+                        setFormValues({
+                          ...formValues,
+                          customerType: "company",
+                        })
+                      }
+                    >
+                      🏢 Firma
+                    </button>
                   </div>
                 </div>
 
-                {/* Müşteri Detayları */}
+                {/* Customer fields - only show for non-walk-in */}
                 {formValues.customerType !== "walkin" && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {formValues.customerType === "company" ? (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Ad *
+                      </label>
+                      <input
+                        type="text"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        value={formValues.customerName || ""}
+                        onChange={(e) =>
+                          setFormValues({
+                            ...formValues,
+                            customerName: e.target.value,
+                          })
+                        }
+                        placeholder="Müşteri adı"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Soyad
+                      </label>
+                      <input
+                        type="text"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        value={formValues.customerSurname || ""}
+                        onChange={(e) =>
+                          setFormValues({
+                            ...formValues,
+                            customerSurname: e.target.value,
+                          })
+                        }
+                        placeholder="Müşteri soyadı"
+                      />
+                    </div>
+                    {formValues.customerType === "company" && (
                       <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
                           Firma Adı *
                         </label>
                         <input
                           type="text"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                           value={formValues.companyName || ""}
                           onChange={(e) =>
                             setFormValues({
@@ -4108,81 +4247,54 @@ export default function ReservationPanel() {
                           placeholder="Firma adı"
                         />
                       </div>
-                    ) : (
-                      <>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Ad *
-                          </label>
-                          <input
-                            type="text"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            value={formValues.customerName || ""}
-                            onChange={(e) =>
-                              setFormValues({
-                                ...formValues,
-                                customerName: e.target.value,
-                              })
-                            }
-                            placeholder="Ad"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Soyad *
-                          </label>
-                          <input
-                            type="text"
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            value={formValues.customerSurname || ""}
-                            onChange={(e) =>
-                              setFormValues({
-                                ...formValues,
-                                customerSurname: e.target.value,
-                              })
-                            }
-                            placeholder="Soyad"
-                          />
-                        </div>
-                      </>
                     )}
                   </div>
                 )}
               </div>
 
-              {/* Rezervasyon Detayları */}
-              <div>
-                <h4 className="text-md font-semibold text-gray-800 mb-3">
-                  Rezervasyon Detayları
+              {/* Reservation Details */}
+              <div className="bg-green-50 p-4 rounded-lg">
+                <h4 className="text-lg font-medium text-green-900 mb-4 flex items-center space-x-2">
+                  <span>📅</span>
+                  <span>Rezervasyon Detayları</span>
                 </h4>
+
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Kişi Sayısı *
                     </label>
                     <input
                       type="number"
                       min="1"
                       max={getTotalCapacityForCombination(
-                        formValues.tableIds || []
+                        selectedTablesForCombination
                       )}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      value={formValues.guestCount || 2}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      value={formValues.guestCount || ""}
                       onChange={(e) =>
                         setFormValues({
                           ...formValues,
-                          guestCount: parseInt(e.target.value) || 1,
+                          guestCount: parseInt(e.target.value) || 0,
                         })
                       }
                     />
+                    <p className="text-xs text-green-600 mt-1">
+                      Maksimum:{" "}
+                      {getTotalCapacityForCombination(
+                        selectedTablesForCombination
+                      )}{" "}
+                      kişi
+                    </p>
                   </div>
+
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Başlangıç Saati *
                     </label>
                     <select
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      value={formValues.startTime || "19:00"}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      value={formValues.startTime || ""}
                       onChange={(e) =>
                         setFormValues({
                           ...formValues,
@@ -4191,19 +4303,20 @@ export default function ReservationPanel() {
                       }
                     >
                       {timeSlots.map((time) => (
-                        <option key={`start-${time}`} value={time}>
-                          {time}
+                        <option key={time} value={time}>
+                          🕐 {time}
                         </option>
                       ))}
                     </select>
                   </div>
+
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Bitiş Saati *
                     </label>
                     <select
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      value={formValues.endTime || "20:00"}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      value={formValues.endTime || ""}
                       onChange={(e) =>
                         setFormValues({
                           ...formValues,
@@ -4212,15 +4325,8 @@ export default function ReservationPanel() {
                       }
                     >
                       {timeSlots.map((time) => (
-                        <option
-                          key={`end-${time}`}
-                          value={time}
-                          disabled={
-                            getTimeInMinutes(time) <=
-                            getTimeInMinutes(formValues.startTime || "19:00")
-                          }
-                        >
-                          {time}
+                        <option key={time} value={time}>
+                          🕐 {time}
                         </option>
                       ))}
                     </select>
@@ -4228,35 +4334,42 @@ export default function ReservationPanel() {
                 </div>
 
                 <div className="mt-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Not
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Notlar
                   </label>
                   <textarea
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
                     value={formValues.note || ""}
                     onChange={(e) =>
                       setFormValues({ ...formValues, note: e.target.value })
                     }
-                    rows={3}
-                    placeholder="Rezervasyon notu (opsiyonel)"
+                    rows={2}
+                    placeholder="Birleştirilmiş masa rezervasyonu ile ilgili notlar..."
                   />
                 </div>
               </div>
             </div>
 
-            <div className="p-4 border-t border-gray-200 flex justify-end space-x-3">
+            {/* Modal Footer */}
+            <div className="px-6 py-4 border-t border-gray-200 flex justify-between items-center bg-gray-50">
               <button
-                className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
-                onClick={() => setShowCombinationModal(false)}
+                type="button"
+                className="px-6 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors"
+                onClick={() => {
+                  setShowCombinationModal(false);
+                  setIsTableCombinationMode(false);
+                  setSelectedTablesForCombination([]);
+                }}
               >
                 İptal
               </button>
               <button
-                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 flex items-center space-x-2"
+                type="button"
+                className="px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors flex items-center space-x-2"
                 onClick={handleCombinedReservationSave}
               >
                 <span>🔗</span>
-                <span>Birleştirilmiş Rezervasyon Oluştur</span>
+                <span>Birleştir ve Kaydet</span>
               </button>
             </div>
           </div>

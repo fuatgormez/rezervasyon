@@ -617,78 +617,71 @@ export default function SettingsPage() {
                         </button>
                       </div>
                     </div>
-                    <div className="space-y-2 flex-1 overflow-y-auto">
-                      {getFilteredData("customers")
-                        .slice(0, 8)
-                        .map((customer: any) => (
-                          <div
-                            key={customer.id}
-                            className="bg-white rounded p-4 flex justify-between items-center shadow-sm"
-                          >
-                            <div className="flex-1">
-                              <div className="font-medium text-sm">
-                                {customer.name}
-                                {customer.company && (
-                                  <span className="ml-2 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                                    🏢 {customer.company}
-                                  </span>
-                                )}
-                              </div>
-                              <div className="text-xs text-gray-500 flex items-center space-x-2">
-                                <span>{customer.email}</span>
-                                {customer.city && (
-                                  <span className="text-blue-600">
-                                    📍 {customer.city}
-                                  </span>
-                                )}
-                              </div>
-                              <div className="flex items-center space-x-2 mt-1 flex-wrap">
-                                <div className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                                  📊 {customer.reservationCount || 0}{" "}
-                                  rezervasyon
-                                </div>
-                                <div className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
-                                  ⭐ {customer.loyaltyPoints || 0} puan
-                                </div>
-                                {customer.visitCount && (
-                                  <div className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
-                                    🔄 {customer.visitCount} ziyaret
-                                  </div>
-                                )}
-                                {customer.totalSpent && (
-                                  <div className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">
-                                    💰{" "}
-                                    {customer.totalSpent.toLocaleString(
-                                      "tr-TR"
-                                    )}{" "}
-                                    ₺
-                                  </div>
-                                )}
-                              </div>
+                    <div
+                      className="space-y-2 flex-1 overflow-y-auto"
+                      style={{ maxHeight: "600px" }}
+                    >
+                      {getFilteredData("customers").map((customer: any) => (
+                        <div
+                          key={customer.id}
+                          className="bg-white rounded p-4 flex justify-between items-center shadow-sm"
+                        >
+                          <div className="flex-1">
+                            <div className="font-medium text-sm">
+                              {customer.name}
+                              {customer.company && (
+                                <span className="ml-2 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                                  🏢 {customer.company}
+                                </span>
+                              )}
                             </div>
-                            <div className="flex space-x-1">
-                              <button
-                                onClick={() => openModal("customers", customer)}
-                                className="text-blue-600 hover:text-blue-800"
-                              >
-                                ✏️
-                              </button>
-                              <button
-                                onClick={() =>
-                                  handleDelete("customers", customer.id)
-                                }
-                                className="text-red-600 hover:text-red-800"
-                              >
-                                🗑️
-                              </button>
+                            <div className="text-xs text-gray-500 flex items-center space-x-2">
+                              <span>{customer.email}</span>
+                              {customer.city && (
+                                <span className="text-blue-600">
+                                  📍 {customer.city}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center space-x-2 mt-1 flex-wrap">
+                              <div className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                                📊 {customer.reservationCount || 0} rezervasyon
+                              </div>
+                              <div className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
+                                ⭐ {customer.loyaltyPoints || 0} puan
+                              </div>
+                              {customer.visitCount && (
+                                <div className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                                  🔄 {customer.visitCount} ziyaret
+                                </div>
+                              )}
+                              {customer.totalSpent && (
+                                <div className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded">
+                                  💰{" "}
+                                  {customer.totalSpent.toLocaleString("tr-TR")}{" "}
+                                  ₺
+                                </div>
+                              )}
                             </div>
                           </div>
-                        ))}
-                      {getFilteredData("customers").length > 8 && (
-                        <div className="text-center text-sm text-gray-500 py-2">
-                          +{getFilteredData("customers").length - 8} daha...
+                          <div className="flex space-x-1">
+                            <button
+                              onClick={() => openModal("customers", customer)}
+                              className="text-blue-600 hover:text-blue-800"
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              onClick={() =>
+                                handleDelete("customers", customer.id)
+                              }
+                              className="text-red-600 hover:text-red-800"
+                            >
+                              🗑️
+                            </button>
+                          </div>
                         </div>
-                      )}
+                      ))}
                     </div>
                     <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
                       <h4 className="text-sm font-medium text-blue-900 mb-2">
@@ -777,7 +770,10 @@ export default function SettingsPage() {
                         + Ekle
                       </button>
                     </div>
-                    <div className="space-y-2 flex-1 overflow-y-auto">
+                    <div
+                      className="space-y-2 flex-1 overflow-y-auto"
+                      style={{ maxHeight: "600px" }}
+                    >
                       {getFilteredData("categories").map((category: any) => (
                         <div
                           key={category.id}
@@ -834,7 +830,10 @@ export default function SettingsPage() {
                         + Ekle
                       </button>
                     </div>
-                    <div className="space-y-2 flex-1 overflow-y-auto">
+                    <div
+                      className="space-y-1 flex-1 overflow-y-auto"
+                      style={{ maxHeight: "600px" }}
+                    >
                       {getFilteredData("tables").map((table: any) => {
                         // Masanın kategorisini bul
                         const category = getFilteredData("categories").find(
@@ -844,26 +843,26 @@ export default function SettingsPage() {
                         return (
                           <div
                             key={table.id}
-                            className={`bg-white rounded p-4 shadow-sm border-l-4 ${
+                            className={`bg-white rounded p-2 shadow-sm border-l-4 ${
                               table.isAvailableForCustomers !== false
                                 ? "border-green-500"
                                 : "border-orange-500"
                             }`}
                           >
-                            <div className="flex justify-between items-start">
+                            <div className="flex justify-between items-center">
                               <div className="flex-1">
                                 <div className="flex items-center space-x-2 mb-1">
                                   <div className="font-medium text-sm">
                                     Masa {table.number}
                                   </div>
                                   {table.tableName && (
-                                    <div className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                                    <div className="text-xs bg-blue-100 text-blue-800 px-1 py-0.5 rounded">
                                       {table.tableName}
                                     </div>
                                   )}
                                   {category && (
                                     <div
-                                      className="text-xs px-2 py-1 rounded flex items-center space-x-1"
+                                      className="text-xs px-1 py-0.5 rounded flex items-center space-x-1"
                                       style={{
                                         backgroundColor: category.color + "20",
                                         color: category.color,
@@ -871,7 +870,7 @@ export default function SettingsPage() {
                                       }}
                                     >
                                       <div
-                                        className="w-2 h-2 rounded-full"
+                                        className="w-1.5 h-1.5 rounded-full"
                                         style={{
                                           backgroundColor: category.color,
                                         }}
@@ -881,45 +880,31 @@ export default function SettingsPage() {
                                   )}
                                 </div>
 
-                                <div className="text-xs text-gray-500 space-y-1">
+                                <div className="flex items-center space-x-3 text-xs text-gray-500">
                                   <div>
-                                    👥 Kapasite:{" "}
-                                    {table.minCapacity || table.capacity || 1} -{" "}
+                                    👥{" "}
+                                    {table.minCapacity || table.capacity || 1}-
                                     {table.maxCapacity || table.capacity || 4}{" "}
                                     kişi
                                   </div>
-                                  {table.description && (
-                                    <div className="text-gray-600">
-                                      📝 {table.description}
-                                    </div>
-                                  )}
-                                  {!category && table.category_id && (
-                                    <div className="text-red-500">
-                                      ⚠️ Kategori bulunamadı (ID:{" "}
-                                      {table.category_id})
-                                    </div>
-                                  )}
-                                </div>
-
-                                <div className="flex items-center space-x-2 mt-2">
                                   <div
-                                    className={`text-xs px-2 py-1 rounded ${
+                                    className={`px-1 py-0.5 rounded ${
                                       table.isAvailableForCustomers !== false
-                                        ? "bg-green-100 text-green-800"
-                                        : "bg-orange-100 text-orange-800"
+                                        ? "bg-green-100 text-green-700"
+                                        : "bg-orange-100 text-orange-700"
                                     }`}
                                   >
                                     {table.isAvailableForCustomers !== false
-                                      ? "🌐 Müşteri Erişimi: Açık"
-                                      : "🔒 Sadece Admin"}
+                                      ? "🌐 Online"
+                                      : "🔒 Admin"}
                                   </div>
                                 </div>
                               </div>
 
-                              <div className="flex space-x-1 ml-3">
+                              <div className="flex space-x-1 ml-2">
                                 <button
                                   onClick={() => openModal("tables", table)}
-                                  className="text-blue-600 hover:text-blue-800"
+                                  className="text-blue-600 hover:text-blue-800 text-sm"
                                 >
                                   ✏️
                                 </button>
@@ -927,7 +912,7 @@ export default function SettingsPage() {
                                   onClick={() =>
                                     handleDelete("tables", table.id)
                                   }
-                                  className="text-red-600 hover:text-red-800"
+                                  className="text-red-600 hover:text-red-800 text-sm"
                                 >
                                   🗑️
                                 </button>
@@ -968,7 +953,10 @@ export default function SettingsPage() {
                         </button>
                       </div>
                     </div>
-                    <div className="space-y-2 flex-1 overflow-y-auto">
+                    <div
+                      className="space-y-2 flex-1 overflow-y-auto"
+                      style={{ maxHeight: "600px" }}
+                    >
                       {getFilteredData("waiters").map((waiter: any) => (
                         <div
                           key={waiter.id}
