@@ -82,6 +82,8 @@ interface Table {
   id: string;
   number: number;
   capacity: number;
+  minCapacity?: number;
+  maxCapacity?: number;
   categoryId: string;
   status: string;
 }
@@ -916,6 +918,39 @@ export default function ReservationPanel() {
     return found;
   };
 
+  // Rezervasyon kapasite kontrolü ve renk belirleme
+  const getReservationStyle = (reservation: Reservation) => {
+    const table = tables.find((t) => t.id === reservation.tableId);
+    if (!table) {
+      return {
+        backgroundColor: "#f87171", // Kırmızı - masa bulunamadı
+        borderColor: "#b91c1c",
+        isWarning: true,
+      };
+    }
+
+    const minCapacity = table.minCapacity || table.capacity || 1;
+    const maxCapacity = table.maxCapacity || table.capacity || 10;
+    const guestCount = reservation.guestCount || 0;
+
+    // Kapasite kontrolü
+    if (guestCount < minCapacity || guestCount > maxCapacity) {
+      // Kahve tonları - kapasite uyarısı
+      return {
+        backgroundColor: "#cd853f", // Sandy brown - daha belirgin kahve
+        borderColor: "#8b4513", // Saddle brown - koyu kahve
+        isWarning: true,
+      };
+    }
+
+    // Normal durum - yeşil
+    return {
+      backgroundColor: "#10b981", // Emerald-500
+      borderColor: "#047857", // Emerald-700
+      isWarning: false,
+    };
+  };
+
   // Handle card click - directly with reservation object
   const handleCardClick = (reservation: Reservation) => {
     console.log(`🎯 handleCardClick called with reservation:`, reservation);
@@ -1003,8 +1038,31 @@ export default function ReservationPanel() {
       } = formValues;
 
       if (!customerName || !tableId || !startTime || !endTime) {
-        toast.error("Please fill in required fields");
+        toast.error("Lütfen zorunlu alanları doldurun");
         return;
+      }
+
+      // Kişi sayısı kontrolü
+      if (!guestCount || guestCount < 1) {
+        toast.error("En az 1 kişi için rezervasyon yapılmalıdır");
+        return;
+      }
+
+      // Masa kapasite kontrolü - sadece uyarı amaçlı, engelleme yok
+      const selectedTable = tables.find((table) => table.id === tableId);
+      if (selectedTable) {
+        const minCapacity =
+          selectedTable.minCapacity || selectedTable.capacity || 1;
+        const maxCapacity =
+          selectedTable.maxCapacity || selectedTable.capacity || 10;
+
+        // Sadece bilgilendirme amaçlı uyarı, rezervasyon engellenmez
+        if (guestCount < minCapacity || guestCount > maxCapacity) {
+          toast.success(
+            `Bu masa ${minCapacity}-${maxCapacity} kişi kapasiteli. Rezervasyon oluşturuldu ancak kapasite dışında olduğu için kahverengi renkte görünecek.`,
+            { duration: 4000 }
+          );
+        }
       }
 
       const reservationDate = format(selectedDate, "yyyy-MM-dd");
@@ -2140,6 +2198,10 @@ export default function ReservationPanel() {
                                               (endIdx - startIdx) * 150 - 2
                                             );
 
+                                            // Rezervasyon stilini al
+                                            const reservationStyle =
+                                              getReservationStyle(reservation);
+
                                             return (
                                               <div
                                                 key={`${reservation.id}-${table.id}`}
@@ -2154,19 +2216,27 @@ export default function ReservationPanel() {
                                                       reservation.id
                                                     ? "ring-2 ring-blue-400 ring-opacity-75 cursor-pointer"
                                                     : "cursor-grab"
+                                                } ${
+                                                  reservationStyle.isWarning
+                                                    ? "ring-2 ring-yellow-400"
+                                                    : ""
                                                 }`}
                                                 style={{
                                                   left: `${leftPosition}px`,
                                                   width: `${widthCalculation}px`,
                                                   height: "26px",
                                                   top: "2px",
-                                                  backgroundColor: "#f87171",
-                                                  borderColor: "#b91c1c",
+                                                  backgroundColor:
+                                                    reservationStyle.backgroundColor,
+                                                  borderColor:
+                                                    reservationStyle.borderColor,
                                                   minWidth: "50px",
                                                   touchAction: "none",
                                                   backdropFilter: "blur(4px)",
                                                   boxShadow:
-                                                    "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
+                                                    reservationStyle.isWarning
+                                                      ? "0 4px 6px -1px rgba(139, 69, 19, 0.3), 0 2px 4px -1px rgba(139, 69, 19, 0.2)"
+                                                      : "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
                                                   zIndex: 10,
                                                 }}
                                                 draggable={
@@ -2322,20 +2392,26 @@ export default function ReservationPanel() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Guest Count
+                    Kişi Sayısı *
                   </label>
                   <input
                     type="number"
-                    min="1"
+                    min="0"
+                    placeholder="Kaç kişi?"
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    value={formValues.guestCount}
-                    onChange={(e) =>
+                    value={formValues.guestCount || ""}
+                    onChange={(e) => {
+                      const value = e.target.value;
                       setFormValues({
                         ...formValues,
-                        guestCount: parseInt(e.target.value) || 1,
-                      })
-                    }
+                        guestCount: value === "" ? 0 : parseInt(value) || 0,
+                      });
+                    }}
                   />
+                  <p className="text-xs text-gray-500 mt-1">
+                    En az 1 kişi gerekli. Masa kapasitesi dışında rezervasyon
+                    yapılabilir ancak kahverengi renkte görünür.
+                  </p>
                 </div>
 
                 <div>
@@ -2354,11 +2430,15 @@ export default function ReservationPanel() {
                       const category = categories.find(
                         (c) => c.id === table.categoryId
                       );
+                      const minCapacity =
+                        table.minCapacity || table.capacity || 1;
+                      const maxCapacity =
+                        table.maxCapacity || table.capacity || 10;
                       return (
                         <option key={table.id} value={table.id}>
                           Table {table.number} -{" "}
-                          {category?.name || "No Category"} ({table.capacity}{" "}
-                          seats)
+                          {category?.name || "No Category"}({minCapacity}-
+                          {maxCapacity} kişi)
                         </option>
                       );
                     })}

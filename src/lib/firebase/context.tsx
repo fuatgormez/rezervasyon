@@ -24,9 +24,23 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [company, setCompany] = useState<Company | null>(null);
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
-  const [selectedRestaurant, setSelectedRestaurant] =
+  const [selectedRestaurant, setSelectedRestaurantState] =
     useState<Restaurant | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // setSelectedRestaurant wrapper - localStorage'a da kaydeder
+  const setSelectedRestaurant = (restaurant: Restaurant | null) => {
+    setSelectedRestaurantState(restaurant);
+    if (restaurant) {
+      localStorage.setItem("selectedRestaurantId", restaurant.id);
+      console.log(
+        "🔄 Restaurant selection saved to localStorage:",
+        restaurant.id
+      );
+    } else {
+      localStorage.removeItem("selectedRestaurantId");
+    }
+  };
 
   useEffect(() => {
     // Önce cookie'den token kontrolü yap
@@ -122,10 +136,29 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                     console.log("🏪 All restaurants:", allRestaurants);
                     setRestaurants(allRestaurants);
 
-                    // İlk restoranı seç (eğer henüz seçilmemişse)
-                    if (!selectedRestaurant && allRestaurants.length > 0) {
-                      setSelectedRestaurant(allRestaurants[0]);
-                      console.log("🎯 Selected restaurant:", allRestaurants[0]);
+                    // Kaydedilmiş restoran seçimini kontrol et
+                    const savedRestaurantId = localStorage.getItem(
+                      "selectedRestaurantId"
+                    );
+                    let restaurantToSelect = null;
+
+                    if (savedRestaurantId) {
+                      restaurantToSelect = allRestaurants.find(
+                        (r) => r.id === savedRestaurantId
+                      );
+                    }
+
+                    // Eğer kaydedilmiş restoran bulunamazsa veya yoksa, ilkini seç
+                    if (!restaurantToSelect && allRestaurants.length > 0) {
+                      restaurantToSelect = allRestaurants[0];
+                    }
+
+                    if (restaurantToSelect && !selectedRestaurant) {
+                      setSelectedRestaurant(restaurantToSelect);
+                      console.log(
+                        "🎯 Selected restaurant:",
+                        restaurantToSelect
+                      );
                     }
                   }
                 });
@@ -155,12 +188,28 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                     );
                     setRestaurants(allRestaurants);
 
-                    // İlk restoranı seç (eğer henüz seçilmemişse)
-                    if (!selectedRestaurant && allRestaurants.length > 0) {
-                      setSelectedRestaurant(allRestaurants[0]);
+                    // Kaydedilmiş restoran seçimini kontrol et
+                    const savedRestaurantId = localStorage.getItem(
+                      "selectedRestaurantId"
+                    );
+                    let restaurantToSelect = null;
+
+                    if (savedRestaurantId) {
+                      restaurantToSelect = allRestaurants.find(
+                        (r) => r.id === savedRestaurantId
+                      );
+                    }
+
+                    // Eğer kaydedilmiş restoran bulunamazsa veya yoksa, ilkini seç
+                    if (!restaurantToSelect && allRestaurants.length > 0) {
+                      restaurantToSelect = allRestaurants[0];
+                    }
+
+                    if (restaurantToSelect && !selectedRestaurant) {
+                      setSelectedRestaurant(restaurantToSelect);
                       console.log(
                         "🎯 Selected restaurant for SUPER_ADMIN:",
-                        allRestaurants[0]
+                        restaurantToSelect
                       );
                     }
                   } else {
