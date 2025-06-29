@@ -8,6 +8,7 @@ import toast from "react-hot-toast";
 import Link from "next/link";
 import AdminHeader from "@/components/admin/AdminHeader";
 import { Customer } from "@/types/user";
+import WaiterManagementModal from "@/components/admin/WaiterManagementModal";
 // XLSX will be imported dynamically
 
 export default function SettingsPage() {
@@ -28,6 +29,7 @@ export default function SettingsPage() {
   const [modalType, setModalType] = useState("");
   const [editingItem, setEditingItem] = useState<any>(null);
   const [formData, setFormData] = useState<any>({});
+  const [showWaiterModal, setShowWaiterModal] = useState(false);
 
   useEffect(() => {
     loadAllData();
@@ -107,6 +109,18 @@ export default function SettingsPage() {
         contextualFormData.capacity = contextualFormData.maxCapacity;
       }
 
+      // Garson için özel işlemler
+      if (modalType === "waiters") {
+        // Position default değeri
+        if (!contextualFormData.position) {
+          contextualFormData.position = "waiter";
+        }
+        console.log(
+          "🔧 Saving waiter with position:",
+          contextualFormData.position
+        );
+      }
+
       if (editingItem) {
         await update(ref(db, `${modalType}/${editingItem.id}`), {
           ...contextualFormData,
@@ -154,7 +168,19 @@ export default function SettingsPage() {
   const openModal = (type: string, item?: any) => {
     setModalType(type);
     setEditingItem(item);
-    setFormData(item || {});
+
+    // Form data'yı hazırla
+    let initialFormData = item || {};
+
+    // Garson ekleme için default pozisyon
+    if (type === "waiters" && !item) {
+      initialFormData = {
+        ...initialFormData,
+        position: "waiter",
+      };
+    }
+
+    setFormData(initialFormData);
     setIsModalOpen(true);
   };
 
@@ -927,12 +953,20 @@ export default function SettingsPage() {
                           </p>
                         </div>
                       </div>
-                      <button
-                        onClick={() => openModal("waiters")}
-                        className="bg-orange-600 text-white px-3 py-1 rounded-lg hover:bg-orange-700 text-sm"
-                      >
-                        + Ekle
-                      </button>
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => setShowWaiterModal(true)}
+                          className="bg-blue-600 text-white px-3 py-1 rounded-lg hover:bg-blue-700 text-sm"
+                        >
+                          🔧 Yönet
+                        </button>
+                        <button
+                          onClick={() => openModal("waiters")}
+                          className="bg-orange-600 text-white px-3 py-1 rounded-lg hover:bg-orange-700 text-sm"
+                        >
+                          + Ekle
+                        </button>
+                      </div>
                     </div>
                     <div className="space-y-2 flex-1 overflow-y-auto">
                       {getFilteredData("waiters").map((waiter: any) => (
@@ -941,8 +975,18 @@ export default function SettingsPage() {
                           className="bg-white rounded p-4 flex justify-between items-center shadow-sm"
                         >
                           <div>
-                            <div className="font-medium text-sm">
-                              {waiter.name}
+                            <div className="font-medium text-sm flex items-center space-x-2">
+                              <span>
+                                {waiter.position === "waiter" ? "👨‍💼" : "🧑‍🍳"}
+                              </span>
+                              <span>{waiter.name}</span>
+                              <span className="text-xs text-gray-500">
+                                (
+                                {waiter.position === "waiter"
+                                  ? "Garson"
+                                  : "Komi"}
+                                )
+                              </span>
                             </div>
                             <div className="text-xs text-gray-500">
                               {waiter.phone}
@@ -1485,6 +1529,24 @@ export default function SettingsPage() {
                     </div>
                   )}
 
+                  {modalType === "waiters" && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Pozisyon *
+                      </label>
+                      <select
+                        value={formData.position || "waiter"}
+                        onChange={(e) =>
+                          setFormData({ ...formData, position: e.target.value })
+                        }
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        <option value="waiter">👨‍💼 Garson</option>
+                        <option value="busboy">🧑‍🍳 Komi</option>
+                      </select>
+                    </div>
+                  )}
+
                   {(modalType === "companies" ||
                     modalType === "restaurants" ||
                     modalType === "waiters") && (
@@ -1523,6 +1585,12 @@ export default function SettingsPage() {
               </div>
             </div>
           )}
+
+          {/* Waiter Management Modal */}
+          <WaiterManagementModal
+            isOpen={showWaiterModal}
+            onClose={() => setShowWaiterModal(false)}
+          />
         </div>
       </div>
     </div>

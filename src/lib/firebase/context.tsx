@@ -80,7 +80,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               setUser(mockUser);
 
               // JWT kullanıcısı için de company ve restaurant verilerini yükle
-              if ((decoded.role as any) === "COMPANY_ADMIN") {
+              // Her kullanıcı için restaurant'ları yükle
+              if (decoded) {
                 // Önce tüm companies'i kontrol et
                 const allCompaniesRef = ref(db, `companies`);
                 const allCompaniesSnapshot = await get(allCompaniesRef);
@@ -160,60 +161,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                         restaurantToSelect
                       );
                     }
-                  }
-                });
-              } else if ((decoded.role as any) === "SUPER_ADMIN") {
-                // SUPER_ADMIN için tüm restoranları yükle
-                console.log("🔧 Loading restaurants for SUPER_ADMIN");
-                const restaurantsRef = ref(db, `restaurants`);
-                onValue(restaurantsRef, (snapshot) => {
-                  if (snapshot.exists()) {
-                    const restaurantsData = snapshot.val();
-                    console.log(
-                      "🔧 All restaurants data for SUPER_ADMIN:",
-                      restaurantsData
-                    );
-
-                    // Tüm restoranları listele
-                    const allRestaurants = Object.entries(restaurantsData).map(
-                      ([id, data]: [string, any]) => ({
-                        id,
-                        ...data,
-                      })
-                    ) as Restaurant[];
-
-                    console.log(
-                      "🏪 All restaurants for SUPER_ADMIN:",
-                      allRestaurants
-                    );
-                    setRestaurants(allRestaurants);
-
-                    // Kaydedilmiş restoran seçimini kontrol et
-                    const savedRestaurantId = localStorage.getItem(
-                      "selectedRestaurantId"
-                    );
-                    let restaurantToSelect = null;
-
-                    if (savedRestaurantId) {
-                      restaurantToSelect = allRestaurants.find(
-                        (r) => r.id === savedRestaurantId
-                      );
-                    }
-
-                    // Eğer kaydedilmiş restoran bulunamazsa veya yoksa, ilkini seç
-                    if (!restaurantToSelect && allRestaurants.length > 0) {
-                      restaurantToSelect = allRestaurants[0];
-                    }
-
-                    if (restaurantToSelect && !selectedRestaurant) {
-                      setSelectedRestaurant(restaurantToSelect);
-                      console.log(
-                        "🎯 Selected restaurant for SUPER_ADMIN:",
-                        restaurantToSelect
-                      );
-                    }
-                  } else {
-                    console.log("❌ No restaurants found in Firebase");
                   }
                 });
               }

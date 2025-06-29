@@ -40,6 +40,7 @@ import { useAuthContext } from "@/lib/firebase/context";
 import { useAuth } from "@/lib/firebase/hooks";
 import { useRouter } from "next/navigation";
 import AdminHeader from "./AdminHeader";
+import StaffAssignmentModal from "./StaffAssignmentModal";
 
 // Time slots artık dinamik olarak component içinde oluşturuluyor
 
@@ -189,6 +190,9 @@ export default function ReservationPanel() {
     tableId: string;
     time: string;
   } | null>(null);
+
+  // Staff Assignment Modal
+  const [showStaffModal, setShowStaffModal] = useState(false);
 
   // Refs
   const calendarRef = useRef<HTMLDivElement>(null);
@@ -1646,6 +1650,16 @@ export default function ReservationPanel() {
             <button className="p-2 rounded-lg hover:bg-gray-100">
               <RefreshCw className="w-5 h-5 text-gray-600" />
             </button>
+
+            {/* Garson Ataması ve Yeni Rezervasyon butonları yan yana */}
+            <button
+              onClick={() => setShowStaffModal(true)}
+              className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+            >
+              <Users className="w-4 h-4" />
+              <span>Garson Ataması</span>
+            </button>
+
             <button
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center space-x-1"
               onClick={() => {
@@ -2603,6 +2617,12 @@ export default function ReservationPanel() {
           </div>
         </div>
       )}
+
+      {/* Staff Assignment Modal */}
+      <StaffAssignmentModal
+        isOpen={showStaffModal}
+        onClose={() => setShowStaffModal(false)}
+      />
     </div>
   );
 }
