@@ -294,6 +294,7 @@ const ReservationGrid: React.FC<ReservationGridProps> = ({
                                     }
                                     tables={tables}
                                     currentTableId={table.id}
+                                    timeSlots={timeSlots}
                                     onReservationClick={(reservationType) => {
                                       // ReservationType'ı Reservation'a dönüştür
                                       const fullReservation: Reservation = {

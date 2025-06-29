@@ -993,7 +993,10 @@ export default function ReservationPanel() {
       ...formValues,
       customerType:
         customer.customerType ||
-        (customer.companyName ? "company" : "individual"),
+        ((customer.companyName ? "company" : "individual") as
+          | "individual"
+          | "company"
+          | "walkin"),
       customerName: customer.name || "",
       customerSurname: customer.surname || "",
       customerGender: customer.gender || "",
@@ -1003,6 +1006,60 @@ export default function ReservationPanel() {
     });
     setShowCustomerSuggestions(false);
     setActiveSearchField("");
+
+    // Suggest table based on customer's previous reservations
+    suggestTableForCustomer(customer);
+  };
+
+  // Function to suggest table based on customer history
+  const suggestTableForCustomer = async (customer: any) => {
+    try {
+      const customerIdentifier = customer.email || customer.phone;
+      if (!customerIdentifier) return;
+
+      // Load all reservations for this customer
+      const reservationsRef = ref(db, "reservations");
+      const snapshot = await get(reservationsRef);
+
+      if (snapshot.exists()) {
+        const allReservations = snapshot.val();
+        const customerReservations = Object.values(allReservations).filter(
+          (res: any) =>
+            res.customerEmail === customer.email ||
+            res.customerPhone === customer.phone
+        );
+
+        if (customerReservations.length > 0) {
+          // Find the most frequently used table
+          const tableUsage: { [tableId: string]: number } = {};
+          customerReservations.forEach((res: any) => {
+            tableUsage[res.tableId] = (tableUsage[res.tableId] || 0) + 1;
+          });
+
+          // Get the most used table
+          const mostUsedTableId = Object.keys(tableUsage).reduce((a, b) =>
+            tableUsage[a] > tableUsage[b] ? a : b
+          );
+
+          const suggestedTable = tables.find((t) => t.id === mostUsedTableId);
+          if (suggestedTable) {
+            // Update form with suggested table
+            setFormValues((prev) => ({
+              ...prev,
+              tableId: mostUsedTableId,
+            }));
+
+            // Show notification
+            toast.success(
+              `💡 Masa önerisi: ${customer.name} daha önce Masa ${suggestedTable.number}'de oturmuş`,
+              { duration: 4000 }
+            );
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error suggesting table:", error);
+    }
   };
 
   const handleCustomerFieldChange = (field: string, value: string) => {
@@ -1180,8 +1237,8 @@ export default function ReservationPanel() {
     switch (reservation.arrivalStatus) {
       case "arrived":
         return {
-          backgroundColor: "#f8bbd9", // Pink tone for arrived customers
-          borderColor: "#ec4899",
+          backgroundColor: "#ff69b4", // Bright hot pink for arrived customers
+          borderColor: "#e91e63",
           isWarning: false,
         };
       case "departed":
@@ -2859,12 +2916,20 @@ export default function ReservationPanel() {
                                                       <span className="bg-white/20 backdrop-blur-sm px-1.5 py-0.5 rounded text-[10px] text-white font-medium">
                                                         {reservation.guestCount}
                                                       </span>
+                                                      {reservation.note &&
+                                                        reservation.note.trim() && (
+                                                          <span
+                                                            className="bg-white/30 backdrop-blur-sm px-1 py-0.5 rounded text-[10px] text-white"
+                                                            title={
+                                                              reservation.note
+                                                            }
+                                                          >
+                                                            💬
+                                                          </span>
+                                                        )}
                                                     </div>
                                                   </div>
                                                 </div>
-
-                                                {/* Sürükleme göstergesi */}
-                                                <div className="absolute top-1 right-1 w-2 h-2 bg-white/30 rounded-full pointer-events-none" />
 
                                                 {/* Resize handle'ları - sadece resize aktif değilken */}
                                                 {!dragResizing && (
@@ -3074,255 +3139,266 @@ export default function ReservationPanel() {
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {/* Name Field with Autocomplete */}
-                  <div className="relative">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Ad{" "}
-                      {formValues.customerType !== "walkin"
-                        ? "*"
-                        : "(Opsiyonel)"}
-                    </label>
-                    <input
-                      type="text"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      value={formValues.customerName || ""}
-                      onChange={(e) =>
-                        handleCustomerFieldChange(
-                          "customerName",
-                          e.target.value
-                        )
-                      }
-                      placeholder={
-                        formValues.customerType === "walkin"
-                          ? "Walk-in müşteri (opsiyonel)"
-                          : "Müşteri adı"
-                      }
-                      autoComplete="off"
-                    />
+                {/* Show customer fields only for non-walk-in customers */}
+                {formValues.customerType !== "walkin" && (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Name Field with Autocomplete */}
+                    <div className="relative">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Ad *
+                      </label>
+                      <input
+                        type="text"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        value={formValues.customerName || ""}
+                        onChange={(e) =>
+                          handleCustomerFieldChange(
+                            "customerName",
+                            e.target.value
+                          )
+                        }
+                        placeholder={
+                          (formValues.customerType as
+                            | "individual"
+                            | "company"
+                            | "walkin") === "walkin"
+                            ? "Walk-in müşteri (opsiyonel)"
+                            : "Müşteri adı"
+                        }
+                        autoComplete="off"
+                      />
 
-                    {/* Autocomplete Suggestions */}
-                    {activeSearchField === "customerName" &&
-                      showCustomerSuggestions &&
-                      filteredCustomers.length > 0 && (
-                        <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-40 overflow-y-auto">
-                          {filteredCustomers.map((customer, index) => (
-                            <div
-                              key={customer.id || index}
-                              className="px-3 py-2 cursor-pointer hover:bg-blue-50 border-b border-gray-100 last:border-b-0"
-                              onClick={() => selectCustomer(customer)}
-                            >
-                              <div className="font-medium text-gray-900">
-                                {customer.companyName && (
-                                  <span className="text-blue-600 mr-2">🏢</span>
-                                )}
-                                {customer.name} {customer.surname}
+                      {/* Autocomplete Suggestions */}
+                      {activeSearchField === "customerName" &&
+                        showCustomerSuggestions &&
+                        filteredCustomers.length > 0 && (
+                          <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-40 overflow-y-auto">
+                            {filteredCustomers.map((customer, index) => (
+                              <div
+                                key={customer.id || index}
+                                className="px-3 py-2 cursor-pointer hover:bg-blue-50 border-b border-gray-100 last:border-b-0"
+                                onClick={() => selectCustomer(customer)}
+                              >
+                                <div className="font-medium text-gray-900">
+                                  {customer.companyName && (
+                                    <span className="text-blue-600 mr-2">
+                                      🏢
+                                    </span>
+                                  )}
+                                  {customer.name} {customer.surname}
+                                </div>
+                                <div className="text-sm text-gray-500">
+                                  {customer.email} • {customer.phone}
+                                  {customer.companyName && (
+                                    <span className="ml-2">
+                                      • {customer.companyName}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
-                              <div className="text-sm text-gray-500">
-                                {customer.email} • {customer.phone}
-                                {customer.companyName && (
-                                  <span className="ml-2">
-                                    • {customer.companyName}
-                                  </span>
-                                )}
+                            ))}
+                          </div>
+                        )}
+                    </div>
+
+                    {/* Surname */}
+                    <div className="relative">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Soyad
+                      </label>
+                      <input
+                        type="text"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        value={formValues.customerSurname || ""}
+                        onChange={(e) =>
+                          handleCustomerFieldChange(
+                            "customerSurname",
+                            e.target.value
+                          )
+                        }
+                        placeholder="Müşteri soyadı"
+                        autoComplete="off"
+                      />
+
+                      {/* Surname Autocomplete Suggestions */}
+                      {activeSearchField === "customerSurname" &&
+                        showCustomerSuggestions &&
+                        filteredCustomers.length > 0 && (
+                          <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-40 overflow-y-auto">
+                            {filteredCustomers.map((customer, index) => (
+                              <div
+                                key={`surname-${customer.id || index}`}
+                                className="px-3 py-2 cursor-pointer hover:bg-blue-50 border-b border-gray-100 last:border-b-0"
+                                onClick={() => selectCustomer(customer)}
+                              >
+                                <div className="font-medium text-gray-900">
+                                  {customer.companyName && (
+                                    <span className="text-blue-600 mr-2">
+                                      🏢
+                                    </span>
+                                  )}
+                                  {customer.name} {customer.surname}
+                                </div>
+                                <div className="text-sm text-gray-500">
+                                  {customer.email} • {customer.phone}
+                                  {customer.companyName && (
+                                    <span className="ml-2">
+                                      • {customer.companyName}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                            ))}
+                          </div>
+                        )}
+                    </div>
+
+                    {/* Gender */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Cinsiyet
+                      </label>
+                      <select
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        value={formValues.customerGender || ""}
+                        onChange={(e) =>
+                          handleCustomerFieldChange(
+                            "customerGender",
+                            e.target.value
+                          )
+                        }
+                      >
+                        <option value="">Seçiniz</option>
+                        <option value="bay">👨 Bay</option>
+                        <option value="bayan">👩 Bayan</option>
+                      </select>
+                    </div>
+
+                    {/* Email */}
+                    <div className="relative">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        E-posta
+                      </label>
+                      <input
+                        type="email"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        value={formValues.customerEmail || ""}
+                        onChange={(e) =>
+                          handleCustomerFieldChange(
+                            "customerEmail",
+                            e.target.value
+                          )
+                        }
+                        placeholder="ornek@email.com"
+                        autoComplete="off"
+                      />
+
+                      {/* Email Autocomplete Suggestions */}
+                      {activeSearchField === "customerEmail" &&
+                        showCustomerSuggestions &&
+                        filteredCustomers.length > 0 && (
+                          <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-40 overflow-y-auto">
+                            {filteredCustomers.map((customer, index) => (
+                              <div
+                                key={`email-${customer.id || index}`}
+                                className="px-3 py-2 cursor-pointer hover:bg-blue-50 border-b border-gray-100 last:border-b-0"
+                                onClick={() => selectCustomer(customer)}
+                              >
+                                <div className="font-medium text-gray-900">
+                                  {customer.companyName && (
+                                    <span className="text-blue-600 mr-2">
+                                      🏢
+                                    </span>
+                                  )}
+                                  {customer.name} {customer.surname}
+                                </div>
+                                <div className="text-sm text-gray-500">
+                                  {customer.email} • {customer.phone}
+                                  {customer.companyName && (
+                                    <span className="ml-2">
+                                      • {customer.companyName}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                    </div>
+
+                    {/* Phone */}
+                    <div className="relative">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Telefon
+                      </label>
+                      <input
+                        type="tel"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        value={formValues.customerPhone || ""}
+                        onChange={(e) =>
+                          handleCustomerFieldChange(
+                            "customerPhone",
+                            e.target.value
+                          )
+                        }
+                        placeholder="0555 123 45 67"
+                        autoComplete="off"
+                      />
+
+                      {/* Phone Autocomplete Suggestions */}
+                      {activeSearchField === "customerPhone" &&
+                        showCustomerSuggestions &&
+                        filteredCustomers.length > 0 && (
+                          <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-40 overflow-y-auto">
+                            {filteredCustomers.map((customer, index) => (
+                              <div
+                                key={`phone-${customer.id || index}`}
+                                className="px-3 py-2 cursor-pointer hover:bg-blue-50 border-b border-gray-100 last:border-b-0"
+                                onClick={() => selectCustomer(customer)}
+                              >
+                                <div className="font-medium text-gray-900">
+                                  {customer.companyName && (
+                                    <span className="text-blue-600 mr-2">
+                                      🏢
+                                    </span>
+                                  )}
+                                  {customer.name} {customer.surname}
+                                </div>
+                                <div className="text-sm text-gray-500">
+                                  {customer.email} • {customer.phone}
+                                  {customer.companyName && (
+                                    <span className="ml-2">
+                                      • {customer.companyName}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                    </div>
                   </div>
+                )}
 
-                  {/* Surname */}
-                  <div className="relative">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Soyad
-                    </label>
-                    <input
-                      type="text"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      value={formValues.customerSurname || ""}
-                      onChange={(e) =>
-                        handleCustomerFieldChange(
-                          "customerSurname",
-                          e.target.value
-                        )
-                      }
-                      placeholder="Müşteri soyadı"
-                      autoComplete="off"
-                    />
-
-                    {/* Surname Autocomplete Suggestions */}
-                    {activeSearchField === "customerSurname" &&
-                      showCustomerSuggestions &&
-                      filteredCustomers.length > 0 && (
-                        <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-40 overflow-y-auto">
-                          {filteredCustomers.map((customer, index) => (
-                            <div
-                              key={`surname-${customer.id || index}`}
-                              className="px-3 py-2 cursor-pointer hover:bg-blue-50 border-b border-gray-100 last:border-b-0"
-                              onClick={() => selectCustomer(customer)}
-                            >
-                              <div className="font-medium text-gray-900">
-                                {customer.companyName && (
-                                  <span className="text-blue-600 mr-2">🏢</span>
-                                )}
-                                {customer.name} {customer.surname}
-                              </div>
-                              <div className="text-sm text-gray-500">
-                                {customer.email} • {customer.phone}
-                                {customer.companyName && (
-                                  <span className="ml-2">
-                                    • {customer.companyName}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                  </div>
-
-                  {/* Gender */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Cinsiyet
-                    </label>
-                    <select
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      value={formValues.customerGender || ""}
-                      onChange={(e) =>
-                        handleCustomerFieldChange(
-                          "customerGender",
-                          e.target.value
-                        )
-                      }
-                    >
-                      <option value="">Seçiniz</option>
-                      <option value="bay">👨 Bay</option>
-                      <option value="bayan">👩 Bayan</option>
-                    </select>
-                  </div>
-
-                  {/* Email */}
-                  <div className="relative">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      E-posta
-                    </label>
-                    <input
-                      type="email"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      value={formValues.customerEmail || ""}
-                      onChange={(e) =>
-                        handleCustomerFieldChange(
-                          "customerEmail",
-                          e.target.value
-                        )
-                      }
-                      placeholder="ornek@email.com"
-                      autoComplete="off"
-                    />
-
-                    {/* Email Autocomplete Suggestions */}
-                    {activeSearchField === "customerEmail" &&
-                      showCustomerSuggestions &&
-                      filteredCustomers.length > 0 && (
-                        <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-40 overflow-y-auto">
-                          {filteredCustomers.map((customer, index) => (
-                            <div
-                              key={`email-${customer.id || index}`}
-                              className="px-3 py-2 cursor-pointer hover:bg-blue-50 border-b border-gray-100 last:border-b-0"
-                              onClick={() => selectCustomer(customer)}
-                            >
-                              <div className="font-medium text-gray-900">
-                                {customer.companyName && (
-                                  <span className="text-blue-600 mr-2">🏢</span>
-                                )}
-                                {customer.name} {customer.surname}
-                              </div>
-                              <div className="text-sm text-gray-500">
-                                {customer.email} • {customer.phone}
-                                {customer.companyName && (
-                                  <span className="ml-2">
-                                    • {customer.companyName}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                  </div>
-
-                  {/* Phone */}
-                  <div className="relative">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Telefon
-                    </label>
-                    <input
-                      type="tel"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      value={formValues.customerPhone || ""}
-                      onChange={(e) =>
-                        handleCustomerFieldChange(
-                          "customerPhone",
-                          e.target.value
-                        )
-                      }
-                      placeholder="0555 123 45 67"
-                      autoComplete="off"
-                    />
-
-                    {/* Phone Autocomplete Suggestions */}
-                    {activeSearchField === "customerPhone" &&
-                      showCustomerSuggestions &&
-                      filteredCustomers.length > 0 && (
-                        <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-40 overflow-y-auto">
-                          {filteredCustomers.map((customer, index) => (
-                            <div
-                              key={`phone-${customer.id || index}`}
-                              className="px-3 py-2 cursor-pointer hover:bg-blue-50 border-b border-gray-100 last:border-b-0"
-                              onClick={() => selectCustomer(customer)}
-                            >
-                              <div className="font-medium text-gray-900">
-                                {customer.companyName && (
-                                  <span className="text-blue-600 mr-2">🏢</span>
-                                )}
-                                {customer.name} {customer.surname}
-                              </div>
-                              <div className="text-sm text-gray-500">
-                                {customer.email} • {customer.phone}
-                                {customer.companyName && (
-                                  <span className="ml-2">
-                                    • {customer.companyName}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                  </div>
-
-                  {/* Guest Count */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Kişi Sayısı *
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      value={formValues.guestCount || ""}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        setFormValues({
-                          ...formValues,
-                          guestCount: value === "" ? 0 : parseInt(value) || 0,
-                        });
-                      }}
-                      placeholder="Kaç kişi?"
-                    />
-                  </div>
+                {/* Guest Count for all customer types */}
+                <div className="mt-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Kişi Sayısı *
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    className="w-full max-w-xs px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    value={formValues.guestCount || ""}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setFormValues({
+                        ...formValues,
+                        guestCount: value === "" ? 0 : parseInt(value) || 0,
+                      });
+                    }}
+                    placeholder="Kaç kişi?"
+                  />
                 </div>
               </div>
 
