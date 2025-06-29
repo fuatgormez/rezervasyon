@@ -30,6 +30,7 @@ import {
   Filter,
   X,
   Info,
+  User,
 } from "lucide-react";
 import { db } from "@/lib/firebase/config";
 import { ref, get, onValue, set, update, remove } from "firebase/database";
@@ -41,6 +42,7 @@ import { useAuth } from "@/lib/firebase/hooks";
 import { useRouter } from "next/navigation";
 import AdminHeader from "./AdminHeader";
 import StaffAssignmentModal from "./StaffAssignmentModal";
+import TableStaffInfoModal from "./TableStaffInfoModal";
 
 // Time slots artık dinamik olarak component içinde oluşturuluyor
 
@@ -193,6 +195,16 @@ export default function ReservationPanel() {
 
   // Staff Assignment Modal
   const [showStaffModal, setShowStaffModal] = useState(false);
+
+  // Staff assignments ve info modal için state'ler
+  const [staffAssignments, setStaffAssignments] = useState<Record<string, any>>(
+    {}
+  );
+  const [selectedTableForStaffInfo, setSelectedTableForStaffInfo] = useState<
+    string | null
+  >(null);
+  const [staffInfoModalOpen, setStaffInfoModalOpen] = useState(false);
+  const [waitersData, setWaitersData] = useState<any[]>([]);
 
   // Refs
   const calendarRef = useRef<HTMLDivElement>(null);
@@ -789,6 +801,52 @@ export default function ReservationPanel() {
   useEffect(() => {
     console.log("🔧 Tables state updated:", tables.length);
   }, [tables]);
+
+  // Staff assignments ve waiter verilerini yükle
+  useEffect(() => {
+    const loadStaffData = async () => {
+      if (!currentRestaurant) return;
+
+      try {
+        // Waiters/staff verilerini yükle
+        const waitersRef = ref(db, "waiters");
+        const waitersSnapshot = await get(waitersRef);
+
+        if (waitersSnapshot.exists()) {
+          const waitersData = waitersSnapshot.val();
+          const loadedWaiters = Object.entries(waitersData)
+            .filter(
+              ([_, waiter]: [string, any]) =>
+                waiter.restaurantId === currentRestaurant.id
+            )
+            .map(([id, waiter]: [string, any]) => ({
+              id,
+              ...waiter,
+            }));
+
+          setWaitersData(loadedWaiters);
+        }
+
+        // Bugünkü staff assignments'ları yükle
+        const todayStr = format(selectedDate, "yyyy-MM-dd");
+        const assignmentsRef = ref(
+          db,
+          `assignments/${currentRestaurant.id}/${todayStr}`
+        );
+        const assignmentsSnapshot = await get(assignmentsRef);
+
+        if (assignmentsSnapshot.exists()) {
+          setStaffAssignments(assignmentsSnapshot.val());
+        } else {
+          setStaffAssignments({});
+        }
+      } catch (error) {
+        console.error("Staff data loading error:", error);
+      }
+    };
+
+    loadStaffData();
+  }, [currentRestaurant, selectedDate]);
 
   // Close calendar when clicking outside
   useEffect(() => {
@@ -1563,6 +1621,21 @@ export default function ReservationPanel() {
     }
   };
 
+  // Staff info modal functions
+  const handleStaffInfoClick = (tableId: string) => {
+    setSelectedTableForStaffInfo(tableId);
+    setStaffInfoModalOpen(true);
+  };
+
+  const getTableAssignment = (tableId: string) => {
+    return staffAssignments[tableId] || null;
+  };
+
+  const hasStaffAssignment = (tableId: string) => {
+    const assignment = getTableAssignment(tableId);
+    return assignment && (assignment.waiterId || assignment.buserId);
+  };
+
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-gray-50 text-gray-800">
       <AdminHeader title="📅 Rezervasyon Yönetimi">
@@ -1872,6 +1945,25 @@ export default function ReservationPanel() {
                                   {hasActiveReservation && (
                                     <div className="w-2 h-2 rounded-full bg-green-500"></div>
                                   )}
+                                  {/* Staff info icon */}
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleStaffInfoClick(table.id);
+                                    }}
+                                    className={`p-1 rounded transition-colors ${
+                                      hasStaffAssignment(table.id)
+                                        ? "text-blue-600 hover:bg-blue-100"
+                                        : "text-gray-400 hover:bg-gray-100"
+                                    }`}
+                                    title={
+                                      hasStaffAssignment(table.id)
+                                        ? "Personel atanmış"
+                                        : "Personel atanmamış"
+                                    }
+                                  >
+                                    <User className="w-4 h-4" />
+                                  </button>
                                 </div>
                               </div>
                             );
@@ -2623,6 +2715,47 @@ export default function ReservationPanel() {
         isOpen={showStaffModal}
         onClose={() => setShowStaffModal(false)}
       />
+
+      {/* Table Staff Info Modal */}
+      {selectedTableForStaffInfo && (
+        <TableStaffInfoModal
+          isOpen={staffInfoModalOpen}
+          onClose={() => {
+            setStaffInfoModalOpen(false);
+            setSelectedTableForStaffInfo(null);
+          }}
+          tableId={selectedTableForStaffInfo}
+          tableNumber={
+            tables.find((t) => t.id === selectedTableForStaffInfo)?.number || 0
+          }
+          assignment={getTableAssignment(selectedTableForStaffInfo)}
+          waitersData={waitersData}
+          selectedDate={selectedDate}
+          restaurantId={currentRestaurant?.id || ""}
+          onUpdate={() => {
+            // Staff assignments'ları yeniden yükle
+            const loadStaffData = async () => {
+              if (!currentRestaurant) return;
+              try {
+                const todayStr = format(selectedDate, "yyyy-MM-dd");
+                const assignmentsRef = ref(
+                  db,
+                  `assignments/${currentRestaurant.id}/${todayStr}`
+                );
+                const assignmentsSnapshot = await get(assignmentsRef);
+                if (assignmentsSnapshot.exists()) {
+                  setStaffAssignments(assignmentsSnapshot.val());
+                } else {
+                  setStaffAssignments({});
+                }
+              } catch (error) {
+                console.error("Staff data reload error:", error);
+              }
+            };
+            loadStaffData();
+          }}
+        />
+      )}
     </div>
   );
 }
